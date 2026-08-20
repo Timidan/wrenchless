@@ -62,11 +62,16 @@ Implemented and locally verified:
   non-`None` screening;
 - a bounded relay transaction containing exactly STRK approval followed by the
   validated pool call;
+- a dry-run-first relay CLI with live chain, class, ABI, pool-state, fee, cover,
+  and relay-balance checks;
+- independent unsigned and signed fee-estimation paths with hard spend caps;
+- two mandatory broadcast opt-ins and recursive secret redaction;
 - unit tests for the artifact, decoder, and relay planner.
 
 Still to prove or build:
 
-- dry-run inspection against the live mainnet pool;
+- a full dry-run using a fresh Ready-generated registration artifact and funded
+  unrelated relay;
 - the unrelated-relay mainnet registration canary;
 - immutable vault-to-cover helper contracts;
 - encrypted guardian mailbox and heartbeat delivery;
@@ -90,9 +95,64 @@ pnpm test
 pnpm typecheck
 ```
 
-Mainnet broadcast is disabled by default. The future relay CLI will require both
-an explicit command-line flag and an environment opt-in, and its operator runbook
-will require a separate approval of the resolved addresses and maximum spend.
+## Registration canary
+
+The canary defaults to inspection only. It requires a Starknet mainnet RPC that
+supports current proof-bearing V3 transactions, a deployed relay address, and a
+registration artifact produced locally by the cover wallet:
+
+```bash
+export STARKNET_RPC_URL="https://your-mainnet-rpc.example"
+export WRENCHLESS_RELAY_ADDRESS="0x..."
+
+pnpm canary:inspect --artifact /absolute/path/to/registration-artifact.json
+```
+
+No private key is needed or read in this mode. Before fee estimation, the CLI:
+
+1. verifies `SN_MAIN`, the live pool class, required ABI functions, and the exact
+   `ServerAction` discriminant order;
+2. records the live pool version and rejects a paused pool;
+3. confirms that the cover is not already registered;
+4. decodes the artifact as exactly two `WriteOnce` actions followed by one
+   `EmitViewingKeySet`, with `screening: None` and no trailing calldata;
+5. checks the live pool fee and relay balance against fixed caps;
+6. simulates the exact approval plus `apply_actions` transaction while skipping
+   only the relay account's signature validation.
+
+Broadcast remains disabled unless `--broadcast` and
+`WRENCHLESS_ALLOW_MAINNET_BROADCAST=true` are both present. Only then is
+`WRENCHLESS_RELAY_PRIVATE_KEY` read. The CLI performs a signed estimate, rejects
+it above the 10 STRK transaction-fee cap, and submits using those estimated
+resource bounds. An operator must separately approve the printed pool, cover,
+relay, estimated fee, and maximum spend before enabling those gates.
+
+### Cover-side handoff
+
+The cover application calls Ready's `strk20PrepareInvoke` locally, then passes the
+returned value through the shared normalizer before offering a JSON download:
+
+```ts
+import { normalizeReadyRegistrationArtifact } from "@wrenchless/canary-core";
+
+const artifact = normalizeReadyRegistrationArtifact({
+  coverAddress,
+  poolAddress,
+  createdAt: new Date().toISOString(),
+  prepared: await ready.strk20PrepareInvoke([]),
+});
+```
+
+The normalizer accepts the current Ready result shape
+`{ call: { contract_address, entry_point, calldata }, proof: { data, output,
+proof_facts } }`, converts it to the relay schema, and rejects extra fields. The
+artifact contains the public call and transaction proof only. Account keys,
+viewing keys, recovery material, guardian keys, passphrases, and mnemonics must
+never enter this boundary or leave the cover device.
+
+The empty action list is intentional: Ready's current SDK path auto-registers an
+unregistered wallet. The relay independently rejects the artifact unless that
+automation produced registration and nothing else.
 
 ## Security
 
