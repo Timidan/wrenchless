@@ -2,6 +2,7 @@ import type {
   RegistrationCanaryArtifact,
   RegistrationRelayPlan,
 } from "@wrenchless/canary-core";
+import { constants, ec, hash, shortString } from "starknet";
 import { describe, expect, it } from "vitest";
 
 import type { RelayCanaryConfig } from "./config.js";
@@ -17,6 +18,57 @@ const STRK =
 const POOL_FEE = 6_000_000_000_000_000_000n;
 const ESTIMATED_FEE = 3_000_000_000_000_000_000n;
 const MAX_TRANSACTION_FEE = 10_000_000_000_000_000_000n;
+const POOL_CLASS_HASH = "0xc1a55";
+const PROOF_BASE_BLOCK = 100n;
+const LATEST_BLOCK = 120n;
+const PROOF_VALIDITY_BLOCKS = 450n;
+const REGISTRATION_CALLDATA = [
+  "0x3",
+  "0x0",
+  "0xaaa",
+  "0x1",
+  "0x111",
+  "0x0",
+  "0xbbb",
+  "0x3",
+  "0x222",
+  "0x333",
+  "0x444",
+  "0x4",
+  "0x123",
+  "0x111",
+  "0x222",
+  "0x333",
+  "0x444",
+  "0x1",
+];
+
+function makeProofFacts(): string[] {
+  const serverActions = REGISTRATION_CALLDATA.slice(0, -1);
+  const payload = [POOL_CLASS_HASH, ...serverActions];
+  const messageHash = ec.starkCurve.poseidonHashMany([
+    BigInt(POOL),
+    0n,
+    BigInt(payload.length),
+    ...payload.map(BigInt),
+  ]);
+  const configHash = hash.computeHashOnElements([
+    "0x537461726b6e65744f73436f6e66696733",
+    constants.StarknetChainId.SN_MAIN,
+    STRK,
+  ]);
+  return [
+    shortString.encodeShortString("PROOF0"),
+    shortString.encodeShortString("VIRTUAL_SNOS"),
+    "0x3e98c2d7703b03a7edb73ed7f075f97f1dcbaa8f717cdf6e1a57bf058265473",
+    shortString.encodeShortString("VIRTUAL_SNOS0"),
+    `0x${PROOF_BASE_BLOCK.toString(16)}`,
+    "0xbace",
+    configHash,
+    "0x1",
+    `0x${messageHash.toString(16)}`,
+  ];
+}
 
 const artifact: RegistrationCanaryArtifact = {
   schemaVersion: "wrenchless.registration-canary.v1",
@@ -27,29 +79,10 @@ const artifact: RegistrationCanaryArtifact = {
   call: {
     contractAddress: POOL,
     entrypoint: "apply_actions",
-    calldata: [
-      "0x3",
-      "0x0",
-      "0xaaa",
-      "0x1",
-      "0x111",
-      "0x0",
-      "0xbbb",
-      "0x3",
-      "0x222",
-      "0x333",
-      "0x444",
-      "0x4",
-      "0x123",
-      "0x111",
-      "0x222",
-      "0x333",
-      "0x444",
-      "0x1",
-    ],
+    calldata: REGISTRATION_CALLDATA,
   },
   proof: "proof-payload",
-  proofFacts: ["0x1"],
+  proofFacts: makeProofFacts(),
 };
 
 const baseConfig: RelayCanaryConfig = {
@@ -68,9 +101,12 @@ function makeClient(overrides: Partial<RegistrationCanaryClient> = {}) {
   const client: RegistrationCanaryClient = {
     assertPoolInterface: async () => ({
       chainId: "SN_MAIN",
-      classHash: "0xclass",
+      classHash: POOL_CLASS_HASH,
     }),
     readPoolVersion: async () => "2.0",
+    readLatestBlockNumber: async () => LATEST_BLOCK,
+    readProofValidityBlocks: async () => PROOF_VALIDITY_BLOCKS,
+    readBlockHash: async () => "0xbace",
     readPoolPaused: async () => false,
     readPoolFeeFri: async () => POOL_FEE,
     readCoverPublicKey: async () => 0n,
@@ -108,7 +144,7 @@ describe("inspectRegistrationCanary", () => {
       summary: {
         mode: "dry-run",
         poolAddress: POOL,
-        poolClassHash: "0xclass",
+        poolClassHash: POOL_CLASS_HASH,
         poolVersion: "2.0",
         strkAddress: STRK,
         coverAddress: "0x123",
@@ -119,6 +155,13 @@ describe("inspectRegistrationCanary", () => {
         estimatedTransactionFeeFri: ESTIMATED_FEE.toString(),
         maxTransactionFeeFri: MAX_TRANSACTION_FEE.toString(),
         maxSpendFri: (POOL_FEE + MAX_TRANSACTION_FEE).toString(),
+        proofBaseBlock: PROOF_BASE_BLOCK.toString(),
+        proofExpiresAtBlock: (
+          PROOF_BASE_BLOCK + PROOF_VALIDITY_BLOCKS
+        ).toString(),
+        proofRemainingBlocks: (
+          PROOF_BASE_BLOCK + PROOF_VALIDITY_BLOCKS - LATEST_BLOCK
+        ).toString(),
       },
     });
     expect(fake.broadcastCount()).toBe(0);
@@ -165,6 +208,19 @@ describe("inspectRegistrationCanary", () => {
         client: fake.client,
       }),
     ).rejects.toThrow("estimated transaction fee exceeds configured cap");
+    expect(fake.broadcastCount()).toBe(0);
+  });
+
+  it("rejects proof facts whose base-block hash is not canonical", async () => {
+    const fake = makeClient({ readBlockHash: async () => "0xdead" });
+
+    await expect(
+      inspectRegistrationCanary({
+        artifact,
+        config: baseConfig,
+        client: fake.client,
+      }),
+    ).rejects.toThrow("proof base-block hash does not match mainnet");
     expect(fake.broadcastCount()).toBe(0);
   });
 

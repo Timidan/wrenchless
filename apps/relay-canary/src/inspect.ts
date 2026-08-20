@@ -1,4 +1,5 @@
 import {
+  assertRegistrationProofFacts,
   buildRegistrationRelayPlan,
   type RegistrationCanaryArtifact,
   type RegistrationRelayPlan,
@@ -17,6 +18,9 @@ export type RegistrationCanaryClient = {
     classHash: string;
   }>;
   readPoolVersion(poolAddress: string): Promise<string>;
+  readLatestBlockNumber(): Promise<bigint>;
+  readProofValidityBlocks(poolAddress: string): Promise<bigint>;
+  readBlockHash(blockNumber: bigint): Promise<string>;
   readPoolPaused(poolAddress: string): Promise<boolean>;
   readPoolFeeFri(poolAddress: string): Promise<bigint>;
   readCoverPublicKey(poolAddress: string, coverAddress: string): Promise<bigint>;
@@ -52,6 +56,9 @@ export type InspectionSummary = {
   estimatedTransactionFeeFri: string;
   maxTransactionFeeFri: string;
   maxSpendFri: string;
+  proofBaseBlock: string;
+  proofExpiresAtBlock: string;
+  proofRemainingBlocks: string;
 };
 
 type InspectionInput = {
@@ -80,6 +87,11 @@ function makeSummary(
   estimatedFeeFri: bigint,
   poolIdentity: { chainId: "SN_MAIN"; classHash: string },
   poolVersion: string,
+  proofSummary: {
+    baseBlockNumber: bigint;
+    expiresAtBlock: bigint;
+    remainingBlocks: bigint;
+  },
 ): InspectionSummary {
   return {
     mode: config.broadcast ? "broadcast" : "dry-run",
@@ -95,6 +107,9 @@ function makeSummary(
     estimatedTransactionFeeFri: estimatedFeeFri.toString(),
     maxTransactionFeeFri: config.maxTransactionFeeFri.toString(),
     maxSpendFri: plan.maxSpendFri.toString(),
+    proofBaseBlock: proofSummary.baseBlockNumber.toString(),
+    proofExpiresAtBlock: proofSummary.expiresAtBlock.toString(),
+    proofRemainingBlocks: proofSummary.remainingBlocks.toString(),
   };
 }
 
@@ -104,20 +119,41 @@ export async function inspectRegistrationCanary(
   const { artifact, config, client } = input;
 
   const poolIdentity = await client.assertPoolInterface(config.poolAddress);
-  const [poolVersion, poolPaused, poolFeeFri, coverPublicKey, relayBalanceFri] =
-    await Promise.all([
-      client.readPoolVersion(config.poolAddress),
-      client.readPoolPaused(config.poolAddress),
-      client.readPoolFeeFri(config.poolAddress),
-      client.readCoverPublicKey(config.poolAddress, artifact.coverAddress),
-      client.readRelayBalanceFri(config.strkAddress, config.relayAddress),
-    ]);
+  const [
+    poolVersion,
+    latestBlockNumber,
+    proofValidityBlocks,
+    poolPaused,
+    poolFeeFri,
+    coverPublicKey,
+    relayBalanceFri,
+  ] = await Promise.all([
+    client.readPoolVersion(config.poolAddress),
+    client.readLatestBlockNumber(),
+    client.readProofValidityBlocks(config.poolAddress),
+    client.readPoolPaused(config.poolAddress),
+    client.readPoolFeeFri(config.poolAddress),
+    client.readCoverPublicKey(config.poolAddress, artifact.coverAddress),
+    client.readRelayBalanceFri(config.strkAddress, config.relayAddress),
+  ]);
 
   if (poolPaused) {
     throw new Error("pool is paused");
   }
   if (coverPublicKey !== 0n) {
     throw new Error("cover is already registered");
+  }
+  const proofSummary = assertRegistrationProofFacts({
+    artifact,
+    poolClassHash: poolIdentity.classHash,
+    latestBlockNumber,
+    proofValidityBlocks,
+  });
+  const canonicalBaseBlockHash = await client.readBlockHash(
+    proofSummary.baseBlockNumber,
+  );
+  if (BigInt(canonicalBaseBlockHash) !== BigInt(proofSummary.baseBlockHash)) {
+    throw new Error("proof base-block hash does not match mainnet");
   }
 
   const plan = buildRegistrationRelayPlan({
@@ -147,6 +183,7 @@ export async function inspectRegistrationCanary(
         unsignedEstimate.overallFeeFri,
         poolIdentity,
         poolVersion,
+        proofSummary,
       ),
     };
   }
@@ -180,6 +217,7 @@ export async function inspectRegistrationCanary(
       signedEstimate.overallFeeFri,
       poolIdentity,
       poolVersion,
+      proofSummary,
     ),
     transactionHash,
   };

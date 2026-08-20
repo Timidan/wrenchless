@@ -116,8 +116,11 @@ No private key is needed or read in this mode. Before fee estimation, the CLI:
 3. confirms that the cover is not already registered;
 4. decodes the artifact as exactly two `WriteOnce` actions followed by one
    `EmitViewingKeySet`, with `screening: None` and no trailing calldata;
-5. checks the live pool fee and relay balance against fixed caps;
-6. simulates the exact approval plus `apply_actions` transaction while skipping
+5. verifies the proof protocol headers, mainnet configuration hash, base-block
+   lifetime, and Poseidon message binding to the live pool class and exact actions,
+   refusing proofs with fewer than 60 blocks remaining;
+6. checks the live pool fee and relay balance against fixed caps;
+7. simulates the exact approval plus `apply_actions` transaction while skipping
    only the relay account's signature validation.
 
 Broadcast remains disabled unless `--broadcast` and

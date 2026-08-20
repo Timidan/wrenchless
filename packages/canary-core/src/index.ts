@@ -5,6 +5,8 @@ export {
 export type { RegistrationCanaryArtifact } from "./artifact.js";
 export { assertRegistrationOnly } from "./pool-call.js";
 export type { RegistrationActionSummary } from "./pool-call.js";
+export { assertRegistrationProofFacts } from "./proof-facts.js";
+export type { RegistrationProofFactsSummary } from "./proof-facts.js";
 export { normalizeReadyRegistrationArtifact } from "./ready-artifact.js";
 export { buildRegistrationRelayPlan } from "./relay-plan.js";
 export type {

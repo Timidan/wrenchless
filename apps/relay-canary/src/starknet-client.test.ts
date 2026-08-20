@@ -30,6 +30,7 @@ const validAbi = [
       { type: "function", name: "get_public_key", inputs: [{}] },
       { type: "function", name: "get_fee_amount", inputs: [] },
       { type: "function", name: "get_version", inputs: [] },
+      { type: "function", name: "get_proof_validity_blocks", inputs: [] },
       { type: "function", name: "is_paused", inputs: [] },
     ],
   },

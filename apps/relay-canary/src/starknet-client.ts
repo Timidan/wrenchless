@@ -88,6 +88,7 @@ export function assertPrivacyPoolAbi(abi: unknown): void {
   requireFunction(records, "get_public_key", 1);
   requireFunction(records, "get_fee_amount", 0);
   requireFunction(records, "get_version", 0);
+  requireFunction(records, "get_proof_validity_blocks", 0);
   requireFunction(records, "is_paused", 0);
 
   const serverAction = records.find(
@@ -190,6 +191,32 @@ export class StarknetRegistrationCanaryClient
         cause: error,
       });
     }
+  }
+
+  async readLatestBlockNumber(): Promise<bigint> {
+    return BigInt(await this.provider.getBlockNumber());
+  }
+
+  async readProofValidityBlocks(poolAddress: string): Promise<bigint> {
+    return parseSingleFelt(
+      await this.provider.callContract(
+        {
+          contractAddress: poolAddress,
+          entrypoint: "get_proof_validity_blocks",
+          calldata: [],
+        },
+        "latest",
+      ),
+      "get_proof_validity_blocks",
+    );
+  }
+
+  async readBlockHash(blockNumber: bigint): Promise<string> {
+    const block = await this.provider.getBlock(blockNumber);
+    if (!("block_hash" in block) || typeof block.block_hash !== "string") {
+      throw new Error("RPC returned a block without a canonical hash");
+    }
+    return block.block_hash;
   }
 
   async readPoolPaused(poolAddress: string): Promise<boolean> {
