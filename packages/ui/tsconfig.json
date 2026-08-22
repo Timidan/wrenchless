@@ -9,7 +9,8 @@
     ],
     "types": [
       "vitest/globals",
-      "node"
+      "node",
+      "@testing-library/jest-dom/vitest"
     ]
   },
   "include": [

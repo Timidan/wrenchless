@@ -59,3 +59,81 @@
 .tabular {
   font-variant-numeric: tabular-nums;
 }
+
+/* ---- button ------------------------------------------------------------
+   A pill, never a rounded rectangle. The label stays in flow while loading
+   and the spinner sits over it, so width is constant across states. */
+
+.ui-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px; /* touch target floor */
+  padding-inline: 20px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 0.16s ease-out,
+    opacity 0.16s ease-out;
+}
+
+.ui-button[data-variant="primary"] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.ui-button[data-variant="secondary"] {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+
+.ui-button[data-variant="ghost"] {
+  background: transparent;
+  color: var(--foreground);
+}
+
+.ui-button[data-variant="ghost"]:hover:not(:disabled) {
+  background: var(--accent);
+}
+
+.ui-button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.ui-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ui-button[data-loading] .ui-button__label {
+  visibility: hidden;
+}
+
+.ui-button__spinner {
+  position: absolute;
+  inline-size: 16px;
+  block-size: 16px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: var(--radius-pill);
+  animation: ui-button-spin 0.6s linear infinite;
+}
+
+@keyframes ui-button-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-button__spinner {
+    animation-duration: 2s;
+  }
+}
