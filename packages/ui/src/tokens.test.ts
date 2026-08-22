@@ -35,7 +35,8 @@ describe("tokens", () => {
     // Every six-digit hex whose channels are equal is a grey. Only the ink,
     // the stage, the card, and the muted foreground may be literal.
     const allowed = new Set(["#292929", "#f6f6f6", "#ffffff", "#6d6d6d"]);
-    const greys = (code.match(/#[0-9a-f]{6}/gi) ?? [])
+    const matches: string[] = code.match(/#[0-9a-f]{6}/gi) ?? [];
+    const greys = matches
       .map((hex) => hex.toLowerCase())
       .filter((hex) => {
         const [r, g, b] = [hex.slice(1, 3), hex.slice(3, 5), hex.slice(5, 7)];
@@ -52,9 +53,8 @@ describe("tokens", () => {
   });
 
   it("caps weight at 500", () => {
-    const weights = (code.match(/--weight-[a-z]+:\s*(\d{3})/g) ?? []).map(
-      (line) => Number(line.split(":")[1]?.trim()),
-    );
+    const lines: string[] = code.match(/--weight-[a-z]+:\s*(\d{3})/g) ?? [];
+    const weights = lines.map((line) => Number(line.split(":")[1]?.trim()));
     expect(weights.length).toBeGreaterThan(0);
     expect(Math.max(...weights)).toBeLessThanOrEqual(500);
   });
