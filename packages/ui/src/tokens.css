@@ -163,3 +163,26 @@
     animation: none;
   }
 }
+
+/* ---- squircle surface --------------------------------------------------
+   Cards get continuous-curvature corners; anything clickable that is not a
+   card is a pill. A plain rounded rectangle is the smell of a foreign
+   component. */
+
+.ui-squircle {
+  border-radius: var(--radius-card);
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 20px;
+}
+
+.ui-squircle[data-inset] {
+  background: var(--background);
+  border: 0;
+}
+
+@supports (corner-shape: squircle) {
+  .ui-squircle {
+    corner-shape: squircle;
+  }
+}
