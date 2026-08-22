@@ -137,3 +137,29 @@
     animation-duration: 2s;
   }
 }
+
+/* ---- skeleton ----------------------------------------------------------
+   Arrives by blur, not by pop. The box is the size of the content that
+   replaces it, so nothing reflows when data lands. */
+
+.ui-skeleton {
+  display: block;
+  background: var(--muted);
+  animation: ui-skeleton-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes ui-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-skeleton {
+    animation: none;
+  }
+}
