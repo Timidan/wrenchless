@@ -1,0 +1,61 @@
+/* Wrenchless product surfaces.
+ *
+ * One idea: derive, don't pick. A neutral is never chosen by eye; it is
+ * --ink mixed into transparency at a stated percentage, so every grey
+ * agrees by construction. tokens.test.ts enforces that.
+ *
+ * The type stacks are Hanken Grotesk and Fragment Mono rather than the
+ * source language's Inter Tight and Geist Mono, so the product surfaces and
+ * the public site share a voice. Weight stops at 500 in both.
+ */
+
+:root {
+  color-scheme: light;
+
+  --ink: #292929;
+
+  /* stage and surfaces */
+  --background: #f6f6f6;
+  --card: #ffffff;
+  --popover: #ffffff;
+
+  /* ink-derived neutrals: the percentages ARE the system */
+  --border: color-mix(in srgb, var(--ink) 12%, transparent);
+  --input: color-mix(in srgb, var(--ink) 14%, transparent);
+  --accent: color-mix(in srgb, var(--ink) 5%, transparent);
+  --muted: color-mix(in srgb, var(--ink) 5%, transparent);
+  --muted-foreground: #6d6d6d;
+  --foreground: var(--ink);
+
+  /* the one accent, and its focus ring */
+  --primary: #305dde;
+  --primary-foreground: #ffffff;
+  --ring: #3ba6f1;
+
+  /* secondary controls: flat, no border */
+  --secondary: color-mix(in srgb, var(--ink) 9%, transparent);
+  --secondary-foreground: var(--ink);
+
+  /* Semantic meaning is a text tint, never a fill. Meaning must never rest
+   * on red and green alone, so every use of these also carries a word. */
+  --destructive-foreground: #b91c1c;
+  --success-foreground: #047857;
+  --warning-foreground: #b45309;
+
+  /* radius */
+  --radius-card: 16px;
+  --radius-pill: 999px;
+
+  /* type */
+  --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Fragment Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  --weight-light: 300;
+  --weight-regular: 400;
+  --weight-medium: 500;
+}
+
+/* Numbers that change in place must not reflow their neighbours. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
