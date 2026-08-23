@@ -1,0 +1,633 @@
+/* ================= page anatomy =================
+
+   Three grounds, in order: a black hero that stays put while the page rides
+   over it, a white bed that carries the whole argument, and an ink footer
+   that the bed finally uncovers.                                           */
+
+.page {
+  position: relative;
+  z-index: var(--z-bed);
+  background: var(--white);
+}
+
+/* The bed has to be a positioned box of its own: the hero it covers is
+   sticky, and a static sibling would paint underneath a positioned one no
+   matter what order they appear in. */
+.bed {
+  position: relative;
+  z-index: var(--z-bed);
+  background: var(--white);
+}
+
+/* ---------- hero ----------
+
+   Sticky rather than pinned by script: the browser holds it, the white bed
+   slides over it, and nothing has to be measured per frame. */
+
+.hero {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-hero);
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  height: 100svh;
+  overflow: clip;
+  isolation: isolate;
+  background: var(--black);
+  color: var(--paper);
+}
+
+.hero__media {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: var(--black);
+}
+
+.hero__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* The still is 16:9 and the wallet sits in its right third, so the crop is
+     aimed there rather than at the middle of the cloth. The figure is what
+     keeps the subject in frame on a phone: a portrait window shows barely a
+     quarter of the plate's width, and at the middle that quarter is empty
+     cloth. On a desktop window the crop is nearly the whole plate either
+     way, so the same figure costs the wide layout nothing. Measured on the
+     8K plate, the light falling behind the headline is the same 0.0017 at
+     every candidate from 65% to 82%, while at 375px the same figures swing
+     the subject from a third of the way across the crop to dead centre. 70%
+     is where it centres. The vertical figure only bites on a window wider
+     than the plate, and every value at or above 45% keeps the whole lit
+     region in frame, so it is left where it was.
+     No opacity: the 8K re-render is two stops darker than the plate it
+     replaced, and the 0.75 that made the old one sit back turned this one
+     into a black rectangle. The scrim below is what holds the contrast
+     figure; the picture is allowed to be a picture. */
+  object-position: 70% 50%;
+}
+
+/* The flat wash the ground asks for, plus a bottom-weighted gradient under
+   the band the copy actually occupies. Photography cannot promise a contrast
+   figure on its own, and the copy has to hold 4.5:1 wherever the picture
+   happens to be light. The stops were re-measured against the 8K plate and
+   eased back: on a plate this dark the old ones bought contrast nobody
+   needed and cost the wallet its texture. Worst line on the rendered frame
+   is now 16.2:1 at 1440 and 11.3:1 at 375, both on a 4.5:1 requirement. */
+.hero__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    linear-gradient(rgba(15, 14, 13, 0.1), rgba(15, 14, 13, 0.1)),
+    linear-gradient(
+      to top,
+      rgba(15, 14, 13, 0.82) 0%,
+      rgba(15, 14, 13, 0.62) 32%,
+      rgba(15, 14, 13, 0.3) 60%,
+      rgba(15, 14, 13, 0) 88%
+    );
+}
+
+.hero__inner {
+  position: relative;
+  z-index: 2;
+  align-items: end;
+  padding-block: 0 clamp(28px, 6vh, 80px);
+}
+
+/* Lower left, not the middle. The picture keeps its own centre and the
+   argument sits in the corner a reader's eye lands in last. */
+.hero__bay {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: clamp(16px, 2.4vh, 28px);
+  text-align: left;
+}
+
+/* Nine columns, not eight, and the ninth is doing a specific job.
+   At eight, the headline's first sentence measured 928px against a 922px bay
+   at 1440: it broke to "Spend from / one wallet." over a six pixel shortfall,
+   and because the fallback font is a fraction narrower it fit that sentence on
+   one line until the webfont landed and pushed it onto two. So the same six
+   pixels were also a 101px jump on every first load and 0.057 of layout shift.
+   The ninth column puts 111px between the sentence and the edge of its box,
+   which is more than any metric difference between the two faces can spend. */
+@media (min-width: 64rem) {
+  .hero .grid > .hero__bay {
+    grid-column: 2 / span 9;
+  }
+}
+
+.hero__title {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 30ch;
+  color: var(--paper);
+}
+
+/* Each line gets a box of its own to reveal out of. */
+.hero__line {
+  display: block;
+  overflow: clip;
+  padding-block: 0.06em;
+}
+
+.hero__line-in {
+  display: block;
+}
+
+.hero__lede {
+  max-width: 55ch;
+  color: var(--paper-body);
+}
+
+.hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-3);
+}
+
+/* Quiet, under the two buttons and still above the fold: a credit line, at
+   the size a credit line should be. */
+.hero__powered {
+  display: inline-flex;
+  margin-top: clamp(2px, 1.2vh, 12px);
+}
+
+/* Full static document: the hero stops holding position and simply scrolls. */
+html.reduced-motion .hero {
+  position: relative;
+}
+
+/* ---------- sections ----------
+
+   Vertical rhythm is asymmetric on purpose: a long approach into each
+   section, a short exit out of it. */
+
+.section {
+  position: relative;
+}
+
+.section--evidence {
+  padding-block: clamp(96px, 7vw, 128px) clamp(24px, 5vw, 96px);
+}
+
+/* ---------- story ----------
+
+   The dive. Five photographs, each composed around a portal, and two shapes
+   for them.
+
+   The default shape is a storyboard: picture, caption, picture, caption, down
+   the white bed. It needs no script, no measurement and no width, so it is
+   what a narrow window, a reader who asked for less motion and a document
+   whose scripts never arrived all get.
+
+   The opt-in shape is the dive itself: at 1024px and up with motion allowed
+   the section becomes one black frame held for four and a half screens while
+   the reader falls through those portals. Only the picture moves. The scrim,
+   the caption and the counter are all fixed to the frame, so the one thing
+   that has to hold a contrast figure never travels underneath a moving
+   photograph.                                                              */
+
+.section--story {
+  padding-block: clamp(96px, 10vw, 176px) clamp(24px, 3vw, 64px);
+}
+
+.story__stage {
+  /* Two grounds, one set of names. The storyboard is ink on the white bed;
+     the dive is paper on a photograph. Every colour in the section reads its
+     value from here rather than from a rule that has to be written twice. */
+  --story-ink: var(--ink);
+  --story-body: var(--ink-body);
+  --story-emphasis: var(--ink);
+
+  display: flex;
+  flex-direction: column;
+  gap: clamp(48px, 7vw, 96px);
+  padding-inline: max(var(--edge), env(safe-area-inset-left, 0px))
+    max(var(--edge), env(safe-area-inset-right, 0px));
+}
+
+.story__scene {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  margin: 0;
+}
+
+.story__media {
+  position: relative;
+  overflow: clip;
+  border-radius: var(--r-media);
+  background: var(--black);
+}
+
+/* On the storyboard a full-width 3:2 frame is taller than the window on a wide
+   desktop and on any phone held sideways, and the reader would meet each
+   picture one edge at a time. Capped, the crop tightens instead and the whole
+   frame still fits. The cap used to be gated at 48rem, which covered the
+   desktop case and missed the landscape phone entirely: at 667x375 the frame
+   was 423px tall in a 375px window. It is unconditional now, and below the cap
+   it does nothing. */
+.story__image {
+  width: 100%;
+  max-height: 76svh;
+  aspect-ratio: 3 / 2;
+  object-fit: cover;
+}
+
+/* Only the dive needs one: on the storyboard the caption is on the bed, not
+   on the picture. */
+.story__scrim {
+  display: none;
+}
+
+.story__caption {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.story__title {
+  max-width: 22ch;
+  color: var(--story-ink);
+  font-size: clamp(1.75rem, 1.1rem + 2.4vw, 3.25rem);
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+.story__line {
+  max-width: 40ch;
+  color: var(--story-body);
+  font-size: var(--size-body);
+  line-height: 1.4;
+}
+
+/* The page's one rationed red, in the page's one place for it. On the white
+   bed it is plain ink instead: the hue is tuned for a photograph and would
+   only reach 3.4:1 on paper. */
+.story__signal {
+  color: var(--story-emphasis);
+  font-weight: 500;
+}
+
+.story__count {
+  display: none;
+}
+
+@media (min-width: 64rem) {
+  html.motion-on .section--story {
+    padding-block: 0;
+  }
+
+  html.motion-on .story__stage {
+    /* Where column two of the page grid begins. The frames are full-bleed
+       boxes rather than grid children, so the caption takes its left edge
+       from this rather than from a column it cannot sit in. */
+    --bay-start: calc(
+      var(--edge) + (100% - 2 * var(--edge) - 11 * var(--gap)) / 12 +
+        var(--gap)
+    );
+    --story-ink: var(--paper);
+    --story-body: var(--paper-body);
+    --story-emphasis: var(--signal);
+
+    position: relative;
+    display: block;
+    height: 100svh;
+    padding-inline: 0;
+    /* The frame scales to 2.2 inside this box and must not escape it. */
+    overflow: clip;
+    isolation: isolate;
+    background: var(--black);
+  }
+
+  /* Every frame occupies the whole box. The stacking order is written on the
+     element, front to back, so a frame fading out uncovers the next one
+     rather than being covered by it. */
+  html.motion-on .story__scene {
+    position: absolute;
+    inset: 0;
+    display: block;
+    gap: 0;
+  }
+
+  html.motion-on .story__media {
+    position: absolute;
+    inset: 0;
+    border-radius: 0;
+    will-change: opacity;
+  }
+
+  html.motion-on .story__image {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    aspect-ratio: auto;
+    will-change: transform;
+    backface-visibility: hidden;
+  }
+
+  /* The negative space the frames were composed with, made reliable.
+     Four of the five photographs are already almost black down their left
+     third and would carry the caption on their own. The counter room is not:
+     its lamp throws a blown-out patch of floor across the middle of the frame,
+     and measured on the rendered frame the caption there fell to 4.09:1 for
+     the heading and 2.87:1 for the line. The stops below hold every frame at
+     9:1 or better, and the last stop is far enough right that the portal each
+     scene is diving into is untouched. */
+  html.motion-on .story__scrim {
+    display: block;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(rgba(15, 14, 13, 0.2), rgba(15, 14, 13, 0.2)),
+      linear-gradient(
+        to right,
+        rgba(15, 14, 13, 0.93) 0%,
+        rgba(15, 14, 13, 0.86) 28%,
+        rgba(15, 14, 13, 0.62) 48%,
+        rgba(15, 14, 13, 0.22) 66%,
+        rgba(15, 14, 13, 0) 82%
+      );
+  }
+
+  /* One frame still needs more than the shared wash. The sealed envelope in
+     the hallway is lit across the whole width of the plate rather than down
+     its right side, so the caption band sits on lit paper rather than on
+     cloth, and it is the one red word on the page that pays for it: the
+     signal is a mid-lightness red, so unlike the white caption above it, it
+     loses contrast as the ground gets lighter. Re-measured against the 8K
+     plate across six window shapes, the shared wash alone leaves it between
+     4.26:1 and 5.30:1, under the figure at 1280x720 where the crop band
+     lands squarely on the brightest fold, while the stops below hold it
+     between 5.23:1 and 5.56:1 everywhere. The special case stays. It lets go
+     earlier on the right than the shared wash does, so the wax seal this
+     scene settles onto is left no darker than before. */
+  /* The 8K ascii plates (street, vault) are about two stops darker than the
+     photographic scenes. Under the shared wash they read as near-empty black
+     frames, while their captions measured 13.5:1 and better, which is
+     headroom to spend. These two scenes drop the flat wash and run a lighter,
+     narrower band so the artwork carries the frame. The hallway keeps its
+     stronger special case below, because its plate is lit right across the
+     caption band. */
+  html.motion-on .story__scene[data-scene="street"] .story__scrim,
+  html.motion-on .story__scene[data-scene="vault"] .story__scrim {
+    background: linear-gradient(
+      to right,
+      rgba(15, 14, 13, 0.72) 0%,
+      rgba(15, 14, 13, 0.55) 30%,
+      rgba(15, 14, 13, 0.25) 52%,
+      rgba(15, 14, 13, 0) 70%
+    );
+  }
+
+  html.motion-on .story__scene[data-scene="hallway"] .story__scrim {
+    background:
+      linear-gradient(rgba(15, 14, 13, 0.2), rgba(15, 14, 13, 0.2)),
+      linear-gradient(
+        to right,
+        rgba(15, 14, 13, 0.96) 0%,
+        rgba(15, 14, 13, 0.94) 30%,
+        rgba(15, 14, 13, 0.88) 46%,
+        rgba(15, 14, 13, 0.3) 58%,
+        rgba(15, 14, 13, 0.05) 70%,
+        rgba(15, 14, 13, 0) 80%
+      );
+  }
+
+  html.motion-on .story__caption {
+    position: absolute;
+    inset: 0 auto 0 var(--bay-start);
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: var(--space-4);
+    width: min(31rem, 34vw);
+    /* Five captions share one box and four of them are invisible at any
+       moment. Without this a drag selects the wrong scene's sentence. */
+    pointer-events: none;
+  }
+
+  html.motion-on .story__line {
+    max-width: none;
+  }
+
+  /* Where the reader is, and nothing else. Not a control: there is nothing
+     here to press, so there is nothing here to tab to. */
+  html.motion-on .story__count {
+    position: absolute;
+    z-index: 2;
+    left: var(--bay-start);
+    bottom: clamp(28px, 5vh, 56px);
+    display: flex;
+    gap: var(--space-3);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    color: rgba(255, 255, 255, 0.5);
+    font-family: var(--font-mono);
+    font-size: var(--size-micro);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.08em;
+  }
+
+  html.motion-on .story__count-item {
+    transition: color var(--dur-mid) var(--ease-settle);
+  }
+
+  html.motion-on .story__count[data-scene="0"] .story__count-item:nth-child(1),
+  html.motion-on .story__count[data-scene="1"] .story__count-item:nth-child(2),
+  html.motion-on .story__count[data-scene="2"] .story__count-item:nth-child(3),
+  html.motion-on .story__count[data-scene="3"] .story__count-item:nth-child(4),
+  html.motion-on .story__count[data-scene="4"] .story__count-item:nth-child(5) {
+    color: var(--paper);
+  }
+}
+
+/* ---------- footer reveal ----------
+
+   The footer is a sticky underlay: it holds the bottom of the viewport for
+   the whole page and the bed sits on top of it, so the last stretch of scroll
+   uncovers it rather than scrolling it into view. No blur stack, just a soft
+   gradient at the seam so the bed does not end on a hard line. */
+
+.footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 0;
+  display: flex;
+  align-items: flex-end;
+  overflow: clip;
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.page::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 2;
+  height: 48px;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(20, 20, 20, 0.08), transparent);
+}
+
+/* The last thing on the page has to clear the home indicator, and on every
+   screen without one the inset is 0 and this is the padding it always was. */
+.footer__inner {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  padding-block: clamp(72px, 9vw, 144px)
+    calc(clamp(24px, 3vw, 48px) + env(safe-area-inset-bottom, 0px));
+}
+
+.footer__bay {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(32px, 4vw, 56px);
+}
+
+.footer__statement {
+  max-width: 18ch;
+  color: var(--paper);
+  font-size: clamp(48px, 3.333vw, 64px);
+  font-weight: 400;
+  line-height: 1.06;
+  letter-spacing: -0.03em;
+}
+
+@media (max-width: 47.99rem) {
+  .footer__statement {
+    font-size: clamp(30px, 8vw, 48px);
+    max-width: none;
+  }
+}
+
+.footer__honest {
+  max-width: 52ch;
+  color: var(--paper-body);
+}
+
+.footer__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4) var(--space-8);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--rule-light);
+  font-family: var(--font-mono);
+  font-size: var(--size-ui);
+  color: var(--paper-body);
+}
+
+/* Wide enough apart that two 44px targets on one line cannot be hit by
+   mistake for each other. */
+.footer__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-7);
+}
+
+/* The wordmark and the credit pill read as one line at any width: the pill is
+   a fixed-size object, so the row wraps under itself rather than squeezing
+   it. */
+.footer__credit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-5);
+}
+
+.footer__wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--paper);
+  font-size: var(--wordmark-size);
+}
+
+.footer__mark {
+  width: var(--mark-size);
+  height: var(--mark-size);
+  flex: 0 0 auto;
+}
+
+.footer__links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--paper-body);
+  text-decoration: underline;
+  text-decoration-color: var(--rule-light-strong);
+  text-underline-offset: 4px;
+  transition: color var(--dur-press) var(--ease-settle);
+}
+
+@media (hover: hover) {
+  .footer__links a:hover {
+    color: var(--paper);
+    text-decoration-color: currentColor;
+  }
+}
+
+.footer__links a:active {
+  color: var(--paper);
+  text-decoration-color: currentColor;
+}
+
+/* The one decorative flourish on the page: a single conic ring, four muted
+   stops, sitting behind the footer statement. It is static, it carries no
+   meaning, and there is not a second one anywhere. */
+.footer__ring {
+  position: absolute;
+  right: -72px;
+  bottom: clamp(80px, 10vw, 140px);
+  z-index: 0;
+  width: clamp(180px, 17vw, 280px);
+  aspect-ratio: 1;
+  border-radius: var(--r-pill);
+  pointer-events: none;
+  opacity: 0.5;
+  background: conic-gradient(
+    from 210deg,
+    #3a3a38 0deg,
+    #6f6a64 96deg,
+    #2b3338 190deg,
+    #4a443d 292deg,
+    #3a3a38 360deg
+  );
+  mask: radial-gradient(closest-side, transparent 72%, black 73%);
+}
+
+@media (max-width: 47.99rem) {
+  .footer__ring {
+    display: none;
+  }
+}
+
+/* Full static document: the footer stops holding the bottom of the viewport
+   and simply ends the page. It stays `relative` rather than `static` because
+   the decorative ring is absolutely positioned inside it, and a static footer
+   would hand that ring the viewport as its containing block, where its
+   deliberate right-edge bleed becomes real horizontal overflow. */
+html.reduced-motion .footer {
+  position: relative;
+}
+
+html.reduced-motion .page::after {
+  display: none;
+}
+

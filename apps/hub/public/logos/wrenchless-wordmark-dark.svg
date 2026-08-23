@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="184" height="40" viewBox="0 0 184 40" fill="none" role="img" aria-labelledby="title">
+  <title id="title">Wrenchless</title>
+  <g transform="translate(0 4)">
+    <path d="M5 7.5 12.5 24.5 20 7.5" stroke="#fff" stroke-opacity=".55" stroke-width="2.5" stroke-linecap="square" stroke-linejoin="miter"/>
+    <path d="M12 7.5 19.5 24.5 27 7.5" stroke="#fff" stroke-width="2.5" stroke-linecap="square" stroke-linejoin="miter"/>
+  </g>
+  <text x="48" y="29.5" fill="#fff" font-family="'Hanken Grotesk', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="24" font-weight="500" letter-spacing="-.4">wrenchless</text>
+</svg>

@@ -1,0 +1,196 @@
+/* Wrenchless · design DNA: mixed grounds, weight-restrained grotesk, fluid
+   12-column grid with no container box, grayscale plus photography.
+
+   Every contrast figure quoted below was computed against WCAG 2.1 relative
+   luminance, not judged by eye. */
+
+/* ---- metric-matched fallbacks ----------------------------------------------
+
+   The two webfonts arrive over the network, so for the first stretch of every
+   load the page is set in whatever the machine already has. If that stand-in
+   is a different width the text re-wraps when the real font lands, and on a
+   bottom-anchored hero one extra line moves the whole headline: measured on
+   the built page at 1440, the swap was worth a 101px jump and 0.057 of layout
+   shift, arriving right after the headline had finished revealing.
+
+   Both faces below are the same local fonts the old stacks named, re-declared
+   with the real font's metrics written over them. Every figure was measured
+   rather than looked up: rendered at 100px, one long line of the page's own
+   copy is 5155.9 units wide in Hanken Grotesk and 5142.0 in Arial and its
+   clones, and a "wrenchless 0123456789" is 1297.8 in Fragment Mono against
+   1260.0 in every 0.6em monospace. The ascent and descent figures are those
+   fonts' own, so the baseline sits where it will sit once the swap happens.
+
+   `Helvetica Neue` is deliberately not in either stack any more. It was first
+   in the old sans list and it is 9% narrower than Hanken Grotesk, which is
+   most of where the re-wrap came from. */
+
+@font-face {
+  font-family: "Hanken Fallback";
+  src: local("Arial"), local("Liberation Sans"), local("Helvetica"),
+    local("Nimbus Sans");
+  size-adjust: 100.27%;
+  ascent-override: 100%;
+  descent-override: 30%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: "Fragment Fallback";
+  src: local("Menlo"), local("Liberation Mono"), local("DejaVu Sans Mono"),
+    local("Courier New");
+  size-adjust: 103%;
+  ascent-override: 95%;
+  descent-override: 25%;
+  line-gap-override: 0%;
+}
+
+:root {
+  color-scheme: light;
+
+  /* ---- grounds ---------------------------------------------------------
+     Three, used deliberately: the photography lives on black, the argument
+     lives on white, the closing statement lives on ink. */
+  --black: #0f0e0d;
+  --ink: #141414;
+  --white: #ffffff;
+  --near-white: #f7f6f4;
+
+  /* ---- ink on white ----------------------------------------------------
+     Body sits at 62%: that composites to #6d6d6d for 5.15:1, where the more
+     obvious 50% composites to #8a8a8a and only reaches 3.48:1. 50% is kept,
+     but only for secondary text at 24px and up, where the floor is 3:1. */
+  --ink-body: rgba(20, 20, 20, 0.62);
+  --ink-secondary: rgba(20, 20, 20, 0.5);
+  --muted: #6f6a64;
+
+  /* ---- ink on black and on the ink ground ------------------------------
+     70% white composites to #b7b7b6 on --black (9.59:1) and #b9b9b9 on
+     --ink (9.34:1). */
+  --paper: #ffffff;
+  --paper-body: rgba(255, 255, 255, 0.7);
+
+  /* ---- hairlines -------------------------------------------------------
+     Black or white at low opacity, never a flat grey: a hairline has to pick
+     up whatever it is drawn over. */
+  --rule: rgba(20, 20, 20, 0.12);
+  --rule-strong: rgba(20, 20, 20, 0.25);
+  --rule-light: rgba(255, 255, 255, 0.14);
+  --rule-light-strong: rgba(255, 255, 255, 0.5);
+
+  /* ---- rationed chroma -------------------------------------------------
+     Two colours survive on an otherwise grayscale page, and each one is
+     load-bearing.
+
+     --signal has exactly one use in the whole document: the word "Distress"
+     in the last frame of the story dive. That frame is a photograph, so the
+     hue is tuned for a dark ground rather than for paper: it reads 5.68:1
+     against --black. On the white storyboard the same word falls back to
+     plain ink, because this hue reaches only 3.4:1 on paper.
+
+     --chip-fill is the evidence tag fill: white on it reads 15.88:1. */
+  --signal: oklch(66% 0.19 28);
+  --chip-fill: #15242d;
+
+  /* Starknet's own coral, from the official mark. It appears in one place, in
+     the STRK[20] half of the "powered by" lockup, which is the treatment the
+     protocol uses for its own name. It is never used as text on its own. */
+  --coral: #ec796b;
+
+  /* ---- layout ----------------------------------------------------------
+     No max-width box anywhere. The page is a fluid 12-column grid inset by
+     one edge token, and content takes ten of the twelve. */
+  --edge: clamp(16px, 1.667vw, 32px);
+  --gap: clamp(12px, 1.25vw, 24px);
+  --measure: 62ch;
+
+  /* The four protocol glyphs. Large enough that a stroke drawing itself in
+     is legible from a normal reading distance rather than a guess. */
+  --glyph: clamp(72px, 6.4vw, 96px);
+
+  /* ---- the lockup ------------------------------------------------------
+     One size for the mark and one for the word beside it, everywhere the
+     lockup appears: the landing bar, the footer, the working surfaces, the
+     wallet and first run. The mark had drifted to 18px in three of those and
+     20px in the fourth, which is small enough that the two strokes merge at a
+     normal viewing distance and the product reads as unbranded. 24px is the
+     first size at which the second stroke is legibly its own line. */
+  --mark-size: 24px;
+  --wordmark-size: 0.875rem;
+
+  /* ---- type ------------------------------------------------------------
+     Weights stop at 500. Hierarchy is carried by scale, never by weight. */
+  --font-sans: "Hanken Grotesk", "Hanken Fallback", Arial, sans-serif;
+  --font-mono: "Fragment Mono", "Fragment Fallback", monospace;
+
+  --size-display: clamp(3rem, 2.1rem + 4.6vw, 6rem);
+  --size-h2: clamp(2.4rem, 1.8rem + 2.6vw, 4.25rem);
+  --size-h3: clamp(1.0625rem, 1.25vw, 1.5rem);
+  --size-body: clamp(1.0625rem, 1rem + 0.3vw, 1.25rem);
+  --size-ui: 0.75rem;
+  --size-micro: 0.6875rem;
+
+  /* ---- radius ----------------------------------------------------------
+     Chips are barely rounded, controls are pills, and the one photograph
+     frame left on the page sits between them. Nothing else. */
+  --r-card: 4px;
+  /* Photographs: one step softer than a chip, because a picture with a 4px
+     corner reads as a cropping mistake rather than as a decision. */
+  --r-media: 12px;
+  --r-pill: 999px;
+
+  /* ---- motion ---------------------------------------------------------- */
+  --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-press: 120ms;
+  --dur-fast: 200ms;
+  --dur-mid: 360ms;
+  /* Exits are shorter than the enters they undo: leaving is not an event. */
+  --dur-exit: 240ms;
+
+  /* ---- spacing --------------------------------------------------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+
+  /* ---- stacking -------------------------------------------------------- */
+  --z-hero: 0;
+  --z-bed: 1;
+  --z-nav: 60;
+}
+
+@media (min-width: 120rem) {
+  :root {
+    --edge: 48px;
+  }
+}
+
+/* The display size, on a phone.
+   The shared ramp is drawn for a window that is wider than it is tall, and on
+   a 375px screen it puts the two headline sentences on five lines that take
+   two thirds of the viewport: the photograph the hero is built on never gets a
+   look in, and the reader meets a wall of type. One notch down is four lines
+   and about 106px handed back to the picture, with both sentences breaking in
+   the same places they always did. The ramp is drawn to meet the shared one at
+   768px, so nothing jumps at the boundary. */
+@media (max-width: 47.99rem) {
+  :root {
+    --size-display: clamp(2.25rem, 0.6rem + 7.7vw, 6rem);
+  }
+}
+
+/* The lockup, on a narrow phone.
+   At 384px and under the landing bar carries the lockup and a pill on one
+   line, and 24px of mark takes the pair 4px past a 320px screen. One notch
+   down holds the pair inside 320 with air at both edges, and every other
+   place the lockup appears steps with it so the product keeps one size. */
+@media (max-width: 24rem) {
+  :root {
+    --mark-size: 20px;
+    --wordmark-size: 0.8125rem;
+  }
+}

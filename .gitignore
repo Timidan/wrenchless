@@ -4,5 +4,11 @@ dist/
 .env.*
 !.env.example
 coverage/
+.superpowers/
+apps/*/.data/
+apps/hub/screenshots/
+apps/hub/art-src/
+.snfoundry_cache/
+target/
 verification/*.json
 !verification/.gitkeep

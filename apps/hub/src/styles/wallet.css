@@ -1,0 +1,1333 @@
+/* ================= the product: four devices, one shape =================
+
+   Three of these are a phone in someone's hand — the carried wallet, the home
+   vault, the trusted reader — and the fourth is the setup flow that equips
+   them. Everything else in this project reads top to bottom; these are held in
+   a viewport, thumb-first, and the difference is structural rather than
+   decorative.
+
+   They keep the project's type, its hairlines, its 4px corner and its single
+   ink. What they drop is every device that makes a page look like a console:
+   no card grid, no panel headers, no state pills, no gradient, no shadow. One
+   figure per screen is large. Everything else is small and quiet.             */
+
+html.app-page,
+html.app-page body {
+  height: 100%;
+  background: var(--white);
+  overflow-x: clip;
+}
+
+/* ---------- frame ---------- */
+
+.product {
+  display: flex;
+  flex-direction: column;
+  min-height: 100svh;
+  width: 100%;
+  margin-inline: auto;
+  background: var(--white);
+}
+
+/* The carried wallet is a phone shape and stays one, on every screen.
+   Widening it on a desktop would turn a wallet into a dashboard. */
+.product[data-role="wallet"] {
+  max-width: 30rem;
+}
+
+/* Setup, the home vault and the reader carry QR codes, forms and two-column
+   fact rows. Four more rems is what those need to stay one row each; it is
+   still a column, not a dashboard. On a phone all four are the phone. */
+.product[data-role="setup"],
+.product[data-role="vault"],
+.product[data-role="guardian"] {
+  max-width: 34rem;
+}
+
+@media (min-width: 48rem) {
+  .product {
+    border-inline: 1px solid var(--rule);
+  }
+}
+
+.product__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 60px;
+  padding: var(--space-3) var(--space-5);
+  padding-top: calc(var(--space-3) + env(safe-area-inset-top, 0px));
+  border-bottom: 1px solid var(--rule);
+}
+
+/* The lockup is a link, so it is a tap target: 44px of row, with the mark and
+   the word centred in it. Without the height it is a 20px sliver next to two
+   lines of account, and on a phone that is a link nobody can hit. */
+.product__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  min-width: 0;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--wordmark-size);
+  letter-spacing: -0.01em;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.product__mark {
+  width: var(--mark-size);
+  height: var(--mark-size);
+  flex: none;
+}
+
+/* Whose device this is, then which account. The role is what you read at a
+   glance; the address is what you check when you already suspect you are on
+   the wrong phone. */
+.product__account {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  margin-left: auto;
+  text-align: right;
+}
+
+.product__role {
+  font-size: 0.75rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.product__detail {
+  color: var(--ink-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--size-micro);
+  overflow-wrap: anywhere;
+}
+
+.product__main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ---------- screens ---------- */
+
+.screen {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Back belongs to the screen it leaves, not to the title. It gets a full tap
+   row of its own, so a 44px target never has to share a baseline with a line
+   of type that may wrap. */
+.screen__backrow {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: var(--space-1) var(--space-3) 0;
+}
+
+.screen__title {
+  padding: var(--space-2) var(--space-5) 0;
+  text-align: center;
+}
+
+.screen__title h1 {
+  font-size: clamp(1.5rem, 1.15rem + 1.7vw, 1.9rem);
+  font-weight: 400;
+  line-height: 1.12;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+
+.screen__title p {
+  max-width: 33ch;
+  margin: var(--space-3) auto 0;
+  color: var(--ink-body);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.screen__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-6) var(--space-5)
+    calc(var(--space-7) + env(safe-area-inset-bottom, 0px));
+  padding-inline: max(var(--space-5), env(safe-area-inset-left, 0px))
+    max(var(--space-5), env(safe-area-inset-right, 0px));
+}
+
+.screen__body[data-center] {
+  gap: var(--space-6);
+}
+
+/* Centring belongs to the screen, not to the body alone. Centring only the
+   body leaves the title pinned to the top with the whole leftover height
+   opening directly under it — on the first setup screen that was a 226px
+   void between the lede and everything it introduces. The auto margins split
+   the leftover around the title-and-body pair instead, and the back row, when
+   there is one, stays at the top where a back control belongs. */
+.screen[data-center] .screen__title {
+  margin-top: auto;
+}
+
+.screen[data-center] .screen__body {
+  flex: 0 0 auto;
+  margin-bottom: auto;
+}
+
+/* A centred screen with no title still centres: the body takes both margins. */
+.screen[data-center] > .screen__body:first-child {
+  margin-top: auto;
+}
+
+/* Screen entry is a settle, not an arrival: six pixels and an opacity ramp,
+   over the shared mid duration. Nothing about the state needs it to be seen. */
+.screen {
+  animation: screen-settle var(--dur-mid) var(--ease-settle) both;
+}
+
+@keyframes screen-settle {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+}
+
+/* ---------- the tab bar ---------- */
+
+.tabbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: auto;
+  border-top: 1px solid var(--rule);
+  background: color-mix(in oklab, var(--white) 94%, transparent);
+  backdrop-filter: blur(12px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.tabbar__tab {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 3px;
+  min-height: 56px;
+  color: var(--ink-secondary);
+  font-size: var(--size-micro);
+  -webkit-tap-highlight-color: transparent;
+  transition: color var(--dur-fast) var(--ease-settle);
+}
+
+.tabbar__tab[aria-current="page"] {
+  color: var(--ink);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tabbar__tab:hover {
+    color: var(--ink);
+  }
+}
+
+/* ---------- the balance ----------
+
+   The only figure on a surface allowed to be this size, and the only place a
+   skeleton appears: before the first read it draws a shape, never a zero. A
+   zero is a claim about the account, and the wrong one.                       */
+
+.balance {
+  padding-block: clamp(20px, 6vw, 36px) var(--space-4);
+  text-align: center;
+}
+
+.balance__figure {
+  margin: 0 auto;
+}
+
+.balance__caption {
+  margin: var(--space-3) auto 0;
+  color: var(--ink-secondary);
+  font-size: 0.8125rem;
+}
+
+/* ---------- amounts ---------- */
+
+.amount {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.amount__value {
+  letter-spacing: -0.02em;
+}
+
+/* The ticker never inherits the figure's negative tracking. At display size
+   that tracking is tuned for digits, and applied to four capitals it closes
+   the letters into each other. */
+.amount__symbol {
+  color: var(--ink-secondary);
+  letter-spacing: 0;
+}
+
+/* The mark is somebody else's asset: one size step down from the figure it
+   sits beside, never recoloured, never redrawn. `align-self` lifts it off the
+   baseline so a round mark optically centres against the digits. */
+.amount__mark {
+  flex: none;
+  align-self: center;
+  width: 18px;
+  height: 18px;
+}
+
+.amount[data-size="row"] {
+  font-size: 0.9375rem;
+}
+
+.amount[data-size="lead"] {
+  gap: 0.22em;
+  font-size: 2rem;
+  letter-spacing: -0.035em;
+}
+
+.amount[data-size="lead"] .amount__mark {
+  width: 24px;
+  height: 24px;
+}
+
+.amount[data-size="lead"] .amount__symbol {
+  font-size: 0.55em;
+}
+
+.amount[data-size="display"] {
+  gap: 0.16em;
+  font-size: clamp(2.6rem, 1.3rem + 5.6vw, 3.6rem);
+  line-height: 0.98;
+  letter-spacing: -0.05em;
+}
+
+.amount[data-size="display"] .amount__mark {
+  width: 26px;
+  height: 26px;
+}
+
+.amount[data-size="display"] .amount__symbol {
+  font-size: 0.28em;
+}
+
+/* Holds the line's height while the first read is in flight, so the row below
+   does not jump when the figure arrives. */
+.amount__ghost {
+  display: inline-block;
+  width: 5ch;
+  height: 0.72em;
+  border-radius: var(--r-card);
+  background: var(--near-white);
+}
+
+/* ---------- controls ----------
+
+   One shape, everywhere: a hairline pill sized to its own words, on the centre
+   line. Nothing is filled and nothing is stretched. A black slab across the
+   width of the screen is how a page demands a decision, and these screens ask
+   for a series of small ones.                                                 */
+
+.wactions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+}
+
+.wbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* A button that carries a mark needs the mark and the label to be two
+     things. Without this they touch, and the logo reads as a letter of the
+     word next to it. */
+  gap: var(--space-2);
+  min-width: 8.25rem;
+  max-width: 100%;
+  min-height: 48px;
+  padding: 0 var(--space-5);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: center;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform var(--dur-press) var(--ease-settle),
+    border-color var(--dur-fast) var(--ease-settle),
+    background-color var(--dur-fast) var(--ease-settle),
+    color var(--dur-fast) var(--ease-settle);
+}
+
+.wbtn__icon {
+  display: inline-flex;
+  flex: none;
+}
+
+.wbtn__icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .wbtn:not(:disabled):hover {
+    border-color: var(--ink);
+    background: var(--near-white);
+    transform: translateY(-2px);
+  }
+}
+
+.wbtn:not(:disabled):active {
+  transform: translateY(1px) scale(0.985);
+}
+
+.wbtn:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+/* The alternative under a decision is text, not a second pill. Two pills side
+   by side read as a choice between equals, which is exactly what "cancel" is
+   not. */
+.wbtn--quiet {
+  min-width: 0;
+  min-height: 44px;
+  padding-inline: var(--space-3);
+  border-color: transparent;
+  color: var(--ink-body);
+  font-weight: 400;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .wbtn--quiet:not(:disabled):hover {
+    border-color: transparent;
+    background: transparent;
+    color: var(--ink);
+    transform: none;
+  }
+}
+
+.wbtn--quiet:not(:disabled):active {
+  transform: none;
+}
+
+.iconbtn {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin-inline: calc(var(--space-2) * -1);
+  border-radius: var(--r-pill);
+  color: var(--ink-body);
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color var(--dur-fast) var(--ease-settle),
+    background-color var(--dur-fast) var(--ease-settle),
+    transform var(--dur-press) var(--ease-settle);
+}
+
+.iconbtn svg {
+  width: 22px;
+  height: 22px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .iconbtn:not(:disabled):hover {
+    background: var(--near-white);
+    color: var(--ink);
+    transform: translateY(-1px);
+  }
+}
+
+.iconbtn:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+.iconbtn:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.wlink {
+  min-height: 36px;
+  color: var(--ink-secondary);
+  font-size: 0.8125rem;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .wlink:hover {
+    color: var(--ink);
+  }
+}
+
+.wref {
+  color: var(--ink-body);
+  font-family: var(--font-mono);
+  font-size: var(--size-micro);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  overflow-wrap: anywhere;
+}
+
+/* Reduced motion keeps every change and drops every travel. Nothing on these
+   screens needs movement to be understood. */
+html.reduced-motion .screen,
+html.reduced-motion .wbtn,
+html.reduced-motion .iconbtn,
+html.reduced-motion .tabbar__tab,
+html.reduced-motion .waiting__pulse {
+  animation: none;
+  transition: none;
+}
+
+html.reduced-motion .wbtn:hover,
+html.reduced-motion .wbtn:active,
+html.reduced-motion .iconbtn:hover,
+html.reduced-motion .iconbtn:active {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen,
+  .wbtn,
+  .iconbtn,
+  .tabbar__tab,
+  .waiting__pulse {
+    animation: none;
+    transition: none;
+  }
+
+  .wbtn:hover,
+  .wbtn:active,
+  .iconbtn:hover,
+  .iconbtn:active {
+    transform: none;
+  }
+}
+
+/* ---------- forms ---------- */
+
+.wform {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.wfield {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.wfield__label {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.wfield__hint {
+  color: var(--ink-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.wfield__error {
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--signal);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.winput {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-card);
+  background: var(--white);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 16px; /* Anything smaller makes iOS zoom the whole page. */
+  line-height: 1.4;
+}
+
+.winput--mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.winput--code {
+  font-family: var(--font-mono);
+  text-align: center;
+  letter-spacing: 0.4em;
+  text-indent: 0.4em;
+}
+
+.winput--paste {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  resize: vertical;
+}
+
+/* ---------- facts, lists, sections ---------- */
+
+.wfacts {
+  display: grid;
+  margin: 0;
+}
+
+.wfacts__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-block: var(--space-3);
+  border-bottom: 1px solid var(--rule);
+}
+
+.wfacts__row:last-child {
+  border-bottom: 0;
+}
+
+.wfacts__row dt {
+  color: var(--ink-body);
+  font-size: 0.875rem;
+}
+
+.wfacts__value {
+  margin: 0;
+  max-width: 62%;
+  text-align: right;
+  font-size: 0.9375rem;
+  overflow-wrap: anywhere;
+}
+
+.wfacts__value--mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.wfacts__row[data-strong] dt,
+.wfacts__row[data-strong] .wfacts__value {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.sectionhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.eyebrow {
+  color: var(--ink-secondary);
+  font-size: var(--size-ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.wlist {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wlist__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-block: var(--space-3);
+  border-bottom: 1px solid var(--rule);
+}
+
+.wlist__row:last-child {
+  border-bottom: 0;
+}
+
+.wlist__main {
+  min-width: 0;
+}
+
+.wlist__kind {
+  font-size: 0.9375rem;
+}
+
+.wlist__meta {
+  margin-top: 2px;
+  color: var(--ink-secondary);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.wlist__side {
+  flex: none;
+  text-align: right;
+}
+
+/* Status is a word, never a colour on its own. The tint only agrees with it. */
+.wlist__status {
+  margin-top: 2px;
+  color: var(--ink-secondary);
+  font-size: 0.75rem;
+}
+
+.wlist__status[data-status="reverted"] {
+  color: var(--signal);
+}
+
+.wrefs {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wmenu {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wmenu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 52px;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  transition: color var(--dur-fast) var(--ease-settle);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .wmenu__item:hover {
+    color: var(--ink);
+  }
+}
+
+.wmenu__icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--ink-body);
+}
+
+.wmenu__icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.wmenu__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wmenu__label {
+  font-size: 1rem;
+}
+
+.wmenu__hint {
+  color: var(--ink-secondary);
+  font-size: 0.8125rem;
+}
+
+.wchips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wchip {
+  min-width: 68px;
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-pill);
+  color: var(--ink-body);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    border-color var(--dur-fast) var(--ease-settle),
+    background-color var(--dur-fast) var(--ease-settle),
+    color var(--dur-fast) var(--ease-settle);
+}
+
+.wchip[aria-pressed="true"] {
+  border-color: var(--ink);
+  background: var(--near-white);
+  color: var(--ink);
+}
+
+/* ---------- state lines, notes, empties ---------- */
+
+.statusline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: none;
+  padding: var(--space-3) var(--space-4);
+  border-left: 2px solid var(--ink);
+  background: var(--near-white);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.statusline[data-tone="alert"] {
+  border-left-color: var(--signal);
+}
+
+.statusline__icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--ink-body);
+}
+
+.statusline__icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.wnote {
+  color: var(--ink-body);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.wnote[data-tone="caution"] {
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--signal);
+  color: var(--ink);
+}
+
+.wempty {
+  display: grid;
+  gap: var(--space-2);
+  padding-block: var(--space-6);
+  text-align: center;
+}
+
+.wempty__title {
+  margin: 0 auto;
+  font-size: 0.9375rem;
+}
+
+.wempty__body {
+  margin: 0 auto;
+  max-width: 32ch;
+  color: var(--ink-secondary);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.wempty__action {
+  margin-top: var(--space-2);
+}
+
+.wlive {
+  min-height: 1.1em;
+  color: var(--ink-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--size-micro);
+  text-align: center;
+}
+
+/* Waiting has no percentage because nothing here can predict one. The dot
+   breathes; the seconds are the information. */
+.waiting {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  color: var(--ink-body);
+  font-size: 0.875rem;
+}
+
+.waiting__pulse {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ink);
+  animation: waiting-pulse 1400ms var(--ease-settle) infinite;
+}
+
+.waiting__text {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes waiting-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* A failure's technical half. Closed by default and quiet when open: it is
+   evidence for somebody else, not instruction for the person reading it. */
+.detail {
+  color: var(--ink-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.detail summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.detail p {
+  max-width: none;
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--rule);
+  font-family: var(--font-mono);
+  font-size: var(--size-micro);
+  overflow-wrap: anywhere;
+}
+
+/* The circular glyph a full-screen prompt is built around: a passkey, a scan,
+   a reassurance. One per screen, and never beside a second one. */
+.emblem {
+  display: grid;
+  place-items: center;
+  width: 74px;
+  height: 74px;
+  margin: 0 auto;
+  border: 1px solid var(--rule-strong);
+  border-radius: 50%;
+  color: var(--ink);
+}
+
+.emblem svg {
+  width: 30px;
+  height: 30px;
+}
+
+/* ---------- the access code ---------- */
+
+.codedots {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-3);
+  min-height: 14px;
+}
+
+.codedots__dot {
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 50%;
+  transition:
+    background-color var(--dur-press) var(--ease-settle),
+    border-color var(--dur-press) var(--ease-settle);
+}
+
+.codedots__dot[data-filled] {
+  border-color: var(--ink);
+  background: var(--ink);
+}
+
+html.reduced-motion .codedots__dot {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .codedots__dot {
+    transition: none;
+  }
+}
+
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(64px, 84px));
+  justify-content: center;
+  gap: var(--space-3) var(--space-4);
+}
+
+.keypad__key {
+  display: grid;
+  place-items: center;
+  min-height: 52px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-pill);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 1.125rem;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform var(--dur-press) var(--ease-settle),
+    border-color var(--dur-fast) var(--ease-settle),
+    background-color var(--dur-fast) var(--ease-settle);
+}
+
+.keypad__key svg {
+  width: 20px;
+  height: 20px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .keypad__key:not(:disabled):hover {
+    border-color: var(--rule-strong);
+    background: var(--near-white);
+    transform: translateY(-2px);
+  }
+}
+
+.keypad__key:not(:disabled):active {
+  transform: translateY(1px) scale(0.985);
+}
+
+.keypad__key:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.keypad__gap {
+  visibility: hidden;
+}
+
+html.reduced-motion .keypad__key {
+  transition: none;
+}
+
+html.reduced-motion .keypad__key:hover,
+html.reduced-motion .keypad__key:active {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .keypad__key {
+    transition: none;
+  }
+
+  .keypad__key:hover,
+  .keypad__key:active {
+    transform: none;
+  }
+}
+
+/* ---------- invitations ----------
+
+   The QR is the invitation itself, drawn locally from the same value shown
+   underneath it. The white inset is the quiet zone scanners need; the layout
+   around it stays unboxed so it does not become the only card in the flow.    */
+
+.qr {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-4);
+}
+
+.qr__code {
+  display: grid;
+  place-items: center;
+  padding: var(--space-3);
+  border: 1px solid var(--rule);
+  background: var(--white);
+}
+
+/* As large as the column allows. These payloads carry key material, so they
+   are dense; every module the code gains is a module a phone camera does not
+   have to resolve. */
+.qr__code svg {
+  display: block;
+  width: min(78vw, 304px);
+  height: auto;
+}
+
+/* A value read out loud, sized so nobody loses their place halfway through. */
+.fingerprint {
+  padding: var(--space-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-card);
+  background: var(--near-white);
+  font-family: var(--font-mono);
+  font-size: clamp(1rem, 0.85rem + 1.2vw, 1.25rem);
+  letter-spacing: 0.08em;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.stepcount {
+  color: var(--ink-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--size-micro);
+  text-align: center;
+}
+
+/* ---------- the response plan ---------- */
+
+.plan {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: plan;
+}
+
+.plan li {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: var(--space-3);
+  padding-block: var(--space-3);
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink-body);
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  counter-increment: plan;
+}
+
+.plan li:last-child {
+  border-bottom: 0;
+}
+
+.plan li::before {
+  content: counter(plan, decimal-leading-zero);
+  padding-top: 3px;
+  color: var(--ink-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--size-micro);
+}
+
+.alert-title {
+  color: var(--signal);
+}
+
+/* ---------- a value to copy ---------- */
+
+.copyvalue {
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.copyvalue__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.copyvalue__label {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.copyvalue__tools {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.copyvalue__tool {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 36px;
+  color: var(--ink-body);
+  font-size: 0.8125rem;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.copyvalue__tool svg {
+  width: 16px;
+  height: 16px;
+}
+
+.copyvalue__value {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  padding: var(--space-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-card);
+  background: var(--near-white);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.copyvalue__note {
+  color: var(--ink-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+/* ---------- not found ---------- */
+
+.notfound {
+  display: grid;
+  gap: var(--space-4);
+  place-content: center;
+  min-height: 100svh;
+  padding: var(--space-5);
+  text-align: center;
+}
+
+.notfound__title {
+  font-size: 1.25rem;
+  font-weight: 400;
+}
+
+/* ================= access code =================
+
+   Four digits on four rules. The input is transparent and sits over them, so
+   the caret, selection, paste and the software keyboard behave the way the
+   platform means them to while the rules do the drawing.                   */
+
+.code {
+  position: relative;
+  display: block;
+  cursor: text;
+}
+
+.code__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* 16px keeps iOS from zooming the viewport when the field takes focus, which
+   would move the frame in the middle of an entry. */
+.code__input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  opacity: 0;
+  font-size: 16px;
+}
+
+.code__row {
+  display: flex;
+  justify-content: center;
+  gap: clamp(var(--space-5), 7vw, var(--space-7));
+}
+
+.code__slot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 44px;
+  height: 56px;
+  border-bottom: 2px solid var(--rule-strong);
+  transition: border-color var(--dur-fast) var(--ease-settle);
+}
+
+.code__slot[data-on] {
+  border-bottom-color: var(--ink);
+}
+
+/* Where the next digit lands. The rule thickens and, where motion is allowed,
+   breathes on its own fixed clock — never on typing speed, which would make a
+   slow entry look different from a quick one. */
+.code__slot[data-active] {
+  border-bottom-color: var(--ink);
+  border-bottom-width: 3px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .code__slot[data-active] {
+    animation: code-caret 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes code-caret {
+  0%,
+  100% {
+    border-bottom-color: var(--ink);
+  }
+  50% {
+    border-bottom-color: var(--rule-strong);
+  }
+}
+
+.code__mark {
+  font-size: 1.75rem;
+  line-height: 1.6;
+}
+
+.codestep {
+  margin-block: clamp(28px, 7vw, 44px) 0;
+}
+
+/* One shake on a mismatch, keyed to the retry so it fires once. */
+@media (prefers-reduced-motion: no-preference) {
+  .codestep {
+    animation: code-shake 320ms var(--ease-settle);
+  }
+}
+
+@keyframes code-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-6px);
+  }
+  45% {
+    transform: translateX(5px);
+  }
+  70% {
+    transform: translateX(-3px);
+  }
+}
+
+.codestep__msg {
+  margin-top: var(--space-4);
+  min-height: 1.4em;
+  color: var(--ink);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
