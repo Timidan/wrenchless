@@ -4,12 +4,32 @@ import {
   type RegistrationCanaryArtifact,
   type RegistrationRelayPlan,
 } from "@wrenchless/canary-core";
+import type { ResourceBoundsBN } from "starknet";
 
 import type { RelayCanaryConfig } from "./config.js";
 
 export type RelayFeeEstimate = {
   overallFeeFri: bigint;
-  resourceBounds: unknown;
+  resourceBounds: ResourceBoundsBN;
+};
+
+export type RegistrationFinalityRequest = {
+  transactionHash: string;
+  poolAddress: string;
+  coverAddress: string;
+  relayAddress: string;
+  viewingPublicKey: string;
+};
+
+export type RegistrationFinalityEvidence = {
+  transactionHash: string;
+  blockNumber: string;
+  finalityStatus: "ACCEPTED_ON_L2" | "ACCEPTED_ON_L1";
+  executionStatus: "SUCCEEDED";
+  senderAddress: string;
+  actualFeeFri: string;
+  viewingKeyUser: string;
+  viewingPublicKey: string;
 };
 
 export type RegistrationCanaryClient = {
@@ -38,8 +58,11 @@ export type RegistrationCanaryClient = {
     plan: RegistrationRelayPlan,
     artifact: RegistrationCanaryArtifact,
     privateKey: string,
-    resourceBounds: unknown,
+    resourceBounds: ResourceBoundsBN,
   ): Promise<string>;
+  waitForRegistrationFinality(
+    input: RegistrationFinalityRequest,
+  ): Promise<RegistrationFinalityEvidence>;
 };
 
 export type InspectionSummary = {
@@ -67,16 +90,27 @@ type InspectionInput = {
   client: RegistrationCanaryClient;
 };
 
-function assertFeeWithinCap(
-  fee: bigint,
+export function assertRelayFeeWithinCap(
+  estimate: RelayFeeEstimate,
   cap: bigint,
   label: "estimated" | "signed",
 ): void {
+  const fee = estimate.overallFeeFri;
   if (fee <= 0n) {
     throw new Error(`${label} transaction fee must be positive`);
   }
   if (fee > cap) {
     throw new Error(`${label} transaction fee exceeds configured cap`);
+  }
+  const maximumAuthorizedFee =
+    estimate.resourceBounds.l1_gas.max_amount *
+      estimate.resourceBounds.l1_gas.max_price_per_unit +
+    estimate.resourceBounds.l1_data_gas.max_amount *
+      estimate.resourceBounds.l1_data_gas.max_price_per_unit +
+    estimate.resourceBounds.l2_gas.max_amount *
+      estimate.resourceBounds.l2_gas.max_price_per_unit;
+  if (maximumAuthorizedFee > cap) {
+    throw new Error(`${label} transaction resource bounds exceed configured cap`);
   }
 }
 
@@ -115,7 +149,11 @@ function makeSummary(
 
 export async function inspectRegistrationCanary(
   input: InspectionInput,
-): Promise<{ summary: InspectionSummary; transactionHash?: string }> {
+): Promise<{
+  summary: InspectionSummary;
+  transactionHash?: string;
+  receipt?: RegistrationFinalityEvidence;
+}> {
   const { artifact, config, client } = input;
 
   const poolIdentity = await client.assertPoolInterface(config.poolAddress);
@@ -168,11 +206,7 @@ export async function inspectRegistrationCanary(
   });
 
   const unsignedEstimate = await client.estimateUnsigned(plan, artifact);
-  assertFeeWithinCap(
-    unsignedEstimate.overallFeeFri,
-    config.maxTransactionFeeFri,
-    "estimated",
-  );
+  assertRelayFeeWithinCap(unsignedEstimate, config.maxTransactionFeeFri, "estimated");
 
   if (!config.broadcast) {
     return {
@@ -196,11 +230,7 @@ export async function inspectRegistrationCanary(
     artifact,
     config.relayPrivateKey,
   );
-  assertFeeWithinCap(
-    signedEstimate.overallFeeFri,
-    config.maxTransactionFeeFri,
-    "signed",
-  );
+  assertRelayFeeWithinCap(signedEstimate, config.maxTransactionFeeFri, "signed");
 
   const transactionHash = await client.broadcast(
     plan,
@@ -208,6 +238,13 @@ export async function inspectRegistrationCanary(
     config.relayPrivateKey,
     signedEstimate.resourceBounds,
   );
+  const receipt = await client.waitForRegistrationFinality({
+    transactionHash,
+    poolAddress: config.poolAddress,
+    coverAddress: artifact.coverAddress,
+    relayAddress: config.relayAddress,
+    viewingPublicKey: plan.viewingPublicKey,
+  });
 
   return {
     summary: makeSummary(
@@ -220,5 +257,6 @@ export async function inspectRegistrationCanary(
       proofSummary,
     ),
     transactionHash,
+    receipt,
   };
 }

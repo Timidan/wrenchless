@@ -3,7 +3,7 @@ import {
   flushHeartbeatOutbox,
   readHeartbeatOutboxStatus,
 } from "../lib/heartbeat-outbox";
-import type { MailboxDelivery } from "../lib/mailbox-client";
+import type { MailboxDestination } from "../lib/mailbox-client";
 import { WRENCHLESS_MAINNET } from "../lib/product-config";
 import {
   inspectReadyCoverAccount,
@@ -109,12 +109,11 @@ function requireEnrollment(settings: HubSettings) {
   return enrollment;
 }
 
-function deliveryFrom(settings: HubSettings): MailboxDelivery {
+function deliveryFrom(settings: HubSettings): MailboxDestination {
   const enrollment = requireEnrollment(settings);
   return {
     mailboxUrl: enrollment.mailboxUrl,
     mailboxId: enrollment.mailboxId,
-    sendCapability: enrollment.sendCapability,
   };
 }
 
@@ -250,7 +249,7 @@ export async function collectTopUp(input: {
   }
   const result = await claimStoredCoverRefill({
     wallet: input.wallet,
-    sponsorUrl: input.settings.sponsorUrl,
+    poolAddress: WRENCHLESS_MAINNET.poolAddress,
     helperAddress: WRENCHLESS_MAINNET.helperAddress,
     recipient: input.account,
     stateId: input.stateId,

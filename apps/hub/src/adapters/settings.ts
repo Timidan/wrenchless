@@ -17,26 +17,29 @@ import {
  * fields loosely would be a second place where their shape is defined, and the
  * two would drift.
  *
- * The send capability inside that bundle is a bearer secret. It is written to
- * this browser's storage and to the request that needs it, and to nothing else
- * — no console, no URL, no analytics, and never rendered in full.
+ * The enrollment bundle contains only the mailbox destination and the vault's
+ * public encryption key. Sending is authorized separately by the carried
+ * device's non-extractable signing key.
  *
  * Nothing here is safety state. The classification a valid code selects lives
  * inside the session module and never reaches this record or any component.
  */
 
-const STORAGE_KEY = "wrenchless.hub-settings.v1";
+// The signed-mailbox protocol is intentionally a clean setup boundary. Keeping
+// v1 would let an apparently complete setup retain enrollment data that the new
+// server must reject.
+const STORAGE_KEY = "wrenchless.hub-settings.v2";
 
 /** 100 STRK. A starting ceiling, meant to be changed, never a promise. */
 export const DEFAULT_EXPOSURE_CAP_FRI = (100n * 10n ** 18n).toString();
 
 const settingsSchema = z
   .object({
-    schemaVersion: z.literal("wrenchless.hub-settings.v1"),
+    schemaVersion: z.literal("wrenchless.hub-settings.v2"),
     mailboxUrl: z.string(),
     sponsorUrl: z.string(),
     exposureCapFri: z.string().regex(/^[0-9]+$/),
-    /** A serialized `wrenchless.cover-enrollment.v1` bundle, or nothing. */
+    /** A serialized `wrenchless.cover-enrollment.v2` bundle, or nothing. */
     coverEnrollmentText: z.string().nullable(),
     /** The reading device's own retrieval capability. Never handed out. */
     inboxId: z.string().nullable(),
@@ -78,11 +81,13 @@ const settingsSchema = z
     guardianPairedAt: z.string().nullable().default(null),
     /** Kept only until the guardian confirms the vault copied its reply. */
     guardianResponseToken: z.string().nullable().default(null),
+    /** Authenticated carried-message key learned from the home vault. */
+    carriedSenderPublicKey: z.string().nullable().default(null),
     /**
      * The home vault's own control inbox: where a guardian's pause command
-     * arrives. The vault keeps the retrieval capability and hands out only the
-     * matching send capability, so the guardian can write to it and read
-     * nothing.
+     * arrives. The vault keeps the retrieval capability. A one-time invitation
+     * binds the guardian's signing key to the mailbox, so later writes must be
+     * signed and the guardian still cannot read the inbox.
      */
     controlInboxId: z.string().nullable().default(null),
     controlInboxReceiveCapability: z.string().nullable().default(null),
@@ -94,7 +99,6 @@ const settingsSchema = z
      */
     controlTargetUrl: z.string().nullable().default(null),
     controlTargetId: z.string().nullable().default(null),
-    controlTargetSendCapability: z.string().nullable().default(null),
     controlTargetPublicKey: z.string().nullable().default(null),
     signalAlias: z.string().nullable().default(null),
     signalInstruction: z.string().nullable().default(null),
@@ -104,7 +108,7 @@ const settingsSchema = z
 export type HubSettings = z.infer<typeof settingsSchema>;
 
 const EMPTY: HubSettings = {
-  schemaVersion: "wrenchless.hub-settings.v1",
+  schemaVersion: "wrenchless.hub-settings.v2",
   mailboxUrl: WRENCHLESS_SERVICES.mailboxUrl,
   sponsorUrl: WRENCHLESS_SERVICES.sponsorUrl,
   exposureCapFri: DEFAULT_EXPOSURE_CAP_FRI,
@@ -124,12 +128,12 @@ const EMPTY: HubSettings = {
   carriedPairedAt: null,
   guardianPairedAt: null,
   guardianResponseToken: null,
+  carriedSenderPublicKey: null,
   controlInboxId: null,
   controlInboxReceiveCapability: null,
   pauseLiftedAt: null,
   controlTargetUrl: null,
   controlTargetId: null,
-  controlTargetSendCapability: null,
   controlTargetPublicKey: null,
   signalAlias: null,
   signalInstruction: null,

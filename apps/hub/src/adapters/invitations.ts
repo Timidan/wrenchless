@@ -16,16 +16,17 @@ import { fromBase64Url, toBase64Url } from "./pairing-code";
  * follows is what establishes that the right device received it.
  *
  * They travel inside a URL fragment. A fragment is never sent to a server, so
- * the invitation reaches the phone's browser and nothing else — which matters,
- * because each of these carries a bearer capability.
+ * the invitation reaches the phone's browser and nothing else. Each invitation
+ * carries one short-lived, single-use authority to bind that device's signing
+ * key; it does not grant reusable mailbox write access.
  */
 
-const GUARDIAN_PREFIX = "wrg1";
-const CARRIED_PREFIX = "wrc1";
+const GUARDIAN_PREFIX = "wrg2";
+const CARRIED_PREFIX = "wrc2";
 
 const guardianInvitationSchema = z
   .object({
-    schemaVersion: z.literal("wrenchless.guardian-invitation.v1"),
+    schemaVersion: z.literal("wrenchless.guardian-invitation.v2"),
     /** The name the reader will see, chosen by the person being watched. */
     alias: z.string().trim().min(1).max(48),
     /** What the two of them agreed the reader should do. Optional by design. */
@@ -33,18 +34,18 @@ const guardianInvitationSchema = z
     /** Where a pause goes, and the key it is sealed to. */
     controlMailboxUrl: z.url(),
     controlMailboxId: z.string().regex(/^[0-9a-f]{32}$/),
-    controlSendCapability: z.string().regex(/^[0-9a-f]{64}$/),
+    controlBindCapability: z.string().regex(/^[0-9a-f]{64}$/),
     controlPublicKey: z.string().regex(/^04[0-9a-f]{128}$/),
   })
   .strict();
 
 const carriedInvitationSchema = z
   .object({
-    schemaVersion: z.literal("wrenchless.carried-invitation.v1"),
-    /** A serialized `wrenchless.cover-enrollment.v1` bundle. */
+    schemaVersion: z.literal("wrenchless.carried-invitation.v2"),
+    /** A serialized `wrenchless.cover-enrollment.v2` bundle. */
     enrollmentText: z.string().min(1).max(4000),
-    /** The serialized access-code configuration. Verifiers, never codes. */
-    accessConfigText: z.string().min(1).max(2000),
+    /** One-time authority to bind this carried device as the inbox sender. */
+    mailboxBindCapability: z.string().regex(/^[0-9a-f]{64}$/),
     exposureCapFri: z.string().regex(/^[0-9]+$/),
   })
   .strict();
@@ -96,7 +97,7 @@ export function toGuardianInvitation(
   return encode(
     GUARDIAN_PREFIX,
     guardianInvitationSchema.parse({
-      schemaVersion: "wrenchless.guardian-invitation.v1",
+      schemaVersion: "wrenchless.guardian-invitation.v2",
       ...input,
     }),
   );
@@ -114,7 +115,7 @@ export function toCarriedInvitation(
   return encode(
     CARRIED_PREFIX,
     carriedInvitationSchema.parse({
-      schemaVersion: "wrenchless.carried-invitation.v1",
+      schemaVersion: "wrenchless.carried-invitation.v2",
       ...input,
     }),
   );

@@ -143,7 +143,10 @@ export async function getOrCreateVaultControlKey(): Promise<StoredVaultControlKe
 }
 
 const controlContentsSchema = z
-  .object({ envelopes: z.array(HeartbeatEnvelopeSchema).max(100) })
+  .object({
+    envelopes: z.array(HeartbeatEnvelopeSchema).max(100),
+    senderEncryptionPublicKey: z.string().regex(/^04[0-9a-f]{128}$/),
+  })
   .strict();
 
 function mailboxBase(mailboxUrl: string): string {
@@ -155,15 +158,16 @@ function mailboxBase(mailboxUrl: string): string {
 /**
  * Reads the control inbox and returns only what opened.
  *
- * A message that cannot be decrypted is skipped rather than fatal. The inbox is
- * a bearer-write drop, so anyone with the send capability can put bytes in it;
- * one of those must not be able to stop the home vault from seeing a real pause.
+ * A message that cannot be decrypted is skipped rather than fatal. Delivery is
+ * authenticated by the guardian key, and HPKE authentication is checked again
+ * when the vault opens it.
  */
 export async function retrieveRestorePauseCommands(input: {
   mailboxUrl: string;
   mailboxId: string;
   receiveCapability: string;
   controlPrivateKey: CryptoKey;
+  guardianPublicKey: string;
   fetcher?: typeof fetch;
 }): Promise<GuardianControlPlaintext[]> {
   const response = await (input.fetcher ?? fetch)(
@@ -180,10 +184,19 @@ export async function retrieveRestorePauseCommands(input: {
     throw new Error(`The control inbox returned HTTP ${response.status}`);
   }
   const contents = controlContentsSchema.parse(await response.json());
+  if (contents.senderEncryptionPublicKey !== input.guardianPublicKey) {
+    throw new Error("The control inbox is bound to a different guardian");
+  }
   const opened: GuardianControlPlaintext[] = [];
   for (const envelope of contents.envelopes) {
     try {
-      opened.push(await openGuardianControl(envelope, input.controlPrivateKey));
+      opened.push(
+        await openGuardianControl(
+          envelope,
+          input.controlPrivateKey,
+          input.guardianPublicKey,
+        ),
+      );
     } catch {
       // Not ours, or not a control message. Skipped, never surfaced.
     }
@@ -195,16 +208,20 @@ export async function retrieveRestorePauseCommands(input: {
 export async function sendRestorePause(input: {
   mailboxUrl: string;
   mailboxId: string;
-  sendCapability: string;
   vaultControlPublicKey: string;
+  guardianPrivateKey: CryptoKey;
+  guardianSigningPrivateKey: CryptoKey;
   fetcher?: typeof fetch;
 }): Promise<{ blockedUntil: string }> {
-  const envelope = await sealRestorePause(input.vaultControlPublicKey);
+  const envelope = await sealRestorePause(
+    input.vaultControlPublicKey,
+    input.guardianPrivateKey,
+  );
   await deliverHeartbeat(
     {
       mailboxUrl: input.mailboxUrl,
       mailboxId: input.mailboxId,
-      sendCapability: input.sendCapability,
+      senderSigningPrivateKey: input.guardianSigningPrivateKey,
     },
     envelope,
     input.fetcher ?? fetch,

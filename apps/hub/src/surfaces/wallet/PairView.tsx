@@ -1,10 +1,18 @@
 import type { JSX } from "react";
 import { useEffect, useState } from "react";
 
-import { importCoverAccessConfig } from "../../lib/cover-session";
+import {
+  accessCodeIssue,
+  accessCodesAreTooSimilar,
+  createCoverSessionController,
+  type CoverSessionController,
+} from "../../lib/cover-session";
 import { createCarriedReceipt } from "../../lib/refill-pairing";
+import { getOrCreateCarriedAuthKey } from "../../lib/carried-auth-key";
+import { bindMailboxSender } from "../../lib/mailbox-client";
 import { walletSafeReason } from "../../adapters/cover-operations";
 import {
+  type CarriedInvitation,
   createConfirmationCode,
   fromCarriedInvitation,
   readInvitationFromLocation,
@@ -26,6 +34,11 @@ import {
   Screen,
   WalletField,
 } from "../shared/product";
+import { CODE_LENGTH, CodeEntry } from "../onboarding/CodeEntry";
+
+type CodePhase =
+  | { name: "enter"; index: 1 | 2 }
+  | { name: "confirm"; index: 1 | 2; first: string };
 
 /**
  * Before pairing there is one thing to do, and the screen shows one thing.
@@ -46,8 +59,20 @@ export function PairView(props: {
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [text, setText] = useState("");
+  const [invitation, setInvitation] = useState<CarriedInvitation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState<string | null>(null);
+  const [session] = useState<CoverSessionController>(() =>
+    createCoverSessionController(),
+  );
+  const [codePhase, setCodePhase] = useState<CodePhase>({
+    name: "enter",
+    index: 1,
+  });
+  const [codeValue, setCodeValue] = useState("");
+  const [firstCode, setFirstCode] = useState<string | null>(null);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [codeShake, setCodeShake] = useState(0);
 
   // A camera scan arrives as a fragment on this page. It is read once and
   // stripped from the address, so a shared screenshot of the URL bar carries
@@ -68,19 +93,37 @@ export function PairView(props: {
    * later without either of them holding the other's keys, and it is why the
    * receipt is worth showing as a code rather than as twelve characters.
    */
-  const accept = async (value: string): Promise<void> => {
+  const accept = (value: string): void => {
     const parsed = fromCarriedInvitation(value);
     if (!parsed.ok) {
       setError(parsed.message);
       return;
     }
+    setError(null);
+    setText("");
+    setInvitation(parsed.invitation);
+  };
+
+  const finishPairing = async (
+    pending: CarriedInvitation,
+    everydayCode: string,
+    otherCode: string,
+  ): Promise<void> => {
     setBusy(true);
     try {
       const enrollment = parseCoverEnrollmentBundle(
-        parsed.invitation.enrollmentText,
+        pending.enrollmentText,
       );
-      importCoverAccessConfig(parsed.invitation.accessConfigText);
+      await session.setup(everydayCode, otherCode);
       const code = props.settings.deviceCode ?? createConfirmationCode();
+      const sender = await getOrCreateCarriedAuthKey();
+      await bindMailboxSender({
+        mailboxUrl: enrollment.mailboxUrl,
+        mailboxId: enrollment.mailboxId,
+        bindCapability: pending.mailboxBindCapability,
+        senderSigningPublicKey: sender.signingPublicKey,
+        senderEncryptionPublicKey: sender.publicKey,
+      });
       let token = props.settings.deviceReceiptToken;
       let stateIds: readonly string[] = [];
       if (token === null) {
@@ -96,21 +139,112 @@ export function PairView(props: {
       storeCoverEnrollment(enrollment);
       for (const stateId of stateIds) rememberRefillStateId(stateId);
       writeSettings({
-        exposureCapFri: parsed.invitation.exposureCapFri,
+        exposureCapFri: pending.exposureCapFri,
         deviceCode: code,
         deviceReceiptToken: token,
         carriedPairedAt: new Date().toISOString(),
         carriedAccount: null,
       });
       setError(null);
-      setText("");
       props.onPaired(token);
     } catch (caught) {
-      setError(walletSafeReason(caught));
+      setCodeError(walletSafeReason(caught));
     } finally {
       setBusy(false);
     }
   };
+
+  const onCode = (next: string): void => {
+    setCodeValue(next);
+    if (next.length !== CODE_LENGTH || busy || invitation === null) return;
+    window.setTimeout(() => {
+      setCodeValue("");
+      if (codePhase.name === "enter") {
+        const issue = accessCodeIssue(next);
+        if (issue !== null) {
+          setCodeError(issue);
+          setCodeShake((value) => value + 1);
+          return;
+        }
+        if (
+          codePhase.index === 2 &&
+          firstCode !== null &&
+          accessCodesAreTooSimilar(firstCode, next)
+        ) {
+          setCodeError("Too close to your first code. Pick another.");
+          setCodeShake((value) => value + 1);
+          return;
+        }
+        setCodeError(null);
+        setCodePhase({ name: "confirm", index: codePhase.index, first: next });
+        return;
+      }
+      if (next !== codePhase.first) {
+        setCodeError("That did not match. Start this code again.");
+        setCodeShake((value) => value + 1);
+        setCodePhase({ name: "enter", index: codePhase.index });
+        return;
+      }
+      setCodeError(null);
+      if (codePhase.index === 1) {
+        setFirstCode(codePhase.first);
+        setCodePhase({ name: "enter", index: 2 });
+      } else if (firstCode !== null) {
+        void finishPairing(invitation, firstCode, codePhase.first);
+      }
+    }, 240);
+  };
+
+  if (invitation !== null) {
+    const second = codePhase.index === 2;
+    const confirming = codePhase.name === "confirm";
+    return (
+      <Screen
+        lede={
+          confirming
+            ? "Enter the same four digits again."
+            : second
+              ? "Choose a different four-digit code."
+              : "Choose the four digits you will use every day."
+        }
+        onBack={
+          busy
+            ? undefined
+            : () => {
+                setInvitation(null);
+                setCodePhase({ name: "enter", index: 1 });
+                setFirstCode(null);
+                setCodeValue("");
+                setCodeError(null);
+              }
+        }
+        title={
+          confirming
+            ? "Enter it again"
+            : second
+              ? "Choose your second code"
+              : "Choose your everyday code"
+        }
+      >
+        <div
+          className="codestep"
+          key={`${String(codePhase.index)}-${codePhase.name}-${String(codeShake)}`}
+        >
+          <CodeEntry
+            disabled={busy}
+            label="Access code"
+            onChange={onCode}
+            value={codeValue}
+          />
+        </div>
+        <p aria-live="polite" className="codestep__msg">
+          {codeError ?? "\u00a0"}
+        </p>
+        <Note>Remember which is which. The wallet never labels them again.</Note>
+        <Live message={live} />
+      </Screen>
+    );
+  }
 
   if (!asking) {
     return (
@@ -148,7 +282,7 @@ export function PairView(props: {
         onSubmit={(event) => {
           event.preventDefault();
           setLive("Checking");
-          void accept(text);
+          accept(text);
         }}
       >
         <WalletField error={error} label="Invitation code">
@@ -159,7 +293,7 @@ export function PairView(props: {
               className="winput winput--paste"
               id={inputId}
               onChange={(event) => setText(event.target.value)}
-              placeholder="wrc1_…"
+              placeholder="wrc2_…"
               rows={3}
               spellCheck={false}
               value={text}

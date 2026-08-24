@@ -35,6 +35,7 @@ describe("assertRegistrationOnly", () => {
   it("accepts exactly two WriteOnce actions and one ViewingKeySet", () => {
     expect(assertRegistrationOnly(registrationCalldata, COVER)).toEqual({
       coverAddress: COVER,
+      viewingPublicKey: "0x111",
       actionKinds: ["WriteOnce", "WriteOnce", "EmitViewingKeySet"],
       screening: "None",
     });

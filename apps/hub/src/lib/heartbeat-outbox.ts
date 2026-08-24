@@ -3,7 +3,11 @@ import {
   type HeartbeatEnvelope,
 } from "@wrenchless/canary-core";
 
-import { deliverHeartbeat, type MailboxDelivery } from "./mailbox-client.js";
+import { readCarriedAuthKey } from "./carried-auth-key.js";
+import {
+  deliverHeartbeat,
+  type MailboxDestination,
+} from "./mailbox-client.js";
 
 const OUTBOX_KEY = "wrenchless-heartbeat-outbox-v1";
 const MAX_QUEUED_ENVELOPES = 256;
@@ -51,12 +55,20 @@ export function readHeartbeatOutboxStatus(
 }
 
 export async function flushHeartbeatOutbox(
-  delivery: MailboxDelivery,
+  destination: MailboxDestination,
   options: { storage?: Storage; fetcher?: typeof fetch } = {},
 ): Promise<{ delivered: number; remaining: number }> {
   const storage = options.storage ?? localStorage;
   const fetcher = options.fetcher ?? fetch;
   const outbox = readOutbox(storage);
+  const sender = await readCarriedAuthKey();
+  if (sender === null) {
+    throw new Error("This wallet must be paired again before it can sync");
+  }
+  const delivery = {
+    ...destination,
+    senderSigningPrivateKey: sender.signingPrivateKey,
+  };
   const remaining: HeartbeatEnvelope[] = [];
   let delivered = 0;
   for (const envelope of outbox) {

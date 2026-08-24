@@ -20,6 +20,19 @@ html.app-page body {
 
 /* ---------- frame ---------- */
 
+/* The ground the device is held against.
+   On a phone the device is the window and this is invisible. On anything
+   larger it is the page the device sits on, which is the whole reason it is
+   here: a phone-shaped column drawn from the top of the viewport to the
+   bottom has to fill a height it never has content for, and a step of the
+   setup flow ends up as 300px of type adrift in a white lake. Bounded, the
+   frame keeps the proportion it is designed at and the leftover height
+   becomes page around it instead of emptiness inside it. */
+.product-stage {
+  display: grid;
+  min-height: 100svh;
+}
+
 .product {
   display: flex;
   flex-direction: column;
@@ -45,8 +58,35 @@ html.app-page body {
 }
 
 @media (min-width: 48rem) {
+  html.app-page,
+  html.app-page body {
+    background: var(--near-white);
+  }
+  .product-stage {
+    align-content: center;
+    padding: var(--space-8) var(--space-5);
+    background: var(--near-white);
+  }
+  /* 46rem is the tallest the device is allowed to be, not the height it wants
+     to be: below that it takes the window, above it it stops. It is set where
+     it is so that a laptop window still shows ground above and below the
+     frame — a device that reaches for both edges is a column again, and the
+     point of bounding it was to stop it being one. The corner is the
+     project's 4px and not a rounder device shape, because the header comment
+     above commits these surfaces to that corner and a frame is not the place
+     to spend the exception. */
   .product {
-    border-inline: 1px solid var(--rule);
+    min-height: 0;
+    height: min(100svh - 2 * var(--space-8), 46rem);
+    border: 1px solid var(--rule);
+    border-radius: var(--r-card);
+    overflow: clip;
+  }
+  /* The device scrolls its own content rather than the page, which is what
+     makes the bound above safe for the surfaces that do run long. */
+  .product__main {
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 }
 
@@ -105,6 +145,19 @@ html.app-page body {
   font-size: var(--size-micro);
   overflow-wrap: anywhere;
 }
+/* Where the flow has got to, in the corner rather than in the screen. Mono
+   and quiet: it is a position, not an instruction, and it must never compete
+   with the one thing the step is asking for. */
+.product__step {
+  flex: none;
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--rule);
+  color: var(--ink-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--size-micro);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 
 .product__main {
   display: flex;
@@ -125,11 +178,20 @@ html.app-page body {
 /* Back belongs to the screen it leaves, not to the title. It gets a full tap
    row of its own, so a 44px target never has to share a baseline with a line
    of type that may wrap. */
+/* The back control belongs to the same column as everything under it. Left on
+   the frame's own padding it sits outside the column the screen is set in,
+   and reads as chrome that wandered into the content. */
 .screen__backrow {
   display: flex;
   align-items: center;
-  min-height: 44px;
-  padding: var(--space-1) var(--space-3) 0;
+  width: 100%;
+  max-width: calc(var(--screen-measure) + 2 * var(--space-5));
+  /* The row is a 44px target plus the 4px that sets it off the header. Held
+     at that whether or not a control is in it, so an empty row and a filled
+     one are the same height and the heading below does not move. */
+  min-height: calc(44px + var(--space-1));
+  margin-inline: auto;
+  padding: var(--space-1) var(--space-5) 0;
 }
 
 .screen__title {
@@ -146,7 +208,7 @@ html.app-page body {
 }
 
 .screen__title p {
-  max-width: 33ch;
+  max-width: var(--screen-measure);
   margin: var(--space-3) auto 0;
   color: var(--ink-body);
   font-size: 0.9375rem;
@@ -154,11 +216,23 @@ html.app-page body {
   text-wrap: pretty;
 }
 
+/* One column, one measure.
+   A screen mixes things that centre — a heading, a glyph, a button — with
+   things that cannot: a labelled field, a note, a failure strip. Left alone
+   the second kind run out to the frame's own padding while the first kind sit
+   in a narrow centred stack, and a screen holding both ends up with two
+   competing edges and no column at all. Everything shares this measure, so the
+   centred things and the aligned things read as one stack. */
 .screen__body {
+  --body-gap: var(--space-5);
+
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--body-gap);
+  width: 100%;
+  max-width: calc(var(--screen-measure) + 2 * var(--space-5));
+  margin-inline: auto;
   padding: var(--space-6) var(--space-5)
     calc(var(--space-7) + env(safe-area-inset-bottom, 0px));
   padding-inline: max(var(--space-5), env(safe-area-inset-left, 0px))
@@ -166,7 +240,25 @@ html.app-page body {
 }
 
 .screen__body[data-center] {
-  gap: var(--space-6);
+  --body-gap: var(--space-6);
+}
+
+/* The action is its own group. Given the same gap as everything else it reads
+   as the fifth item in a list rather than as the thing the screen is for. */
+.screen__body > .wactions {
+  margin-top: var(--space-2);
+}
+
+/* The live line reports on the control directly above it. At the body's own
+   gap it sits as far from that control as the control sits from the content,
+   and it reads as a stray sentence rather than as its answer. */
+.screen__body > .wlive {
+  margin-top: calc(var(--space-3) - var(--body-gap));
+}
+
+/* A single sentence under centred content is part of that content. */
+.screen__body[data-center] > .wnote {
+  text-align: center;
 }
 
 /* Centring belongs to the screen, not to the body alone. Centring only the
@@ -1089,13 +1181,6 @@ html.reduced-motion .keypad__key:active {
   overflow-wrap: anywhere;
 }
 
-.stepcount {
-  color: var(--ink-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--size-micro);
-  text-align: center;
-}
-
 /* ---------- the response plan ---------- */
 
 .plan {
@@ -1297,8 +1382,11 @@ html.reduced-motion .keypad__key:active {
   line-height: 1.6;
 }
 
+/* The slots carry 56px of their own air above the rules, waiting for digits
+   that are not there yet. Stacking a further 44px on top of that opened a
+   band between the lede and the entry wide enough to read as a fault. */
 .codestep {
-  margin-block: clamp(28px, 7vw, 44px) 0;
+  margin-block: clamp(8px, 2vw, 16px) 0;
 }
 
 /* One shake on a mismatch, keyed to the retry so it fires once. */

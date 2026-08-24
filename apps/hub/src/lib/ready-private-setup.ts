@@ -14,7 +14,6 @@ const GET_PUBLIC_KEY_SELECTOR =
   "0x01a35984e05126dbecb7c3bb9929e7dd9106d460c59b1633739a5c733a5fb13b";
 const STARK_FIELD_PRIME = (1n << 251n) + 17n * (1n << 192n) + 1n;
 const U128_MAX = (1n << 128n) - 1n;
-const MINIMUM_PRIVATE_CREDIT_FRI = 2n * 10n ** 18n;
 
 const rpcCallSchema = z.union([
   z.object({
@@ -45,7 +44,9 @@ export function minimumReadyPrivateDepositFri(poolFeeFri: string): string {
   if (!/^[0-9]+$/.test(poolFeeFri)) {
     throw new Error("The live private-transfer fee is invalid");
   }
-  return (BigInt(poolFeeFri) + MINIMUM_PRIVATE_CREDIT_FRI).toString();
+  // Ready takes one pool fee from the public deposit. Leaving one more full
+  // fee privately is what lets the first recipient-built claim be submitted.
+  return (2n * BigInt(poolFeeFri)).toString();
 }
 
 function canonicalFelt(value: string, label: string): string {
@@ -156,7 +157,7 @@ export async function submitReadyPrivateDeposit(input: {
   const amount = BigInt(input.amountFri);
   if (amount > U128_MAX) throw new Error("That amount is too large");
   if (amount < BigInt(minimumReadyPrivateDepositFri(input.poolFeeFri))) {
-    throw new Error("Add enough to leave at least 2 STRK after the live fee");
+    throw new Error("Add enough to leave one private-transfer fee after setup");
   }
   const token = canonicalFelt(input.tokenAddress, "token");
   const result = transactionSchema.parse(

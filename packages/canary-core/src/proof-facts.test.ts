@@ -1,15 +1,14 @@
-import { constants, ec, hash, shortString } from "starknet";
+import { ec, shortString } from "starknet";
 import { describe, expect, it } from "vitest";
 
 import type { RegistrationCanaryArtifact } from "./artifact.js";
-import { assertRegistrationProofFacts } from "./proof-facts.js";
+import {
+  assertRegistrationProofFacts,
+  STRK20_SUPPORTED_PROOF_VERSIONS,
+} from "./proof-facts.js";
 
 const POOL = "0x456";
 const POOL_CLASS_HASH = "0x789";
-const STRK =
-  "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
-const CONFIG_HASH_VERSION = "0x537461726b6e65744f73436f6e66696733";
-
 const artifact: RegistrationCanaryArtifact = {
   schemaVersion: "wrenchless.registration-canary.v1",
   chainId: "SN_MAIN",
@@ -53,19 +52,14 @@ function makeProofFacts(baseBlockNumber = 100n): string[] {
     BigInt(payload.length),
     ...payload.map(BigInt),
   ]);
-  const configHash = hash.computeHashOnElements([
-    CONFIG_HASH_VERSION,
-    constants.StarknetChainId.SN_MAIN,
-    STRK,
-  ]);
   return [
-    shortString.encodeShortString("PROOF0"),
+    STRK20_SUPPORTED_PROOF_VERSIONS[1],
     shortString.encodeShortString("VIRTUAL_SNOS"),
     "0x3e98c2d7703b03a7edb73ed7f075f97f1dcbaa8f717cdf6e1a57bf058265473",
     shortString.encodeShortString("VIRTUAL_SNOS0"),
     `0x${baseBlockNumber.toString(16)}`,
     "0xbace",
-    configHash,
+    "0xabc",
     "0x1",
     `0x${messageHash.toString(16)}`,
   ];
@@ -104,7 +98,7 @@ describe("assertRegistrationProofFacts", () => {
     ).toThrow("expected exactly nine proof facts");
   });
 
-  it("rejects a wrong proof protocol header", () => {
+  it("rejects a proof version incompatible with the pool", () => {
     const facts = makeProofFacts();
     facts[0] = "0x1";
     expect(() =>
@@ -114,12 +108,12 @@ describe("assertRegistrationProofFacts", () => {
         latestBlockNumber: 120n,
         proofValidityBlocks: 450n,
       }),
-    ).toThrow("proof version is incompatible");
+    ).toThrow("proof facts version is not supported");
   });
 
-  it("rejects a proof for another Starknet configuration", () => {
+  it("rejects a proof from another program variant", () => {
     const facts = makeProofFacts();
-    facts[6] = "0x1";
+    facts[1] = "0x1";
     expect(() =>
       assertRegistrationProofFacts({
         artifact: withFacts(facts),
@@ -127,7 +121,7 @@ describe("assertRegistrationProofFacts", () => {
         latestBlockNumber: 120n,
         proofValidityBlocks: 450n,
       }),
-    ).toThrow("proof configuration is not Starknet mainnet");
+    ).toThrow("proof program variant is incompatible");
   });
 
   it("rejects proof facts bound to a different class or action sequence", () => {

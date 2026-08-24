@@ -5,6 +5,8 @@ dist/
 !.env.example
 coverage/
 .superpowers/
+.claude/
+docs/superpowers/
 apps/*/.data/
 apps/hub/screenshots/
 apps/hub/art-src/

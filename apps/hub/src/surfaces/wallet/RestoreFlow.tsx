@@ -181,7 +181,10 @@ export function RestoreFlow(props: {
 
       // The one thing that has to be true before anything else can be, and the
       // only screen a person can fix it from.
-      if (!readiness.registered) {
+      if (
+        !readiness.registered ||
+        BigInt(readiness.shieldedBalanceFri) < BigInt(readiness.poolFeeFri)
+      ) {
         // Opened at the smallest figure that can actually go through, read
         // live. A default nobody can use is a screen that wastes a trip to
         // Ready Wallet before it says so.

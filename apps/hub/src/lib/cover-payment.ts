@@ -8,7 +8,11 @@ import {
 import { z } from "zod";
 
 import { queueHeartbeat } from "./heartbeat-outbox.js";
-import { deliverHeartbeat, type MailboxDelivery } from "./mailbox-client.js";
+import { readCarriedAuthKey } from "./carried-auth-key.js";
+import {
+  deliverHeartbeat,
+  type MailboxDestination,
+} from "./mailbox-client.js";
 import {
   submitReadyCoverPayment,
   type ReadyCoverWallet,
@@ -31,7 +35,7 @@ const walletFailureSchema = z
 function assertHeartbeatSetup(input: {
   guardianPublicKey: string;
   coverAlias: string;
-  mailbox: MailboxDelivery;
+  mailbox: MailboxDestination;
 }): void {
   if (!/^04[0-9a-f]{128}$/.test(input.guardianPublicKey)) {
     throw new Error("guardian public key is invalid");
@@ -41,9 +45,6 @@ function assertHeartbeatSetup(input: {
   }
   if (!/^[0-9a-f]{32}$/.test(input.mailbox.mailboxId)) {
     throw new Error("mailbox ID is invalid");
-  }
-  if (!/^[0-9a-f]{64}$/.test(input.mailbox.sendCapability)) {
-    throw new Error("mailbox send capability is invalid");
   }
   new URL(input.mailbox.mailboxUrl);
 }
@@ -56,12 +57,16 @@ export async function attemptCoverPayment(input: {
   sessionSignal: HeartbeatSignal;
   coverAlias: string;
   guardianPublicKey: string;
-  mailbox: MailboxDelivery;
+  mailbox: MailboxDestination;
   responseInstruction?: string;
   fetcher?: typeof fetch;
   storage?: Storage;
 }): Promise<CoverPaymentResult> {
   assertHeartbeatSetup(input);
+  const sender = await readCarriedAuthKey();
+  if (sender === null) {
+    throw new Error("This wallet must be paired again before it can send");
+  }
   let paymentOutcome: HeartbeatPaymentOutcome;
   let submittedHash: string | undefined;
   try {
@@ -94,11 +99,19 @@ export async function attemptCoverPayment(input: {
   const heartbeat = await sealHeartbeat(
     heartbeatInput,
     input.guardianPublicKey,
+    sender.privateKey,
   );
 
   let heartbeatDelivery: CoverPaymentResult["heartbeatDelivery"] = "stored";
   try {
-    await deliverHeartbeat(input.mailbox, heartbeat, input.fetcher ?? fetch);
+    await deliverHeartbeat(
+      {
+        ...input.mailbox,
+        senderSigningPrivateKey: sender.signingPrivateKey,
+      },
+      heartbeat,
+      input.fetcher ?? fetch,
+    );
   } catch {
     try {
       queueHeartbeat(heartbeat, input.storage ?? localStorage);

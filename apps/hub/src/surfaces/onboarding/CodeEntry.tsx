@@ -1,6 +1,8 @@
 import type { JSX } from "react";
 import { useEffect, useRef, useState } from "react";
 
+import { COVER_ACCESS_CODE_LENGTH } from "../../lib/cover-session";
+
 /**
  * Four digits on four rules.
  *
@@ -22,7 +24,7 @@ import { useEffect, useRef, useState } from "react";
  *    tells them apart to someone watching.
  */
 
-export const CODE_LENGTH = 4;
+export const CODE_LENGTH = COVER_ACCESS_CODE_LENGTH;
 
 const digitsOnly = (value: string): string =>
   value.replace(/\D/g, "").slice(0, CODE_LENGTH);
@@ -78,28 +80,4 @@ export function CodeEntry(props: {
       </span>
     </label>
   );
-}
-
-/** Rejects a second code that is a trivial variation of the first. */
-export function tooSimilar(a: string, b: string): boolean {
-  if (a === b) return true;
-  if (a === [...b].reverse().join("")) return true;
-  let differing = 0;
-  for (let index = 0; index < CODE_LENGTH; index += 1) {
-    if (a[index] !== b[index]) differing += 1;
-  }
-  return differing < 2;
-}
-
-/** Rejects the codes a shoulder-surfer guesses first. */
-export function isWeak(code: string): boolean {
-  if (new Set(code).size === 1) return true;
-  const digits = [...code].map(Number);
-  const ascending = digits.every(
-    (digit, index) => index === 0 || digit === digits[index - 1]! + 1,
-  );
-  const descending = digits.every(
-    (digit, index) => index === 0 || digit === digits[index - 1]! - 1,
-  );
-  return ascending || descending;
 }

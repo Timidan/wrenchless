@@ -33,30 +33,49 @@ export function ProductFrame(props: {
   role: ProductRole;
   label: string;
   detail: string;
+  /**
+   * Where a multi-step flow has got to, as the reader would say it out loud.
+   *
+   * It belongs in the chrome and not in the screen. A counter set among the
+   * heading, the glyph and the button is read as one of them — it sits on the
+   * centre line, at the same distance as everything else, and it is the only
+   * thing there that is not about the step being asked for. In the corner it
+   * is what it actually is: the frame reporting where you are, next to the
+   * frame reporting which device this is.
+   */
+  step?: { display: string; label: string } | undefined;
   action?: ReactNode;
   tabs?: ReactNode;
   children: ReactNode;
 }): JSX.Element {
   return (
-    <div className="product" data-role={props.role}>
-      <a className="skip-link" href="#product-main">
-        Skip to the content
-      </a>
-      <header className="product__head">
-        <a className="product__brand" href="/">
-          <WrenchlessMark className="product__mark" />
-          <span>wrenchless</span>
+    <div className="product-stage">
+      <div className="product" data-role={props.role}>
+        <a className="skip-link" href="#product-main">
+          Skip to the content
         </a>
-        <p className="product__account">
-          <span className="product__role">{props.label}</span>
-          <span className="product__detail">{props.detail}</span>
-        </p>
-        {props.action}
-      </header>
-      <main className="product__main" id="product-main">
-        {props.children}
-      </main>
-      {props.tabs}
+        <header className="product__head">
+          <a className="product__brand" href="/">
+            <WrenchlessMark className="product__mark" />
+            <span>wrenchless</span>
+          </a>
+          <p className="product__account">
+            <span className="product__role">{props.label}</span>
+            <span className="product__detail">{props.detail}</span>
+          </p>
+          {props.step === undefined ? null : (
+            <p className="product__step">
+              <span aria-hidden="true">{props.step.display}</span>
+              <span className="visually-hidden">{props.step.label}</span>
+            </p>
+          )}
+          {props.action}
+        </header>
+        <main className="product__main" id="product-main">
+          {props.children}
+        </main>
+        {props.tabs}
+      </div>
     </div>
   );
 }
@@ -84,11 +103,16 @@ export function Screen(props: {
 }): JSX.Element {
   return (
     <section className="screen" data-center={props.center === true ? "" : undefined}>
-      {props.onBack === undefined ? null : (
-        <div className="screen__backrow">
+      {/* Held even when it is empty. The first screen of a flow has nothing to
+          go back to and the second one does, and rendering the row only when
+          it has a control means every heading in the flow lands at a different
+          height — the screen moves under the person reading it. One row, one
+          baseline, whether or not there is a control in it. */}
+      <div className="screen__backrow">
+        {props.onBack === undefined ? null : (
           <IconButton icon={<CaretLeftIcon />} label="Back" onClick={props.onBack} />
-        </div>
-      )}
+        )}
+      </div>
       {props.title === undefined ? null : (
         <div className="screen__title">
           <h1 className={props.tone === "alert" ? "alert-title" : undefined}>

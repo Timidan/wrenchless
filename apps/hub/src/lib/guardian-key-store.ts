@@ -1,14 +1,21 @@
-import { generateGuardianHeartbeatKeypair } from "@wrenchless/canary-core";
+import {
+  generateGuardianHeartbeatKeypair,
+  generateMailboxSigningKeypair,
+} from "@wrenchless/canary-core";
 import { z } from "zod";
 
 const KEY_DATABASE = "wrenchless-local-secrets-v1";
 const KEY_STORE = "keys";
-const GUARDIAN_KEY_NAME = "guardian-heartbeat";
+// v1 had no ECDSA delivery key. A separate name makes the protocol upgrade a
+// clean re-pair instead of leaving an unreadable legacy record in the path.
+const GUARDIAN_KEY_NAME = "guardian-heartbeat-v2";
 
 export type StoredGuardianHeartbeatKey = {
   privateKey: CryptoKey;
   publicKey: string;
   fingerprint: string;
+  signingPrivateKey: CryptoKey;
+  signingPublicKey: string;
 };
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
@@ -60,6 +67,16 @@ const storedKeySchema = z.object({
     .refine((key) => key.type === "private"),
   publicKey: z.string().regex(/^04[0-9a-f]{128}$/),
   fingerprint: z.string().regex(/^[0-9a-f]{4}(?:-[0-9a-f]{4}){4}$/),
+  signingPrivateKey: z.custom<CryptoKey>(
+    (value) =>
+      value instanceof CryptoKey &&
+      value.type === "private" &&
+      value.algorithm.name === "ECDSA" &&
+      !value.extractable &&
+      value.usages.includes("sign"),
+    "The guardian signing key on this device is invalid",
+  ),
+  signingPublicKey: z.string().regex(/^04[0-9a-f]{128}$/),
 });
 
 function parseStoredKey<T>(value: T): StoredGuardianHeartbeatKey {
@@ -87,11 +104,16 @@ export async function getOrCreateGuardianHeartbeatKey(): Promise<StoredGuardianH
   const existing = await readGuardianHeartbeatKey();
   if (existing !== null) return existing;
 
-  const generated = await generateGuardianHeartbeatKeypair();
+  const [generated, signing] = await Promise.all([
+    generateGuardianHeartbeatKeypair(),
+    generateMailboxSigningKeypair(),
+  ]);
   const stored: StoredGuardianHeartbeatKey = {
     privateKey: generated.keyPair.privateKey,
     publicKey: generated.publicKey,
     fingerprint: generated.fingerprint,
+    signingPrivateKey: signing.privateKey,
+    signingPublicKey: signing.publicKey,
   };
   const database = await openKeyDatabase();
   try {

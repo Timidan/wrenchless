@@ -7,19 +7,19 @@ const publicGuardianFields = {
     .regex(/^[0-9a-f]{4}(?:-[0-9a-f]{4}){4}$/),
   mailboxUrl: z.url(),
   mailboxId: z.string().regex(/^[0-9a-f]{32}$/),
-  sendCapability: z.string().regex(/^[0-9a-f]{64}$/),
 };
 
 const guardianEnrollmentBundleSchema = z
   .object({
-    schemaVersion: z.literal("wrenchless.guardian-enrollment.v1"),
+    schemaVersion: z.literal("wrenchless.guardian-enrollment.v2"),
     ...publicGuardianFields,
+    mailboxBindCapability: z.string().regex(/^[0-9a-f]{64}$/),
   })
   .strict();
 
 const coverEnrollmentBundleSchema = z
   .object({
-    schemaVersion: z.literal("wrenchless.cover-enrollment.v1"),
+    schemaVersion: z.literal("wrenchless.cover-enrollment.v2"),
     ...publicGuardianFields,
     coverAlias: z.string().trim().min(1).max(48),
     responseInstruction: z.string().trim().min(1).max(160).nullable(),
@@ -46,7 +46,7 @@ export function createGuardianEnrollmentBundle(input: Omit<
   "schemaVersion"
 >): GuardianEnrollmentBundle {
   return guardianEnrollmentBundleSchema.parse({
-    schemaVersion: "wrenchless.guardian-enrollment.v1",
+    schemaVersion: "wrenchless.guardian-enrollment.v2",
     ...input,
   });
 }
@@ -69,7 +69,7 @@ export function createCoverEnrollmentBundle(input: Omit<
   "schemaVersion"
 >): CoverEnrollmentBundle {
   return coverEnrollmentBundleSchema.parse({
-    schemaVersion: "wrenchless.cover-enrollment.v1",
+    schemaVersion: "wrenchless.cover-enrollment.v2",
     ...input,
   });
 }

@@ -59,11 +59,14 @@ export function PrivacyPage(): JSX.Element {
               </p>
               <p>
                 It keeps a slow one-way check value for each access code, never
-                the codes. It keeps the sealed half of each one-time top-up
-                code, encrypted under a key held in this browser's database. If
-                you use the signal reader, it keeps that reader's private key as
-                a browser key object. The next section covers those two in
-                detail. It also keeps the service addresses, the
+                the codes. Those records are created only on the carried phone
+                and are not put in its invitation. It keeps the sealed half of
+                each one-time top-up code, encrypted under a key held in this
+                browser's database. If you use the signal reader, it keeps that
+                reader's private key as a browser key object. The carried phone
+                also keeps private encryption and signing keys so a copied
+                invitation cannot forge its signals. The next section covers
+                those keys in detail. It also keeps the service addresses, the
                 enrollment you imported and your chosen ceiling. Activity keeps
                 each payment's recipient, amount, kind, time, status,
                 transaction hash, and any revert reason. It keeps any encrypted
@@ -90,7 +93,9 @@ export function PrivacyPage(): JSX.Element {
                 Because every message is the same size and sent the same way,
                 the service cannot tell one kind of signal from another. What it
                 can see is that an inbox received something, and when. That is
-                real metadata and it is not hidden.
+                real metadata and it is not hidden. The service permits delivery
+                only from the device key bound during pairing. The receiver
+                rejects messages that are not authenticated by the paired device.
               </p>
             </section>
 
@@ -125,11 +130,10 @@ export function PrivacyPage(): JSX.Element {
             <section className="document__section">
               <h2>What is never stored or handed out</h2>
               <p>
-                The code digits themselves are not stored. The browser keeps
-                salted verification records, and the carried-device invitation
-                currently contains those records. Because the codes have six
-                digits, anyone who copies that invitation can test guesses
-                offline; keep the invitation private. Which valid code you used
+                The code digits themselves are not stored. The carried phone
+                creates salted verification records locally after it reads the
+                invitation; those records never travel in a QR code or link.
+                Which valid code you used
                 is held only in memory, handed to the encryption routine, and
                 cleared when the session closes. Wallet keys, viewing keys, and
                 recovery phrases stay in your wallet extension. Decrypted signal
@@ -143,10 +147,11 @@ export function PrivacyPage(): JSX.Element {
                 The application screens read Starknet mainnet through a public
                 RPC endpoint, which sees your IP address and the addresses you
                 ask about, in the ordinary way any web request does. Collecting
-                a top-up contacts the sponsor service, which sees the request it
-                is being asked to pay for. Fonts load from Google Fonts. Those
-                are the third parties. There is no analytics service on any page
-                here.
+                a top-up contacts the relay service, which sees the prepared FUND
+                proof it is being asked to broadcast. Claims are built and sent
+                by the recipient's Ready Wallet. Fonts load from Google Fonts.
+                Those are the third parties. There is no analytics service on any
+                page here.
               </p>
             </section>
 
@@ -160,7 +165,7 @@ export function PrivacyPage(): JSX.Element {
                 check readiness. Actions that need your authority still open a
                 wallet request. A sponsor may broadcast a prepared refill after
                 that approval, so there is not always a second prompt at the
-                moment of broadcast.
+                moment of FUND broadcast.
               </p>
             </section>
 
@@ -176,7 +181,7 @@ export function PrivacyPage(): JSX.Element {
               </p>
             </section>
 
-            <p className="document__meta">Last revised 23 August 2026.</p>
+            <p className="document__meta">Last revised 24 August 2026.</p>
           </div>
         </article>
       </main>

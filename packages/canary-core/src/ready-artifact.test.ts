@@ -1,88 +1,60 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeReadyRegistrationArtifact } from "./ready-artifact.js";
+import { normalizeReadyRefillFundArtifact } from "./ready-artifact.js";
 
-const input = {
-  coverAddress: "0x123",
-  poolAddress: "0x456",
-  createdAt: "2026-08-20T00:00:00.000Z",
-  prepared: {
-    call: {
-      contract_address: "0x456",
-      entry_point: "apply_actions",
-      calldata: ["0x3", "0x0"],
-    },
-    proof: {
-      data: "proof-payload",
-      output: ["0x1"],
-      proof_facts: ["0x2"],
-    },
-  },
-} as const;
-
-describe("normalizeReadyRegistrationArtifact", () => {
-  it("normalizes the Ready snake-case result to the relay artifact", () => {
-    expect(normalizeReadyRegistrationArtifact(input)).toEqual({
-      schemaVersion: "wrenchless.registration-canary.v1",
-      chainId: "SN_MAIN",
-      coverAddress: "0x123",
-      poolAddress: "0x456",
-      createdAt: "2026-08-20T00:00:00.000Z",
+describe("normalizeReadyRefillFundArtifact", () => {
+  it("keeps only the public FUND intent and proof-bearing pool call", () => {
+    const helper = "0xabc";
+    const token = "0x4718";
+    const prepared = {
       call: {
-        contractAddress: "0x456",
-        entrypoint: "apply_actions",
-        calldata: ["0x3", "0x0"],
+        contract_address: "0x456",
+        entry_point: "apply_actions",
+        calldata: [
+          "0x2",
+          "0x3",
+          helper,
+          token,
+          "0x3e8",
+          "0xa",
+          helper,
+          "0x7",
+          "0x0",
+          "0x111",
+          "0x222",
+          "0x333",
+          token,
+          "0x3e8",
+          "0x6b49e010",
+          "0x1",
+        ],
       },
+      proof: {
+        data: "proof-payload",
+        output: [],
+        proof_facts: ["0x1"],
+      },
+    } as const;
+
+    expect(
+      normalizeReadyRefillFundArtifact({
+        poolAddress: "0x456",
+        helperAddress: helper,
+        stateId: "0x111",
+        claimCommitment: "0x222",
+        refundPublicKey: "0x333",
+        tokenAddress: token,
+        amountFri: "1000",
+        expiry: "1800003600",
+        createdAt: "2026-08-21T00:00:00.000Z",
+        prepared,
+      }),
+    ).toMatchObject({
+      schemaVersion: "wrenchless.refill-fund.v1",
+      helperAddress: helper,
+      stateId: "0x111",
+      amountFri: "1000",
       proof: "proof-payload",
-      proofFacts: ["0x2"],
     });
-  });
-
-  it.each(["privateKey", "viewingKey", "mnemonic", "passphrase"])(
-    "rejects a secret-bearing field %s",
-    (field) => {
-      expect(() =>
-        normalizeReadyRegistrationArtifact({ ...input, [field]: "secret" }),
-      ).toThrow();
-    },
-  );
-
-  it("rejects an alternate call target", () => {
-    expect(() =>
-      normalizeReadyRegistrationArtifact({
-        ...input,
-        prepared: {
-          ...input.prepared,
-          call: { ...input.prepared.call, contract_address: "0x999" },
-        },
-      }),
-    ).toThrow("call target does not match the declared pool");
-  });
-
-  it("rejects a non-apply_actions call", () => {
-    expect(() =>
-      normalizeReadyRegistrationArtifact({
-        ...input,
-        prepared: {
-          ...input.prepared,
-          call: { ...input.prepared.call, entry_point: "transfer" },
-        },
-      }),
-    ).toThrow();
-  });
-
-  it("rejects an unexpected proof side channel", () => {
-    expect(() =>
-      normalizeReadyRegistrationArtifact({
-        ...input,
-        prepared: {
-          ...input.prepared,
-          proof: {
-            ...input.prepared.proof,
-            additional_data: { screening: "unexpected" },
-          },
-        },
-      }),
-    ).toThrow();
   });
 });

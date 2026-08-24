@@ -1,7 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
-import { parseRegistrationArtifact } from "@wrenchless/canary-core";
+import {
+  jsonValueSchema,
+  parseJsonText,
+  parseRegistrationArtifact,
+} from "@wrenchless/canary-core";
 
 import {
   parseRelayCanaryConfig,
@@ -11,14 +15,14 @@ import { inspectRegistrationCanary } from "./inspect.js";
 import { StarknetRegistrationCanaryClient } from "./starknet-client.js";
 
 export function formatCliError(
-  error: unknown,
+  cause: unknown,
   env: Readonly<Record<string, string | undefined>>,
 ): string {
-  if (!(error instanceof Error)) {
+  if (!(cause instanceof Error)) {
     return "unknown relay canary failure";
   }
 
-  let message = error.message;
+  let message = cause.message;
   for (const key of [
     "WRENCHLESS_RELAY_PRIVATE_KEY",
     "STARKNET_RPC_URL",
@@ -37,7 +41,7 @@ export async function main(
 ): Promise<void> {
   const config = parseRelayCanaryConfig({ argv, env });
   const artifactText = await readFile(config.artifactPath, "utf8");
-  const artifact = parseRegistrationArtifact(JSON.parse(artifactText));
+  const artifact = parseRegistrationArtifact(parseJsonText(artifactText));
   const client = new StarknetRegistrationCanaryClient(
     config.rpcUrl,
     config.relayAddress,
@@ -48,7 +52,8 @@ export async function main(
     client,
   });
 
-  process.stdout.write(`${JSON.stringify(redactSensitive(result), null, 2)}\n`);
+  const publicResult = redactSensitive(jsonValueSchema.parse(result));
+  process.stdout.write(`${JSON.stringify(publicResult, null, 2)}\n`);
 }
 
 const entrypoint = process.argv[1];
@@ -56,9 +61,9 @@ if (
   entrypoint !== undefined &&
   import.meta.url === pathToFileURL(entrypoint).href
 ) {
-  main().catch((error: unknown) => {
+  main().catch((cause: unknown) => {
     process.stderr.write(
-      `relay canary failed: ${formatCliError(error, process.env)}\n`,
+      `relay canary failed: ${formatCliError(cause, process.env)}\n`,
     );
     process.exitCode = 1;
   });

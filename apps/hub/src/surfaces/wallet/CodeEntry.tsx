@@ -5,12 +5,13 @@ import type {
   CoverSessionController,
   NeutralCoverSessionState,
 } from "../../lib/cover-session";
+import { COVER_ACCESS_CODE_LENGTH } from "../../lib/cover-session";
 import { walletSafeReason } from "../../adapters/cover-operations";
 import { CaretLeftIcon } from "../../components/icons";
 import { Live, Note, Screen } from "../shared/product";
 
 /**
- * Six digits, and nothing that could tell them apart.
+ * Four digits, and nothing that could tell them apart.
  *
  * Both codes open this wallet. One of them also asks someone to check on the
  * person entering it, and that difference must be invisible here: the same
@@ -25,7 +26,7 @@ import { Live, Note, Screen } from "../shared/product";
  */
 
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "back"] as const;
-const LENGTH = 6;
+const LENGTH = COVER_ACCESS_CODE_LENGTH;
 
 export function CodeEntry(props: {
   session: CoverSessionController;

@@ -1,17 +1,6 @@
 import type { JSX } from "react";
 import { useEffect, useState } from "react";
 
-import {
-  createCoverSessionController,
-  exportCoverAccessConfig,
-  type CoverSessionController,
-} from "../../lib/cover-session";
-import {
-  CODE_LENGTH,
-  CodeEntry,
-  isWeak,
-  tooSimilar,
-} from "./CodeEntry";
 import { enrollGuardianMailbox } from "../../lib/guardian-mailbox";
 import { WRENCHLESS_MAINNET } from "../../lib/product-config";
 import {
@@ -49,7 +38,6 @@ import { fromPairingCode } from "../../adapters/pairing-code";
 import {
   coverEnrollment,
   markOnboarded,
-  readSettings,
   rememberRefillStateId,
   storeCoverEnrollment,
   useSettings,
@@ -114,25 +102,12 @@ import {
  * step waits.
  */
 
-type Step =
-  | "passkey"
-  | "connect"
-  | "limit"
-  | "codes"
-  | "guardian"
-  | "carried"
-  | "done";
-
-/** Where the reader is inside the two-code sequence. */
-type CodePhase =
-  | { name: "enter"; index: 1 | 2 }
-  | { name: "confirm"; index: 1 | 2; first: string };
+type Step = "passkey" | "connect" | "limit" | "guardian" | "carried" | "done";
 
 const ORDER: readonly Step[] = [
   "passkey",
   "connect",
   "limit",
-  "codes",
   "guardian",
   "carried",
   "done",
@@ -172,9 +147,6 @@ export function OnboardingSurface(): JSX.Element {
     settings.onboardedAt !== null &&
     settings.devicePasskeyId !== null &&
     settings.devicePasskeyPublicKey !== null;
-  const [session] = useState<CoverSessionController>(() =>
-    createCoverSessionController(),
-  );
   const [step, setStep] = useState<Step>("passkey");
   const [live, setLive] = useState<string | null>(null);
 
@@ -183,7 +155,8 @@ export function OnboardingSurface(): JSX.Element {
   // evidence that the person in front of it now is the one who did, so it
   // decides which question to ask the device, not whether to ask one.
   const enrolled =
-    settings.devicePasskeyId === null || settings.devicePasskeyPublicKey === null
+    settings.devicePasskeyId === null ||
+    settings.devicePasskeyPublicKey === null
       ? null
       : {
           credentialId: settings.devicePasskeyId,
@@ -191,26 +164,10 @@ export function OnboardingSurface(): JSX.Element {
         };
   const [account, setAccount] = useState<Account>({ name: "idle" });
 
-  const [limit, setLimit] = useState(() => formatStrkExact(settings.exposureCapFri));
+  const [limit, setLimit] = useState(() =>
+    formatStrkExact(settings.exposureCapFri),
+  );
   const [limitError, setLimitError] = useState<string | null>(null);
-
-  /**
-   * The code step, one thing at a time.
-   *
-   * Both codes used to be two fields on one screen with no confirmation, so a
-   * mistyped code became a wallet nobody could open and there was nothing to
-   * catch it. The flow is now enter, confirm, enter, confirm — and a mismatch
-   * restarts only the code it belongs to, never the pair.
-   */
-  const [codePhase, setCodePhase] = useState<CodePhase>({
-    name: "enter",
-    index: 1,
-  });
-  const [codeValue, setCodeValue] = useState("");
-  const [firstCode, setFirstCode] = useState<string | null>(null);
-  const [codesError, setCodesError] = useState<string | null>(null);
-  const [savingCodes, setSavingCodes] = useState(false);
-  const [codeShake, setCodeShake] = useState(0);
 
   const [alias, setAlias] = useState("");
   const [instruction, setInstruction] = useState("");
@@ -218,6 +175,9 @@ export function OnboardingSurface(): JSX.Element {
   const [guardian, setGuardian] = useState<GuardianStage>({ name: "naming" });
   const [theirCode, setTheirCode] = useState("");
   const [theirCodeError, setTheirCodeError] = useState<string | null>(null);
+  const [guardianBindCapability, setGuardianBindCapability] = useState<
+    string | null
+  >(null);
 
   const [carried, setCarried] = useState<CarriedStage>({ name: "building" });
   const [receipt, setReceipt] = useState("");
@@ -249,17 +209,7 @@ export function OnboardingSurface(): JSX.Element {
         wallet: connected,
         tokenAddress: WRENCHLESS_MAINNET.strkTokenAddress,
       });
-      const boundAccount = readSettings().reserveAccount;
-      if (
-        boundAccount !== null &&
-        BigInt(boundAccount) !== BigInt(status.account)
-      ) {
-        throw new Error(
-          "Switch Ready Wallet to the account chosen for your home vault, then try again.",
-        );
-      }
       setAccount({ name: "ready", status });
-      if (boundAccount === null) writeSettings({ reserveAccount: status.account });
     } catch (caught) {
       setAccount({ name: "failed", reason: reasonFrom(caught) });
     }
@@ -307,23 +257,7 @@ export function OnboardingSurface(): JSX.Element {
     }
     setLimitError(null);
     writeSettings({ exposureCapFri: capFri.fri });
-    setStep("codes");
-  };
-
-  const saveCodes = async (everyday: string, other: string): Promise<void> => {
-    setSavingCodes(true);
-    setCodesError(null);
-    try {
-      await session.setup(everyday, other);
-      setFirstCode(null);
-      setCodeValue("");
-      setCodePhase({ name: "enter", index: 1 });
-      setStep("guardian");
-    } catch (caught) {
-      setCodesError(reasonFrom(caught));
-    } finally {
-      setSavingCodes(false);
-    }
+    setStep("guardian");
   };
 
   /**
@@ -331,8 +265,8 @@ export function OnboardingSurface(): JSX.Element {
    *
    * Two things are made here and neither exists before this moment: the key a
    * pause will be sealed to, and the inbox it will arrive in. The guardian is
-   * given the inbox's send capability and nothing else, so it can write there
-   * and read nothing — not even its own commands back.
+   * given a one-time sender binding and nothing else, so only its device key can
+   * write there and it can read nothing back.
    */
   const prepareGuardian = async (): Promise<void> => {
     const name = alias.trim();
@@ -356,7 +290,7 @@ export function OnboardingSurface(): JSX.Element {
         instruction: note.length === 0 ? null : note,
         controlMailboxUrl: settings.mailboxUrl,
         controlMailboxId: inbox.mailboxId,
-        controlSendCapability: inbox.sendCapability,
+        controlBindCapability: inbox.bindCapability,
         controlPublicKey: control.publicKey,
       });
       setGuardian({
@@ -392,11 +326,11 @@ export function OnboardingSurface(): JSX.Element {
           guardianFingerprint: bundle.guardianFingerprint,
           mailboxUrl: bundle.mailboxUrl,
           mailboxId: bundle.mailboxId,
-          sendCapability: bundle.sendCapability,
           coverAlias: alias.trim(),
           responseInstruction: note.length === 0 ? null : note,
         }),
       );
+      setGuardianBindCapability(bundle.mailboxBindCapability);
       writeSettings({ guardianPairedAt: new Date().toISOString() });
       setLive(null);
       setStep("carried");
@@ -409,17 +343,15 @@ export function OnboardingSurface(): JSX.Element {
   /**
    * Builds the carried phone's invitation.
    *
-   * It carries three things and no more: who to signal, the two access-code
-   * verifiers, and the limit. Not one of them is a code, an address or a key
-   * this device would not hand over anyway — and without all three the phone is
-   * a wallet that cannot open, cannot signal and has no ceiling.
+   * It carries who to signal and the limit. Access codes are created only on
+   * the carried phone, so a photographed invitation contains no material that
+   * can be used to test four-digit guesses offline.
    */
   const prepareCarried = (): void => {
     setLive("Preparing the invitation");
     try {
       const enrollment = coverEnrollment(settings);
-      const accessConfigText = exportCoverAccessConfig();
-      if (enrollment === null || accessConfigText === null) {
+      if (enrollment === null || guardianBindCapability === null) {
         setCarried({
           name: "failed",
           reason: "Finish the earlier steps before pairing the phone.",
@@ -433,7 +365,7 @@ export function OnboardingSurface(): JSX.Element {
         // alone is a couple of hundred modules. The receiving side parses it
         // with the same module either way.
         enrollmentText: JSON.stringify(enrollment),
-        accessConfigText,
+        mailboxBindCapability: guardianBindCapability,
         exposureCapFri: settings.exposureCapFri,
       });
       setCarried({
@@ -513,22 +445,28 @@ export function OnboardingSurface(): JSX.Element {
     if (previous !== undefined) setStep(previous);
   };
 
+  const total = ORDER.length - 1;
+
   const shell = (body: JSX.Element): JSX.Element => (
     <ProductFrame
       detail={
-        account.name === "ready" ? shortHex(account.status.account) : "Setup"
+        account.name === "ready"
+          ? shortHex(account.status.account)
+          : "Not connected"
       }
       label="Home vault"
       role="setup"
+      step={
+        step === "done"
+          ? { display: "Ready", label: "Setup complete" }
+          : {
+              display: `${index + 1} / ${total}`,
+              label: `Step ${index + 1} of ${total}`,
+            }
+      }
     >
       {body}
     </ProductFrame>
-  );
-
-  const count = (
-    <p className="stepcount">
-      {step === "done" ? "Ready" : `${index + 1} / ${ORDER.length - 1}`}
-    </p>
   );
 
   /* ---------- 1 · the passkey ---------- */
@@ -537,11 +475,9 @@ export function OnboardingSurface(): JSX.Element {
     const available = devicePasskeysAvailable();
     return shell(
       <Screen
-        center
         lede="This is where you keep the money you are not carrying."
         title="Set up your home vault"
       >
-        {count}
         <Emblem>
           <KeyIcon />
         </Emblem>
@@ -588,12 +524,10 @@ export function OnboardingSurface(): JSX.Element {
   if (step === "connect") {
     return shell(
       <Screen
-        center
         lede="Choose the Ready Wallet account that stays at home."
         onBack={goBack}
         title="Connect your reserve"
       >
-        {count}
         {account.name === "ready" ? (
           <>
             <StatusLine icon={<CheckCircleIcon />}>
@@ -608,7 +542,10 @@ export function OnboardingSurface(): JSX.Element {
               <Button
                 icon={<CaretRightIcon />}
                 label="Use this account"
-                onClick={() => setStep("limit")}
+                onClick={() => {
+                  writeSettings({ reserveAccount: account.status.account });
+                  setStep("limit");
+                }}
               />
               <Button
                 label="Use another"
@@ -659,9 +596,11 @@ export function OnboardingSurface(): JSX.Element {
         onBack={goBack}
         title="Set a carried limit"
       >
-        {count}
         <p className="balance__figure">
-          <Amount size="lead" value={capFri.ok ? formatStrkFigure(capFri.fri) : null} />
+          <Amount
+            size="lead"
+            value={capFri.ok ? formatStrkFigure(capFri.fri) : null}
+          />
         </p>
         <ul className="wchips" role="group">
           {LIMITS.map((value) => (
@@ -712,98 +651,7 @@ export function OnboardingSurface(): JSX.Element {
     );
   }
 
-  /* ---------- 4 · the two codes ---------- */
-
-  if (step === "codes") {
-    const second = codePhase.index === 2;
-    const confirming = codePhase.name === "confirm";
-
-    /* A complete code is the only thing that moves the flow. Nothing here
-       answers an individual digit, so a confident entry and a hesitant one
-       look the same from across a table. */
-    const onCode = (next: string): void => {
-      setCodeValue(next);
-      if (next.length !== CODE_LENGTH || savingCodes) return;
-
-      /* Fixed, not measured. The work behind this step differs between the
-         two codes, and a pause that tracked it would time-stamp which one
-         was entered. */
-      window.setTimeout(() => {
-        setCodeValue("");
-
-        if (codePhase.name === "enter") {
-          if (isWeak(next)) {
-            setCodesError("Pick something less predictable than that.");
-            setCodeShake((n) => n + 1);
-            return;
-          }
-          if (second && firstCode !== null && tooSimilar(firstCode, next)) {
-            setCodesError("Too close to your first code. Pick another.");
-            setCodeShake((n) => n + 1);
-            return;
-          }
-          setCodesError(null);
-          setCodePhase({ name: "confirm", index: codePhase.index, first: next });
-          return;
-        }
-
-        if (next !== codePhase.first) {
-          setCodesError("That did not match. Start this code again.");
-          setCodeShake((n) => n + 1);
-          setCodePhase({ name: "enter", index: codePhase.index });
-          return;
-        }
-
-        setCodesError(null);
-        if (codePhase.index === 1) {
-          setFirstCode(codePhase.first);
-          setCodePhase({ name: "enter", index: 2 });
-        } else if (firstCode !== null) {
-          void saveCodes(firstCode, codePhase.first);
-        }
-      }, 240);
-    };
-
-    return shell(
-      <Screen
-        lede={
-          confirming
-            ? "Just to be sure it is the one you meant."
-            : second
-              ? "Four digits, and not a variation of the first."
-              : "Four digits. You will use this one every day."
-        }
-        onBack={goBack}
-        title={
-          confirming
-            ? "Enter it again"
-            : second
-              ? "Choose your second code"
-              : "Choose your everyday code"
-        }
-      >
-        {count}
-        <div
-          className="codestep"
-          key={`${String(codePhase.index)}-${codePhase.name}-${String(codeShake)}`}
-        >
-          <CodeEntry
-            disabled={savingCodes}
-            label="Access code"
-            onChange={onCode}
-            value={codeValue}
-          />
-        </div>
-        <p aria-live="polite" className="codestep__msg">
-          {codesError ?? "\u00a0"}
-        </p>
-        <Note>Remember which is which. The wallet never labels them again.</Note>
-        <Live message={live} />
-      </Screen>,
-    );
-  }
-
-  /* ---------- 5 · the guardian ---------- */
+  /* ---------- 4 · the guardian ---------- */
 
   if (step === "guardian") {
     if (guardian.name === "naming") {
@@ -813,7 +661,6 @@ export function OnboardingSurface(): JSX.Element {
           onBack={goBack}
           title="Add your guardian"
         >
-          {count}
           <Emblem>
             <UserCircleIcon />
           </Emblem>
@@ -859,7 +706,11 @@ export function OnboardingSurface(): JSX.Element {
               )}
             </WalletField>
             <Actions>
-              <Button icon={<QrCodeIcon />} label="Make invitation" type="submit" />
+              <Button
+                icon={<QrCodeIcon />}
+                label="Make invitation"
+                type="submit"
+              />
             </Actions>
           </form>
           <Live message={live} />
@@ -869,8 +720,7 @@ export function OnboardingSurface(): JSX.Element {
 
     if (guardian.name === "preparing") {
       return shell(
-        <Screen center onBack={goBack} title="Preparing the invitation">
-          {count}
+        <Screen onBack={goBack} title="Preparing the invitation">
           <Waiting seconds={null} />
           <Live message={live} />
         </Screen>,
@@ -880,7 +730,6 @@ export function OnboardingSurface(): JSX.Element {
     if (guardian.name === "failed") {
       return shell(
         <Screen onBack={goBack} title="Invitation not ready">
-          {count}
           <StatusLine icon={<WarningCircleIcon />} tone="alert">
             Nothing was set up. Check this device is online and try again.
           </StatusLine>
@@ -900,7 +749,6 @@ export function OnboardingSurface(): JSX.Element {
           onBack={goBack}
           title="Check it is really them"
         >
-          {count}
           <p className="fingerprint">{guardian.bundle.guardianFingerprint}</p>
           <Actions>
             <Button
@@ -918,16 +766,23 @@ export function OnboardingSurface(): JSX.Element {
       <Screen
         lede="Ask them to open the guardian view and scan this."
         onBack={goBack}
-        title="Pair your guardian phone"
+        title="Pair your guardian device"
       >
-        {count}
         <QrInvitation
           code={guardian.code}
+          copyLink
           label="QR code for the guardian invitation"
           link={guardian.link}
           note="It lets their phone reach you, and nothing else."
         />
         <StatusLine icon={<ScanIcon />}>Waiting for their phone.</StatusLine>
+        <Actions>
+          <Button
+            label="Replace invitation"
+            onClick={() => void prepareGuardian()}
+            tone="quiet"
+          />
+        </Actions>
         <form
           className="wform"
           onSubmit={(event) => {
@@ -946,7 +801,7 @@ export function OnboardingSurface(): JSX.Element {
                 className="winput winput--paste"
                 id={inputId}
                 onChange={(event) => setTheirCode(event.target.value)}
-                placeholder="wrl1_…"
+                placeholder="wrl2_…"
                 rows={3}
                 spellCheck={false}
                 value={theirCode}
@@ -967,13 +822,12 @@ export function OnboardingSurface(): JSX.Element {
     );
   }
 
-  /* ---------- 6 · the carried phone ---------- */
+  /* ---------- 5 · the carried phone ---------- */
 
   if (step === "carried") {
     if (carried.name === "building") {
       return shell(
-        <Screen center onBack={goBack} title="Preparing the invitation">
-          {count}
+        <Screen onBack={goBack} title="Preparing the invitation">
           <Waiting seconds={null} />
           <Live message={live} />
         </Screen>,
@@ -983,7 +837,6 @@ export function OnboardingSurface(): JSX.Element {
     if (carried.name === "failed") {
       return shell(
         <Screen onBack={goBack} title="Invitation not ready">
-          {count}
           <StatusLine icon={<WarningCircleIcon />} tone="alert">
             The invitation could not be built. Try again.
           </StatusLine>
@@ -1002,14 +855,16 @@ export function OnboardingSurface(): JSX.Element {
         onBack={goBack}
         title="Pair your carried phone"
       >
-        {count}
         <QrInvitation
           code={carried.code}
+          copyLink
           label="QR code for the carried wallet invitation"
           link={carried.link}
           note="It sets up that phone. Show it to nobody else."
         />
-        <StatusLine icon={<ScanIcon />}>Waiting for the carried phone.</StatusLine>
+        <StatusLine icon={<ScanIcon />}>
+          Waiting for the carried phone.
+        </StatusLine>
         <form
           className="wform"
           onSubmit={(event) => {
@@ -1028,7 +883,7 @@ export function OnboardingSurface(): JSX.Element {
                 className="winput winput--paste"
                 id={inputId}
                 onChange={(event) => setReceipt(event.target.value)}
-                placeholder="wrr1_…"
+                placeholder="wrr2_…"
                 rows={3}
                 spellCheck={false}
                 value={receipt}
@@ -1049,20 +904,31 @@ export function OnboardingSurface(): JSX.Element {
     );
   }
 
-  /* ---------- 7 · done ---------- */
+  /* ---------- 6 · done ---------- */
 
   return shell(
-    <Screen center lede="Everything else stays here." title="Your wallet is ready">
-      {count}
+    <Screen lede="Everything else stays here." title="Your wallet is ready">
       <Emblem>
         <CheckCircleIcon />
       </Emblem>
-      <p className="balance__figure">
-        <Amount size="lead" value={formatStrkFigure(settings.exposureCapFri)} />
-      </p>
-      <p className="balance__caption">Carried limit</p>
+      {/* Figure and caption are one thing. As two children of the body they
+          were set the body's own gap apart, which reads as a number and then
+          an unrelated label. */}
+      <div className="balance">
+        <p className="balance__figure">
+          <Amount
+            size="lead"
+            value={formatStrkFigure(settings.exposureCapFri)}
+          />
+        </p>
+        <p className="balance__caption">Carried limit</p>
+      </div>
       <Actions>
-        <Button icon={<WalletIcon />} label="Open home vault" onClick={finish} />
+        <Button
+          icon={<WalletIcon />}
+          label="Open home vault"
+          onClick={finish}
+        />
       </Actions>
       <Live message={live} />
     </Screen>,

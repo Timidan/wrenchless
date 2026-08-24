@@ -2,8 +2,8 @@ import { computeRefillClaimCommitment } from "@wrenchless/canary-core";
 
 import { computeCoverExposure, type CoverExposure } from "./cover-exposure.js";
 import {
+  submitReadyRefillClaim,
   submitReadyRefillRefund,
-  submitSponsoredReadyRefillClaim,
   type ReadyRefillWallet,
 } from "./ready-refill.js";
 import { readRefillChainState } from "./refill-state.js";
@@ -28,7 +28,7 @@ function readStoredRefillState(
 
 export async function claimStoredCoverRefill(input: {
   wallet: ReadyRefillWallet;
-  sponsorUrl: string;
+  poolAddress: string;
   helperAddress: string;
   recipient: string;
   stateId: string;
@@ -110,9 +110,9 @@ export async function claimStoredCoverRefill(input: {
   if (!exposure.withinCap) {
     throw new Error("Claiming this refill would exceed the cover exposure cap");
   }
-  const claimInput: Parameters<typeof submitSponsoredReadyRefillClaim>[0] = {
+  const claimInput: Parameters<typeof submitReadyRefillClaim>[0] = {
     wallet: input.wallet,
-    sponsorUrl: input.sponsorUrl,
+    poolAddress: input.poolAddress,
     helperAddress: input.helperAddress,
     recipient: input.recipient,
     stateId: input.stateId,
@@ -123,8 +123,7 @@ export async function claimStoredCoverRefill(input: {
     claimPrivateKey: ticket.claimPrivateKey,
     claimPublicKey: ticket.claimPublicKey,
   };
-  if (input.fetcher !== undefined) claimInput.fetcher = input.fetcher;
-  const result = await submitSponsoredReadyRefillClaim(claimInput);
+  const result = await submitReadyRefillClaim(claimInput);
   return {
     transactionHash: result.transactionHash,
     noteId: result.noteId,

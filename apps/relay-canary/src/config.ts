@@ -1,9 +1,13 @@
 import { z } from "zod";
 
+import type { JsonValue } from "@wrenchless/canary-core";
+
 export const MAINNET_POOL_ADDRESS =
   "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a";
 export const STRK_TOKEN_ADDRESS =
   "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
+export const MAINNET_REFILL_HELPER_ADDRESS =
+  "0x026ce951b858934b1ad832be2f93a102b9bf42deb5b824204278ed72b45fa828";
 export const MAX_POOL_FEE_FRI = 12_000_000_000_000_000_000n;
 export const MAX_TRANSACTION_FEE_FRI = 10_000_000_000_000_000_000n;
 
@@ -49,10 +53,12 @@ type ConfigInput = {
   env: Readonly<Record<string, string | undefined>>;
 };
 
-function parseArguments(argv: readonly string[]): {
+type ParsedArguments = {
   artifactPath: string;
   broadcastRequested: boolean;
-} {
+};
+
+function parseArguments(argv: readonly string[]): ParsedArguments {
   let artifactPath: string | undefined;
   let broadcastRequested = false;
 
@@ -118,29 +124,34 @@ export function parseRelayCanaryConfig(input: ConfigInput): RelayCanaryConfig {
     relayPrivateKey = relayPrivateKeySchema.parse(rawRelayPrivateKey);
   }
 
-  return {
+  const config: RelayCanaryConfig = {
     artifactPath,
     rpcUrl,
     relayAddress,
-    ...(relayPrivateKey === undefined ? {} : { relayPrivateKey }),
     broadcast: broadcastRequested && environmentAllowsBroadcast,
     poolAddress: MAINNET_POOL_ADDRESS,
     strkAddress: STRK_TOKEN_ADDRESS,
     maxPoolFeeFri: MAX_POOL_FEE_FRI,
     maxTransactionFeeFri: MAX_TRANSACTION_FEE_FRI,
   };
+  if (relayPrivateKey !== undefined) {
+    config.relayPrivateKey = relayPrivateKey;
+  }
+  return config;
 }
 
 const sensitiveKey =
   /(private.?key|mnemonic|passphrase|secret|rpc.?url|authorization|token|proof)/i;
+const jsonObjectSchema = z.record(z.string(), z.json());
 
-export function redactSensitive(value: unknown): unknown {
+export function redactSensitive(value: JsonValue): JsonValue {
   if (Array.isArray(value)) {
     return value.map((entry) => redactSensitive(entry));
   }
-  if (value !== null && typeof value === "object") {
+  const objectResult = jsonObjectSchema.safeParse(value);
+  if (objectResult.success) {
     return Object.fromEntries(
-      Object.entries(value).map(([key, entry]) => [
+      Object.entries(objectResult.data).map(([key, entry]) => [
         key,
         sensitiveKey.test(key) ? "[REDACTED]" : redactSensitive(entry),
       ]),

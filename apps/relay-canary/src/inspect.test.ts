@@ -1,8 +1,13 @@
 import type {
   RegistrationCanaryArtifact,
-  RegistrationRelayPlan,
 } from "@wrenchless/canary-core";
-import { constants, ec, hash, shortString } from "starknet";
+import {
+  constants,
+  ec,
+  hash,
+  shortString,
+  type ResourceBoundsBN,
+} from "starknet";
 import { describe, expect, it } from "vitest";
 
 import type { RelayCanaryConfig } from "./config.js";
@@ -22,6 +27,16 @@ const POOL_CLASS_HASH = "0xc1a55";
 const PROOF_BASE_BLOCK = 100n;
 const LATEST_BLOCK = 120n;
 const PROOF_VALIDITY_BLOCKS = 450n;
+const UNSIGNED_RESOURCE_BOUNDS = {
+  l1_gas: { max_amount: 1n, max_price_per_unit: 1n },
+  l1_data_gas: { max_amount: 1n, max_price_per_unit: 1n },
+  l2_gas: { max_amount: 1n, max_price_per_unit: 1n },
+} satisfies ResourceBoundsBN;
+const SIGNED_RESOURCE_BOUNDS = {
+  l1_gas: { max_amount: 2n, max_price_per_unit: 1n },
+  l1_data_gas: { max_amount: 2n, max_price_per_unit: 1n },
+  l2_gas: { max_amount: 2n, max_price_per_unit: 1n },
+} satisfies ResourceBoundsBN;
 const REGISTRATION_CALLDATA = [
   "0x3",
   "0x0",
@@ -96,9 +111,35 @@ const baseConfig: RelayCanaryConfig = {
   maxTransactionFeeFri: MAX_TRANSACTION_FEE,
 };
 
-function makeClient(overrides: Partial<RegistrationCanaryClient> = {}) {
+type FinalityRequest = {
+  transactionHash: string;
+  poolAddress: string;
+  coverAddress: string;
+  relayAddress: string;
+  viewingPublicKey: string;
+};
+
+const FINALITY_EVIDENCE = {
+  transactionHash: "0xtransaction",
+  blockNumber: "12345",
+  finalityStatus: "ACCEPTED_ON_L2" as const,
+  executionStatus: "SUCCEEDED" as const,
+  senderAddress: "0x789",
+  actualFeeFri: "2500000000000000000",
+  viewingKeyUser: "0x123",
+  viewingPublicKey: "0x111",
+};
+
+type FinalityClient = RegistrationCanaryClient & {
+  waitForRegistrationFinality(
+    input: FinalityRequest,
+  ): Promise<typeof FINALITY_EVIDENCE>;
+};
+
+function makeClient(overrides: Partial<FinalityClient> = {}) {
   let broadcasts = 0;
-  const client: RegistrationCanaryClient = {
+  const finalityRequests: FinalityRequest[] = [];
+  const client: FinalityClient = {
     assertPoolInterface: async () => ({
       chainId: "SN_MAIN",
       classHash: POOL_CLASS_HASH,
@@ -113,21 +154,29 @@ function makeClient(overrides: Partial<RegistrationCanaryClient> = {}) {
     readRelayBalanceFri: async () => POOL_FEE + MAX_TRANSACTION_FEE,
     estimateUnsigned: async () => ({
       overallFeeFri: ESTIMATED_FEE,
-      resourceBounds: { marker: "unsigned" },
+      resourceBounds: UNSIGNED_RESOURCE_BOUNDS,
     }),
     estimateSigned: async () => ({
       overallFeeFri: ESTIMATED_FEE + 1n,
-      resourceBounds: { marker: "signed" },
+      resourceBounds: SIGNED_RESOURCE_BOUNDS,
     }),
     broadcast: async (_plan, _artifact, _privateKey, resourceBounds) => {
       broadcasts += 1;
-      expect(resourceBounds).toEqual({ marker: "signed" });
+      expect(resourceBounds).toEqual(SIGNED_RESOURCE_BOUNDS);
       return "0xtransaction";
+    },
+    waitForRegistrationFinality: async (input) => {
+      finalityRequests.push(input);
+      return FINALITY_EVIDENCE;
     },
     ...overrides,
   };
 
-  return { client, broadcastCount: () => broadcasts };
+  return {
+    client,
+    broadcastCount: () => broadcasts,
+    finalityRequests: () => finalityRequests,
+  };
 }
 
 describe("inspectRegistrationCanary", () => {
@@ -197,7 +246,7 @@ describe("inspectRegistrationCanary", () => {
     const fake = makeClient({
       estimateUnsigned: async () => ({
         overallFeeFri: MAX_TRANSACTION_FEE + 1n,
-        resourceBounds: {},
+        resourceBounds: UNSIGNED_RESOURCE_BOUNDS,
       }),
     });
 
@@ -231,7 +280,7 @@ describe("inspectRegistrationCanary", () => {
         signedEstimates += 1;
         return {
           overallFeeFri: ESTIMATED_FEE + 1n,
-          resourceBounds: { marker: "signed" },
+          resourceBounds: SIGNED_RESOURCE_BOUNDS,
         };
       },
     });
@@ -248,11 +297,42 @@ describe("inspectRegistrationCanary", () => {
     });
 
     expect(result.transactionHash).toBe("0xtransaction");
+    expect(result.receipt).toEqual(FINALITY_EVIDENCE);
     expect(result.summary.mode).toBe("broadcast");
     expect(result.summary.estimatedTransactionFeeFri).toBe(
       (ESTIMATED_FEE + 1n).toString(),
     );
     expect(signedEstimates).toBe(1);
+    expect(fake.broadcastCount()).toBe(1);
+    expect(fake.finalityRequests()).toEqual([
+      {
+        transactionHash: "0xtransaction",
+        poolAddress: POOL,
+        coverAddress: "0x123",
+        relayAddress: "0x789",
+        viewingPublicKey: "0x111",
+      },
+    ]);
+  });
+
+  it("fails the broadcast result when finality verification fails", async () => {
+    const fake = makeClient({
+      waitForRegistrationFinality: async () => {
+        throw new Error("finalized registration state does not match artifact");
+      },
+    });
+
+    await expect(
+      inspectRegistrationCanary({
+        artifact,
+        config: {
+          ...baseConfig,
+          broadcast: true,
+          relayPrivateKey: "0xabc",
+        },
+        client: fake.client,
+      }),
+    ).rejects.toThrow("finalized registration state does not match artifact");
     expect(fake.broadcastCount()).toBe(1);
   });
 
@@ -260,7 +340,7 @@ describe("inspectRegistrationCanary", () => {
     const fake = makeClient({
       estimateSigned: async () => ({
         overallFeeFri: MAX_TRANSACTION_FEE + 1n,
-        resourceBounds: {},
+        resourceBounds: SIGNED_RESOURCE_BOUNDS,
       }),
     });
 
@@ -275,6 +355,34 @@ describe("inspectRegistrationCanary", () => {
         client: fake.client,
       }),
     ).rejects.toThrow("signed transaction fee exceeds configured cap");
+    expect(fake.broadcastCount()).toBe(0);
+  });
+
+  it("never broadcasts when signed resource bounds authorize more than the cap", async () => {
+    const fake = makeClient({
+      estimateSigned: async () => ({
+        overallFeeFri: ESTIMATED_FEE,
+        resourceBounds: {
+          ...SIGNED_RESOURCE_BOUNDS,
+          l2_gas: {
+            max_amount: MAX_TRANSACTION_FEE + 1n,
+            max_price_per_unit: 1n,
+          },
+        },
+      }),
+    });
+
+    await expect(
+      inspectRegistrationCanary({
+        artifact,
+        config: {
+          ...baseConfig,
+          broadcast: true,
+          relayPrivateKey: "0xabc",
+        },
+        client: fake.client,
+      }),
+    ).rejects.toThrow("signed transaction resource bounds exceed configured cap");
     expect(fake.broadcastCount()).toBe(0);
   });
 });

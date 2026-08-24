@@ -9,6 +9,7 @@ import { retrieveGuardianHeartbeats } from "./guardian-mailbox.js";
 describe("guardian mailbox", () => {
   it("does not let one unreadable envelope hide a valid signal", async () => {
     const guardian = await generateGuardianHeartbeatKeypair();
+    const carried = await generateGuardianHeartbeatKeypair();
     const valid = await sealHeartbeat(
       {
         signal: "DISTRESS",
@@ -16,6 +17,7 @@ describe("guardian mailbox", () => {
         paymentOutcome: "submitted",
       },
       guardian.publicKey,
+      carried.keyPair.privateKey,
       new Date("2026-08-21T18:02:23.270Z"),
     );
     const unreadable = {
@@ -29,13 +31,16 @@ describe("guardian mailbox", () => {
       receiveCapability: "b".repeat(64),
       guardianPrivateKey: guardian.keyPair.privateKey,
       fetcher: async () =>
-        new Response(JSON.stringify({ envelopes: [unreadable, valid] }), {
+        new Response(JSON.stringify({
+          envelopes: [unreadable, valid],
+          senderEncryptionPublicKey: carried.publicKey,
+        }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         }),
     });
 
-    expect(events).toHaveLength(1);
-    expect(events[0]?.signal).toBe("DISTRESS");
+    expect(events.events).toHaveLength(1);
+    expect(events.events[0]?.signal).toBe("DISTRESS");
   });
 });

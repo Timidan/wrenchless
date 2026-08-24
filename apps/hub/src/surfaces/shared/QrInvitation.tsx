@@ -22,6 +22,8 @@ export function QrInvitation(props: {
   code: string;
   /** What the value under the code is, when it is not an invitation. */
   codeLabel?: string | undefined;
+  /** Copy the camera-ready link instead of exposing its raw invitation token. */
+  copyLink?: boolean | undefined;
   note?: string | undefined;
 }): JSX.Element {
   return (
@@ -37,9 +39,9 @@ export function QrInvitation(props: {
         />
       </div>
       <CopyValue
-        label={props.codeLabel ?? "Invitation code"}
+        label={props.copyLink === true ? "Invitation link" : (props.codeLabel ?? "Invitation code")}
         {...(props.note === undefined ? {} : { note: props.note })}
-        value={props.code}
+        value={props.copyLink === true ? props.link : props.code}
       />
     </div>
   );

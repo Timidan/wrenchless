@@ -8,7 +8,7 @@ import {
   type VaultRefillIntent,
 } from "./refill-ticket.js";
 
-const RECEIPT_PREFIX = "wrr1";
+const RECEIPT_PREFIX = "wrr2";
 
 const refillRequestSchema = z
   .object({
@@ -21,7 +21,7 @@ const refillRequestSchema = z
 
 const carriedReceiptSchema = z
   .object({
-    schemaVersion: z.literal("wrenchless.carried-receipt.v1"),
+    schemaVersion: z.literal("wrenchless.carried-receipt.v2"),
     confirmationCode: z.string().regex(/^[0-9A-F]{4}(?:-[0-9A-F]{4}){2}$/),
     restoreRequests: z.array(refillRequestSchema).min(1).max(3),
   })
@@ -38,7 +38,7 @@ export async function createCarriedReceipt(
 ): Promise<{ token: string; receipt: CarriedReceipt }> {
   const restoreRequests = await createCoverRefillRequestBatch();
   const receipt = carriedReceiptSchema.parse({
-    schemaVersion: "wrenchless.carried-receipt.v1",
+    schemaVersion: "wrenchless.carried-receipt.v2",
     confirmationCode,
     restoreRequests,
   });

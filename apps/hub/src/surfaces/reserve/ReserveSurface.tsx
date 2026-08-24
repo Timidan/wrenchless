@@ -362,11 +362,14 @@ export function ReserveSurface(): JSX.Element {
     try {
       const key = await readVaultControlKey();
       if (key === null) return;
+      const enrollment = coverEnrollment(settings);
+      if (enrollment === null) return;
       const commands = await retrieveRestorePauseCommands({
         mailboxUrl: settings.mailboxUrl,
         mailboxId: settings.controlInboxId,
         receiveCapability: settings.controlInboxReceiveCapability,
         controlPrivateKey: key.privateKey,
+        guardianPublicKey: enrollment.guardianPublicKey,
       });
       setPause(resolveRestorePause(commands, settings.pauseLiftedAt));
     } catch {
@@ -374,6 +377,7 @@ export function ReserveSurface(): JSX.Element {
       // gate is left exactly as it was rather than quietly opening.
     }
   }, [
+    settings.coverEnrollmentText,
     settings.controlInboxId,
     settings.controlInboxReceiveCapability,
     settings.mailboxUrl,
@@ -1342,7 +1346,7 @@ export function ReserveSurface(): JSX.Element {
                   className="winput winput--paste"
                   id={inputId}
                   onChange={(event) => setCodeText(event.target.value)}
-                  placeholder="wrr1_…"
+                  placeholder="wrr2_…"
                   rows={3}
                   spellCheck={false}
                   value={codeText}

@@ -19,7 +19,7 @@ import {
  * fingerprint check is what actually confirms the pairing.
  */
 
-const PREFIX = "wrl1";
+const PREFIX = "wrl2";
 
 export function toBase64Url(text: string): string {
   const bytes = new TextEncoder().encode(text);

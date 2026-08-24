@@ -104,6 +104,11 @@
   --gap: clamp(12px, 1.25vw, 24px);
   --measure: 62ch;
 
+  /* The product surfaces' one column. Every screen in the four devices — the
+     centred prompts and the labelled forms alike — is set to this, so a screen
+     that holds both does not read as two layouts stacked. */
+  --screen-measure: 25rem;
+
   /* The four protocol glyphs. Large enough that a stroke drawing itself in
      is legible from a normal reading distance rather than a guess. */
   --glyph: clamp(72px, 6.4vw, 96px);

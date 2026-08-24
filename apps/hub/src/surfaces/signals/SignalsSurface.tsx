@@ -13,6 +13,7 @@ import {
 } from "../../lib/guardian-mailbox";
 import { createGuardianEnrollmentBundle } from "../../lib/role-handoff";
 import { sendRestorePause } from "../../lib/vault-control";
+import { bindMailboxSender } from "../../lib/mailbox-client";
 import { formatTimestamp, reasonFrom } from "../../adapters/amount";
 import {
   acknowledge,
@@ -24,6 +25,11 @@ import {
   fromGuardianInvitation,
   readInvitationFromLocation,
 } from "../../adapters/invitations";
+import {
+  createDevicePasskey,
+  devicePasskeysAvailable,
+  verifyDevicePasskey,
+} from "../../adapters/device-passkey";
 import { toPairingCode } from "../../adapters/pairing-code";
 import { useSettings, writeSettings } from "../../adapters/settings";
 import {
@@ -113,12 +119,16 @@ export function SignalsSurface(): JSX.Element {
   const [pause, setPause] = useState<Pause>({ name: "idle" });
   const [view, setView] = useState<View>("home");
   const [live, setLive] = useState<string | null>(null);
+  const [accessGranted, setAccessGranted] = useState(false);
+  const [accessError, setAccessError] = useState<string | null>(null);
+  const [accessBusy, setAccessBusy] = useState(false);
 
   const paired =
     settings.controlTargetId !== null && settings.controlTargetPublicKey !== null;
   const alias = settings.signalAlias ?? "They";
 
   useEffect(() => {
+    if (!accessGranted) return;
     let current = true;
     const read = async (): Promise<void> => {
       try {
@@ -134,7 +144,7 @@ export function SignalsSurface(): JSX.Element {
     return () => {
       current = false;
     };
-  }, []);
+  }, [accessGranted]);
 
   // A camera scan lands here with the invitation in the address. It is read
   // once and stripped, so a screenshot of the address bar carries nothing.
@@ -164,7 +174,26 @@ export function SignalsSurface(): JSX.Element {
     setKeyState({ name: "creating" });
     setLive("Setting up");
     try {
+      let passkeyId = settings.devicePasskeyId;
+      let passkeyPublicKey = settings.devicePasskeyPublicKey;
+      if (passkeyId === null || passkeyPublicKey === null) {
+        const created = await createDevicePasskey("Wrenchless guardian");
+        passkeyId = created.credentialId;
+        passkeyPublicKey = created.publicKey;
+      } else {
+        await verifyDevicePasskey({
+          credentialId: passkeyId,
+          publicKey: passkeyPublicKey,
+        });
+      }
       const key = await getOrCreateGuardianHeartbeatKey();
+      await bindMailboxSender({
+        mailboxUrl: parsed.invitation.controlMailboxUrl,
+        mailboxId: parsed.invitation.controlMailboxId,
+        bindCapability: parsed.invitation.controlBindCapability,
+        senderSigningPublicKey: key.signingPublicKey,
+        senderEncryptionPublicKey: key.publicKey,
+      });
       const inboxEnrollment = await enrollGuardianMailbox(
         parsed.invitation.controlMailboxUrl,
       );
@@ -174,12 +203,14 @@ export function SignalsSurface(): JSX.Element {
         inboxReceiveCapability: inboxEnrollment.receiveCapability,
         controlTargetUrl: parsed.invitation.controlMailboxUrl,
         controlTargetId: parsed.invitation.controlMailboxId,
-        controlTargetSendCapability: parsed.invitation.controlSendCapability,
         controlTargetPublicKey: parsed.invitation.controlPublicKey,
         signalAlias: parsed.invitation.alias,
         signalInstruction: parsed.invitation.instruction,
         guardianPairedAt: new Date().toISOString(),
+        devicePasskeyId: passkeyId,
+        devicePasskeyPublicKey: passkeyPublicKey,
       });
+      setAccessGranted(true);
       setKeyState({ name: "ready", key });
       const responseToken = toPairingCode(
         createGuardianEnrollmentBundle({
@@ -187,7 +218,7 @@ export function SignalsSurface(): JSX.Element {
           guardianFingerprint: key.fingerprint,
           mailboxUrl: parsed.invitation.controlMailboxUrl,
           mailboxId: inboxEnrollment.mailboxId,
-          sendCapability: inboxEnrollment.sendCapability,
+          mailboxBindCapability: inboxEnrollment.bindCapability,
         }),
       );
       writeSettings({ guardianResponseToken: responseToken });
@@ -203,6 +234,36 @@ export function SignalsSurface(): JSX.Element {
     }
   };
 
+  const unlockGuardian = async (): Promise<void> => {
+    setAccessBusy(true);
+    setAccessError(null);
+    setLive("Waiting for this device");
+    try {
+      if (
+        settings.devicePasskeyId === null ||
+        settings.devicePasskeyPublicKey === null
+      ) {
+        const created = await createDevicePasskey("Wrenchless guardian");
+        writeSettings({
+          devicePasskeyId: created.credentialId,
+          devicePasskeyPublicKey: created.publicKey,
+        });
+      } else {
+        await verifyDevicePasskey({
+          credentialId: settings.devicePasskeyId,
+          publicKey: settings.devicePasskeyPublicKey,
+        });
+      }
+      setAccessGranted(true);
+      setLive(null);
+    } catch (caught) {
+      setAccessError(reasonFrom(caught));
+      setLive("Not accepted");
+    } finally {
+      setAccessBusy(false);
+    }
+  };
+
   const refresh = useCallback(async (key: StoredGuardianHeartbeatKey): Promise<void> => {
     if (settings.inboxId === null || settings.inboxReceiveCapability === null) {
       return;
@@ -210,19 +271,30 @@ export function SignalsSurface(): JSX.Element {
     setInbox({ name: "loading" });
     setLive("Checking");
     try {
-      const events = await retrieveGuardianHeartbeats({
+      const result = await retrieveGuardianHeartbeats({
         mailboxUrl: settings.mailboxUrl,
         mailboxId: settings.inboxId,
         receiveCapability: settings.inboxReceiveCapability,
         guardianPrivateKey: key.privateKey,
       });
-      setInbox({ name: "read", events });
+      if (
+        result.carriedSenderPublicKey !== null &&
+        result.carriedSenderPublicKey !== settings.carriedSenderPublicKey
+      ) {
+        writeSettings({ carriedSenderPublicKey: result.carriedSenderPublicKey });
+      }
+      setInbox({ name: "read", events: result.events });
       setLive(null);
     } catch (caught) {
       setInbox({ name: "failed", reason: reasonFrom(caught) });
       setLive("Could not check");
     }
-  }, [settings.inboxId, settings.inboxReceiveCapability, settings.mailboxUrl]);
+  }, [
+    settings.carriedSenderPublicKey,
+    settings.inboxId,
+    settings.inboxReceiveCapability,
+    settings.mailboxUrl,
+  ]);
 
   // A guardian must never be reassured by an inbox that has not been read.
   // Check once as soon as both the local key and mailbox capability are ready.
@@ -236,8 +308,8 @@ export function SignalsSurface(): JSX.Element {
     if (
       settings.controlTargetUrl === null ||
       settings.controlTargetId === null ||
-      settings.controlTargetSendCapability === null ||
-      settings.controlTargetPublicKey === null
+      settings.controlTargetPublicKey === null ||
+      keyState.name !== "ready"
     ) {
       return;
     }
@@ -247,8 +319,9 @@ export function SignalsSurface(): JSX.Element {
       const result = await sendRestorePause({
         mailboxUrl: settings.controlTargetUrl,
         mailboxId: settings.controlTargetId,
-        sendCapability: settings.controlTargetSendCapability,
         vaultControlPublicKey: settings.controlTargetPublicKey,
+        guardianPrivateKey: keyState.key.privateKey,
+        guardianSigningPrivateKey: keyState.key.signingPrivateKey,
       });
       setPause({ name: "sent", blockedUntil: result.blockedUntil });
       setLive("New restores paused");
@@ -319,7 +392,7 @@ export function SignalsSurface(): JSX.Element {
                 className="winput winput--paste"
                 id={inputId}
                 onChange={(event) => setInvitationText(event.target.value)}
-                placeholder="wrg1_…"
+                placeholder="wrg2_…"
                 rows={3}
                 spellCheck={false}
                 value={invitationText}
@@ -340,6 +413,44 @@ export function SignalsSurface(): JSX.Element {
           The key stays in this browser and cannot be recovered. Clearing site
           data or switching browser loses it.
         </Note>
+        <Live message={live} />
+      </Screen>,
+    );
+  }
+
+  if (!accessGranted) {
+    const available = devicePasskeysAvailable();
+    return shell(
+      <Screen
+        center
+        lede="Use the passkey saved on this phone."
+        title="Open guardian access"
+      >
+        <Emblem>
+          <ShieldCheckIcon />
+        </Emblem>
+        {accessError === null ? null : (
+          <Note tone="caution">{accessError}</Note>
+        )}
+        {available ? (
+          <Actions>
+            <Button
+              disabled={accessBusy}
+              label={
+                accessBusy
+                  ? "Waiting"
+                  : settings.devicePasskeyId === null
+                    ? "Create passkey"
+                    : "Use passkey"
+              }
+              onClick={() => void unlockGuardian()}
+            />
+          </Actions>
+        ) : (
+          <StatusLine icon={<WarningCircleIcon />} tone="alert">
+            Open this page on localhost or over HTTPS to use a passkey.
+          </StatusLine>
+        )}
         <Live message={live} />
       </Screen>,
     );

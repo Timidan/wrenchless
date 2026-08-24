@@ -23,7 +23,6 @@ function publicMessage(code: string, reason?: string): string {
   if (
     code === "fund_broadcast_disabled" ||
     code === "fund_relay_balance_low" ||
-    code === "privacy_rail_unavailable" ||
     code === "sponsor_unavailable" ||
     reason === "fund_broadcast_disabled" ||
     reason === "fund_relay_balance_low"
@@ -35,6 +34,9 @@ function publicMessage(code: string, reason?: string): string {
   }
   if (code === "rate_limited") {
     return "Too many restore attempts. Try again later.";
+  }
+  if (code === "daily_fund_budget_exhausted") {
+    return "Private restores are paused until the daily relay budget resets.";
   }
   if (code === "fund_rejected" || code === "invalid_request") {
     return "This restore could not be sent. Prepare it again.";

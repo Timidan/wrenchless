@@ -1,11 +1,11 @@
 /**
  * The device passkey, and what it is actually worth here.
  *
- * Opening the home vault and opening the carried wallet both start with the
- * device's own platform authenticator: Face ID, Touch ID, a Windows Hello PIN,
- * or the equivalent device unlock. That is a real gate — the browser will not produce an assertion
- * without the person in front of the device — and this module verifies the
- * assertion it gets back against the public key recorded at enrolment, so a
+ * Opening the home vault and opening the carried wallet both start with a
+ * user-verifying authenticator: a device passkey, synced passkey, nearby phone
+ * or security key. That is a real gate — the browser will not produce an
+ * assertion without the person in front of the authenticator — and this module
+ * verifies the assertion against the public key recorded at enrolment, so a
  * forged `navigator.credentials` response does not open anything.
  *
  * What it is not is a server-side relying party. There is no backend to hold
@@ -154,10 +154,10 @@ function derSignatureToRaw(der: Uint8Array): Uint8Array<ArrayBuffer> {
 /**
  * Enrols this device.
  *
- * `residentKey: "preferred"` rather than required: a discoverable credential is
- * nicer, but demanding one turns every authenticator that cannot store them
- * into a hard failure at the first screen of setup, and the credential ID is
- * kept here anyway.
+ * The browser may use any authenticator that can verify its user. Constraining
+ * this to a built-in platform authenticator excludes valid synced passkeys,
+ * nearby phones and security keys. `residentKey` is preferred rather than
+ * required because the credential ID is kept here anyway.
  */
 export async function createDevicePasskey(
   accountLabel: string,
@@ -176,7 +176,6 @@ export async function createDevicePasskey(
       },
       pubKeyCredParams: [{ type: "public-key", alg: ES256 }],
       authenticatorSelection: {
-        authenticatorAttachment: "platform",
         residentKey: "preferred",
         userVerification: "required",
       },

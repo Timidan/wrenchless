@@ -6,11 +6,23 @@
   "packageManager": "pnpm@11.12.0",
   "scripts": {
     "canary:inspect": "pnpm --filter @wrenchless/relay-canary exec tsx src/main.ts",
+    "contracts:build": "scarb --manifest-path contracts/refill-helper/Scarb.toml --profile release build",
+    "contracts:test": "scarb --manifest-path contracts/refill-helper/Scarb.toml run test",
+    "refill:inspect": "pnpm --filter @wrenchless/relay-canary exec tsx src/refill-main.ts",
+    "hub:dev": "pnpm --filter @wrenchless/hub dev",
+    "lint": "oxlint .",
+    "mailbox:dev": "pnpm --filter @wrenchless/mailbox dev",
+    "sponsor:check": "pnpm --filter @wrenchless/sponsor check",
+    "sponsor:configure": "pnpm --filter @wrenchless/sponsor configure",
+    "sponsor:dev": "pnpm --filter @wrenchless/sponsor dev",
+    "ready:status": "pnpm --filter @wrenchless/relay-canary exec tsx src/ready-status-main.ts",
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck"
   },
   "devDependencies": {
+    "@oxlint/plugins": "1.79.0",
     "@types/node": "^24.10.1",
+    "oxlint": "1.79.0",
     "tsx": "4.23.12",
     "typescript": "5.9.3",
     "vitest": "4.1.11"

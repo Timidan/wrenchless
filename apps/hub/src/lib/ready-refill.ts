@@ -1,17 +1,13 @@
 import {
   normalizeReadyRefillFundArtifact,
   prepareRefillFund,
+  submitRefillClaim,
   submitRefillRefund,
   type PreparedStrk20Call,
   type RefillAction,
   type RefillFundArtifact,
   type SubmittedRefillRefund,
 } from "@wrenchless/canary-core";
-
-import {
-  submitSponsoredRefillClaim,
-  type SubmitSponsoredRefillClaimInput,
-} from "./sponsored-refill.js";
 
 const READY_WALLET_API_VERSION = "0.10.3";
 const MAINNET_CHAIN_ID = "0x534e5f4d41494e";
@@ -47,12 +43,18 @@ export type SubmitReadyRefillRefundInput = {
   refundPublicKey: string;
 };
 
-export type SubmitSponsoredReadyRefillClaimInput = Omit<
-  SubmitSponsoredRefillClaimInput,
-  "fetcher"
-> & {
+export type SubmitReadyRefillClaimInput = {
   wallet: ReadyRefillWallet;
-  fetcher?: typeof fetch;
+  poolAddress: string;
+  helperAddress: string;
+  recipient: string;
+  stateId: string;
+  nonce: string;
+  expiry: string;
+  tokenAddress: string;
+  amountFri: string;
+  claimPrivateKey: string;
+  claimPublicKey: string;
 };
 
 async function assertReadyRefillCapabilities(
@@ -157,24 +159,42 @@ export async function submitReadyRefillRefund(
   });
 }
 
-export async function submitSponsoredReadyRefillClaim(
-  input: SubmitSponsoredReadyRefillClaimInput,
+export async function submitReadyRefillClaim(
+  input: SubmitReadyRefillClaimInput,
 ) {
-  await assertReadyRefillCapabilities(input.wallet);
-  const sponsoredInput: SubmitSponsoredRefillClaimInput = {
-    sponsorUrl: input.sponsorUrl,
+  const chainId = await assertReadyRefillCapabilities(input.wallet);
+  return submitRefillClaim({
+    wallet: {
+      async strk20PrepareInvoke(actions: RefillAction[], simulate = false) {
+        return input.wallet.request<PreparedStrk20Call>({
+          type: "wallet_strk20PrepareInvoke",
+          params: {
+            actions,
+            simulate,
+            api_version: READY_WALLET_API_VERSION,
+          },
+        });
+      },
+      async strk20InvokeTransaction(actions: RefillAction[]) {
+        return input.wallet.request<{ transaction_hash: string }>({
+          type: "wallet_strk20InvokeTransaction",
+          params: {
+            actions,
+            api_version: READY_WALLET_API_VERSION,
+          },
+        });
+      },
+    },
+    chainId,
+    poolAddress: input.poolAddress,
     helperAddress: input.helperAddress,
     recipient: input.recipient,
     stateId: input.stateId,
     nonce: input.nonce,
     expiry: input.expiry,
-    tokenAddress: input.tokenAddress,
-    amountFri: input.amountFri,
+    token: input.tokenAddress,
+    amount: input.amountFri,
     claimPrivateKey: input.claimPrivateKey,
     claimPublicKey: input.claimPublicKey,
-  };
-  if (input.fetcher !== undefined) {
-    sponsoredInput.fetcher = input.fetcher;
-  }
-  return submitSponsoredRefillClaim(sponsoredInput);
+  });
 }

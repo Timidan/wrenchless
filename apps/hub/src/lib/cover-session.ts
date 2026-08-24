@@ -9,6 +9,11 @@ const PIN_CONFIG_KEY = "wrenchless.cover-pin-config.v1";
 const PIN_ITERATIONS = 310_000;
 const SESSION_LIFETIME_MILLISECONDS = 5 * 60_000;
 
+export const COVER_ACCESS_CODE_LENGTH = 4;
+
+const SIMPLE_RUNS = ["01234567890", "09876543210"] as const;
+const COMMON_KEYPAD_PATTERNS = new Set(["0852", "1379", "2580"]);
+
 const pinConfigSchema = z
   .object({
     schemaVersion: z.literal("wrenchless.cover-pin-config.v1"),
@@ -60,16 +65,36 @@ function hexToBytes(value: string): Uint8Array<ArrayBuffer> {
  * product given away, and on setup it would only tell someone what they can
  * already see above the field.
  */
-function validatePin(pin: string): void {
-  if (!/^\d{6,12}$/.test(pin)) {
-    throw new Error("Use six digits.");
+export function accessCodeIssue(pin: string): string | null {
+  if (!new RegExp(`^\\d{${String(COVER_ACCESS_CODE_LENGTH)}}$`).test(pin)) {
+    return "Use four digits.";
   }
   if (/^(\d)\1+$/.test(pin)) {
-    throw new Error("Do not use the same digit over and over.");
+    return "Pick a less predictable code.";
+  }
+  if (
+    SIMPLE_RUNS.some((run) => run.includes(pin)) ||
+    COMMON_KEYPAD_PATTERNS.has(pin)
+  ) {
+    return "Pick a less predictable code.";
+  }
+  if (pin.slice(0, 2) === pin.slice(2)) {
+    return "Pick a less predictable code.";
+  }
+  if (pin[0] === pin[1] && pin[2] === pin[3]) {
+    return "Pick a less predictable code.";
+  }
+  return null;
+}
+
+function validatePin(pin: string): void {
+  const issue = accessCodeIssue(pin);
+  if (issue !== null) {
+    throw new Error(issue);
   }
 }
 
-function pinsAreTriviallyRelated(first: string, second: string): boolean {
+export function accessCodesAreTooSimilar(first: string, second: string): boolean {
   if (first === second || first === Array.from(second).reverse().join("")) {
     return true;
   }
@@ -79,6 +104,16 @@ function pinsAreTriviallyRelated(first: string, second: string): boolean {
     if (first[index] !== second[index]) differences += 1;
   }
   return differences <= 1;
+}
+
+function hasAcceptedCodeLength(pin: string): boolean {
+  return new RegExp(`^\\d{${String(COVER_ACCESS_CODE_LENGTH)}}$`).test(pin);
+}
+
+function validateUnlockCode(pin: string): void {
+  if (!hasAcceptedCodeLength(pin)) {
+    throw new Error("Use four digits.");
+  }
 }
 
 async function deriveVerifier(pin: string, saltHex: string): Promise<string> {
@@ -121,41 +156,6 @@ function readPinConfig(storage: Storage) {
   }
 }
 
-/**
- * The access-code configuration, as the opaque record it already is.
- *
- * Setup happens on the home vault and the wallet runs on another device, so the
- * two verifiers and their salts have to travel. What travels is exactly what is
- * already stored: PBKDF2 verifiers, never a code. Deriving the same record on
- * the second device would mean asking for both codes again on the one screen
- * that must never mention that there are two.
- *
- * Reading and writing go through the same schema as everything else here, so a
- * record from an older or forged sender is refused rather than half-installed.
- */
-export function exportCoverAccessConfig(
-  storage: Storage = localStorage,
-): string | null {
-  const config = readPinConfig(storage);
-  return config === null ? null : JSON.stringify(config);
-}
-
-export function importCoverAccessConfig(
-  text: string,
-  storage: Storage = localStorage,
-): void {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new Error("The access codes did not arrive intact");
-  }
-  storage.setItem(
-    PIN_CONFIG_KEY,
-    JSON.stringify(pinConfigSchema.parse(parsed)),
-  );
-}
-
 export function createCoverSessionController(options: {
   storage?: Storage;
   now?: () => number;
@@ -192,7 +192,7 @@ export function createCoverSessionController(options: {
     async setup(normalPin, distressPin) {
       validatePin(normalPin);
       validatePin(distressPin);
-      if (pinsAreTriviallyRelated(normalPin, distressPin)) {
+      if (accessCodesAreTooSimilar(normalPin, distressPin)) {
         throw new Error("The two codes are too alike. Change one of them.");
       }
       const normalSalt = bytesToHex(crypto.getRandomValues(new Uint8Array(16)));
@@ -220,7 +220,9 @@ export function createCoverSessionController(options: {
     },
 
     async unlock(pin) {
-      if (!/^\d{6,12}$/.test(pin)) {
+      try {
+        validateUnlockCode(pin);
+      } catch {
         throw new Error("That code was not accepted.");
       }
       const config = readPinConfig(storage);

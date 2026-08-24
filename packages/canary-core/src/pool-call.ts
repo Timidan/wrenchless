@@ -1,5 +1,6 @@
 export type RegistrationActionSummary = {
   coverAddress: string;
+  viewingPublicKey: string;
   actionKinds: ["WriteOnce", "WriteOnce", "EmitViewingKeySet"];
   screening: "None";
 };
@@ -112,6 +113,7 @@ export function assertRegistrationOnly(
 
   return {
     coverAddress,
+    viewingPublicKey: `0x${publicKey.toString(16)}`,
     actionKinds: ["WriteOnce", "WriteOnce", "EmitViewingKeySet"],
     screening: "None",
   };
