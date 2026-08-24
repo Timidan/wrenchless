@@ -37,6 +37,7 @@ if (!/^0x[0-9a-f]+$/.test(accountPrivateKey)) {
 mkdirSync(dirname(target), { mode: 0o700, recursive: true });
 const content = [
   "NODE_ENV=development",
+  "WRENCHLESS_SPONSOR_BIND_HOST=127.0.0.1",
   "PORT=8788",
   "WRENCHLESS_SPONSOR_ORIGIN=http://localhost:5174",
   "WRENCHLESS_SPONSOR_RPC_URL=https://rpc.starknet.lava.build",

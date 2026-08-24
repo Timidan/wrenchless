@@ -1,0 +1,91 @@
+name: wrenchless
+
+services:
+  gateway:
+    build:
+      context: ..
+      target: gateway
+      args:
+        VITE_SITE_URL: ${WRENCHLESS_PUBLIC_ORIGIN:?set WRENCHLESS_PUBLIC_ORIGIN}
+        VITE_PAIRING_ORIGIN: ${WRENCHLESS_PUBLIC_ORIGIN:?set WRENCHLESS_PUBLIC_ORIGIN}
+        VITE_MAILBOX_URL: ${WRENCHLESS_PUBLIC_ORIGIN:?set WRENCHLESS_PUBLIC_ORIGIN}/api/mailbox
+        VITE_SPONSOR_URL: ${WRENCHLESS_PUBLIC_ORIGIN:?set WRENCHLESS_PUBLIC_ORIGIN}/api/sponsor
+    restart: unless-stopped
+    depends_on:
+      mailbox:
+        condition: service_healthy
+      sponsor:
+        condition: service_started
+    networks:
+      private:
+      public_proxy:
+        aliases:
+          - wrenchless-gateway
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+
+  mailbox:
+    build:
+      context: ..
+      target: services
+    command: ["pnpm", "--filter", "@wrenchless/mailbox", "start"]
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 8787
+      WRENCHLESS_MAILBOX_BIND_HOST: 0.0.0.0
+      WRENCHLESS_MAILBOX_DB: /data/mailbox.sqlite
+      WRENCHLESS_MAILBOX_ORIGIN: ${WRENCHLESS_PUBLIC_ORIGIN:?set WRENCHLESS_PUBLIC_ORIGIN}
+      WRENCHLESS_MAILBOX_TRUST_PROXY: "true"
+    volumes:
+      - mailbox_data:/data
+    networks:
+      - private
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:8787/healthz',{headers:{'x-forwarded-proto':'https'}}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  sponsor:
+    build:
+      context: ..
+      target: services
+    command: ["pnpm", "--filter", "@wrenchless/sponsor", "start"]
+    restart: unless-stopped
+    environment:
+      WRENCHLESS_SPONSOR_ENV: /run/secrets/sponsor.env
+    volumes:
+      - type: bind
+        source: ${WRENCHLESS_SPONSOR_ENV_FILE:?set WRENCHLESS_SPONSOR_ENV_FILE}
+        target: /run/secrets/sponsor.env
+        read_only: true
+      - sponsor_data:/data
+    networks:
+      - private
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:8788/healthz',{headers:{'x-forwarded-proto':'https'}}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  mailbox_data:
+  sponsor_data:
+
+networks:
+  private:
+    internal: true
+  public_proxy:
+    external: true

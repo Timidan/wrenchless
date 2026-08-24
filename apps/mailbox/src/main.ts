@@ -7,6 +7,7 @@ import { MailboxStore } from "./store.js";
 const databasePath = resolve(
   process.env.WRENCHLESS_MAILBOX_DB ?? ".data/mailbox.sqlite",
 );
+const bindHost = process.env.WRENCHLESS_MAILBOX_BIND_HOST ?? "127.0.0.1";
 const port = Number(process.env.PORT ?? "8787");
 if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
   throw new Error("PORT must be an integer from 1 to 65535");
@@ -24,10 +25,11 @@ const store = new MailboxStore(databasePath);
 const server = createMailboxServer(store, {
   allowedOrigin,
   requireHttps: production,
+  trustProxy: process.env.WRENCHLESS_MAILBOX_TRUST_PROXY === "true",
 });
 
-server.listen(port, "127.0.0.1", () => {
-  process.stdout.write(`Wrenchless mailbox listening on 127.0.0.1:${port}\n`);
+server.listen(port, bindHost, () => {
+  process.stdout.write(`Wrenchless mailbox listening on ${bindHost}:${port}\n`);
 });
 
 function shutDown(): void {

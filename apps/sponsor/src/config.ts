@@ -17,6 +17,7 @@ const positiveDecimalSchema = z
 
 const sponsorEnvironmentSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+  WRENCHLESS_SPONSOR_BIND_HOST: z.string().trim().min(1).default("127.0.0.1"),
   PORT: z.coerce.number().int().min(1).max(65_535).default(8788),
   WRENCHLESS_SPONSOR_ORIGIN: z.url(),
   WRENCHLESS_SPONSOR_RPC_URL: z.url(),
@@ -43,6 +44,7 @@ const sponsorEnvironmentSchema = z.object({
 
 export type SponsorConfig = {
   production: boolean;
+  bindHost: string;
   port: number;
   allowedOrigin: string;
   rpcUrl: string;
@@ -65,6 +67,7 @@ export function readSponsorConfig(
   const value = sponsorEnvironmentSchema.parse(environment);
   return {
     production: value.NODE_ENV === "production",
+    bindHost: value.WRENCHLESS_SPONSOR_BIND_HOST,
     port: value.PORT,
     allowedOrigin: value.WRENCHLESS_SPONSOR_ORIGIN,
     rpcUrl: value.WRENCHLESS_SPONSOR_RPC_URL,

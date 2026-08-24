@@ -10,6 +10,7 @@
     "check": "tsx src/check.ts",
     "configure": "tsx src/configure.ts",
     "dev": "tsx src/main.ts",
+    "start": "tsx src/main.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
@@ -17,11 +18,11 @@
     "@wrenchless/canary-core": "workspace:*",
     "@wrenchless/relay-canary": "workspace:*",
     "starknet": "10.5.0",
+    "tsx": "4.23.12",
     "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
-    "tsx": "4.23.12",
     "typescript": "5.9.3"
   }
 }

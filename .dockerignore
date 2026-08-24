@@ -1,0 +1,16 @@
+.git
+.gitignore
+.claude
+.superpowers
+node_modules
+**/node_modules
+**/dist
+**/.data
+**/*.test.ts
+**/*.test.tsx
+contracts
+docs
+tools
+verification
+apps/hub/screenshots
+apps/hub/art-src

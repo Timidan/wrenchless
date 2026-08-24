@@ -27,11 +27,11 @@ const server = createSponsorServer(fundRelay, {
   trustProxy: config.trustProxy,
 });
 
-server.listen(config.port, "127.0.0.1", () => {
+server.listen(config.port, config.bindHost, () => {
   process.stdout.write(
     initialFundUnavailableReason === undefined
-      ? `Wrenchless sponsor ready on 127.0.0.1:${config.port}\n`
-      : `Wrenchless sponsor degraded on 127.0.0.1:${config.port}: ${initialFundUnavailableReason}\n`,
+      ? `Wrenchless sponsor ready on ${config.bindHost}:${config.port}\n`
+      : `Wrenchless sponsor degraded on ${config.bindHost}:${config.port}: ${initialFundUnavailableReason}\n`,
   );
 });
 

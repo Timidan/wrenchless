@@ -27,6 +27,7 @@ const RATE_WINDOW_MILLISECONDS = 60 * 60 * 1_000;
 type MailboxServerOptions = {
   allowedOrigin: string | undefined;
   requireHttps: boolean;
+  trustProxy?: boolean;
 };
 
 type RateBucket = {
@@ -88,7 +89,13 @@ function sendJson(
   response.end(JSON.stringify(body));
 }
 
-function remoteAddress(request: IncomingMessage): string {
+function remoteAddress(request: IncomingMessage, trustProxy: boolean): string {
+  if (trustProxy) {
+    const forwarded = request.headers["x-forwarded-for"];
+    const first = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+    const address = first?.split(",", 1)[0]?.trim();
+    if (address) return address;
+  }
   return request.socket.remoteAddress ?? "unknown";
 }
 
@@ -213,6 +220,7 @@ export function createMailboxServer(
   options: MailboxServerOptions,
 ): Server {
   const rates = new RateLimiter();
+  const trustProxy = options.trustProxy === true;
 
   return createServer(async (request, response) => {
     try {
@@ -244,7 +252,7 @@ export function createMailboxServer(
         return;
       }
       if (request.method === "POST" && url.pathname === "/v1/mailboxes") {
-        if (!rates.allow(`create:${remoteAddress(request)}`, 10)) {
+        if (!rates.allow(`create:${remoteAddress(request, trustProxy)}`, 10)) {
           response.setHeader("Retry-After", "3600");
           sendJson(response, 429, { error: "rate_limited" });
           return;
@@ -276,7 +284,7 @@ export function createMailboxServer(
       }
 
       if (request.method === "POST" && path.collection === "envelopes") {
-        if (!rates.allow(`send:${remoteAddress(request)}`, 240)) {
+        if (!rates.allow(`send:${remoteAddress(request, trustProxy)}`, 240)) {
           response.setHeader("Retry-After", "3600");
           sendJson(response, 429, { error: "rate_limited" });
           return;
@@ -308,7 +316,7 @@ export function createMailboxServer(
           sendJson(response, 401, { error: "unauthorized" });
           return;
         }
-        if (!rates.allow(`receive:${remoteAddress(request)}`, 480)) {
+        if (!rates.allow(`receive:${remoteAddress(request, trustProxy)}`, 480)) {
           response.setHeader("Retry-After", "3600");
           sendJson(response, 429, { error: "rate_limited" });
           return;

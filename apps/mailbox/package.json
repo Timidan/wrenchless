@@ -5,16 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/main.ts",
+    "start": "tsx src/main.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@wrenchless/canary-core": "workspace:*",
+    "tsx": "4.23.12",
     "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
-    "tsx": "4.23.12",
     "typescript": "5.9.3",
     "vitest": "4.1.11"
   }

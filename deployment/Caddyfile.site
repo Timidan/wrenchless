@@ -1,0 +1,14 @@
+wrenchless.timidan.xyz {
+	import cloudflare_only
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=15552000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	reverse_proxy wrenchless-gateway:8080 {
+		header_up X-Forwarded-For {client_ip}
+	}
+}
