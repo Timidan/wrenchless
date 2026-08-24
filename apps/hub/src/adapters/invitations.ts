@@ -16,13 +16,14 @@ import { fromBase64Url, toBase64Url } from "./pairing-code";
  * follows is what establishes that the right device received it.
  *
  * They travel inside a URL fragment. A fragment is never sent to a server, so
- * the invitation reaches the phone's browser and nothing else. Each invitation
- * carries one short-lived, single-use authority to bind that device's signing
- * key; it does not grant reusable mailbox write access.
+ * the invitation reaches the phone's browser and nothing else. Their mailbox
+ * authorities are single-use bindings for that device's signing key; they do
+ * not grant reusable mailbox write access.
  */
 
 const GUARDIAN_PREFIX = "wrg2";
-const CARRIED_PREFIX = "wrc2";
+const LEGACY_CARRIED_PREFIX = "wrc2";
+const CARRIED_PREFIX = "wrc3";
 
 const guardianInvitationSchema = z
   .object({
@@ -39,7 +40,7 @@ const guardianInvitationSchema = z
   })
   .strict();
 
-const carriedInvitationSchema = z
+const legacyCarriedInvitationSchema = z
   .object({
     schemaVersion: z.literal("wrenchless.carried-invitation.v2"),
     /** A serialized `wrenchless.cover-enrollment.v2` bundle. */
@@ -50,8 +51,25 @@ const carriedInvitationSchema = z
   })
   .strict();
 
+const carriedInvitationSchema = z
+  .object({
+    schemaVersion: z.literal("wrenchless.carried-invitation.v3"),
+    /** A serialized `wrenchless.cover-enrollment.v2` bundle. */
+    enrollmentText: z.string().min(1).max(4000),
+    /** One-time authority to bind this carried device as the inbox sender. */
+    mailboxBindCapability: z.string().regex(/^[0-9a-f]{64}$/),
+    exposureCapFri: z.string().regex(/^[0-9]+$/),
+    /** A one-use return path for the carried receipt. */
+    responseMailboxId: z.string().regex(/^[0-9a-f]{32}$/),
+    responseMailboxBindCapability: z.string().regex(/^[0-9a-f]{64}$/),
+    responsePublicKey: z.string().regex(/^04[0-9a-f]{128}$/),
+  })
+  .strict();
+
 export type GuardianInvitation = z.infer<typeof guardianInvitationSchema>;
-export type CarriedInvitation = z.infer<typeof carriedInvitationSchema>;
+export type CarriedInvitation =
+  | z.infer<typeof legacyCarriedInvitationSchema>
+  | z.infer<typeof carriedInvitationSchema>;
 
 export type InvitationResult<T> =
   | { ok: true; invitation: T }
@@ -110,12 +128,12 @@ export function fromGuardianInvitation(
 }
 
 export function toCarriedInvitation(
-  input: Omit<CarriedInvitation, "schemaVersion">,
+  input: Omit<z.infer<typeof carriedInvitationSchema>, "schemaVersion">,
 ): string {
   return encode(
     CARRIED_PREFIX,
     carriedInvitationSchema.parse({
-      schemaVersion: "wrenchless.carried-invitation.v2",
+      schemaVersion: "wrenchless.carried-invitation.v3",
       ...input,
     }),
   );
@@ -124,7 +142,16 @@ export function toCarriedInvitation(
 export function fromCarriedInvitation(
   input: string,
 ): InvitationResult<CarriedInvitation> {
-  return decode(input, CARRIED_PREFIX, carriedInvitationSchema, "invitation");
+  const cleaned = clean(input);
+  if (cleaned.startsWith(`${LEGACY_CARRIED_PREFIX}_`)) {
+    return decode(
+      cleaned,
+      LEGACY_CARRIED_PREFIX,
+      legacyCarriedInvitationSchema,
+      "invitation",
+    );
+  }
+  return decode(cleaned, CARRIED_PREFIX, carriedInvitationSchema, "invitation");
 }
 
 /**

@@ -6,6 +6,8 @@ import {
   type CoverSessionController,
   type NeutralCoverSessionState,
 } from "../../lib/cover-session";
+import { getOrCreateCarriedAuthKey } from "../../lib/carried-auth-key";
+import { sendCarriedPairingReceipt } from "../../lib/carried-pairing-mailbox";
 import { WRENCHLESS_MAINNET, WRENCHLESS_PRODUCT } from "../../lib/product-config";
 import {
   inspectReadyCoverAccount,
@@ -35,6 +37,7 @@ import {
   GearSixIcon,
   LockSimpleIcon,
   PaperPlaneTiltIcon,
+  WarningCircleIcon,
   WalletIcon,
 } from "../../components/icons";
 import { QrInvitation } from "../shared/QrInvitation";
@@ -85,6 +88,12 @@ type Account =
   | { name: "ready"; status: ReadyCoverAccountStatus }
   | { name: "blocked"; reason: string };
 
+type PairDelivery =
+  | { name: "idle" }
+  | { name: "sending" }
+  | { name: "sent" }
+  | { name: "failed"; reason: string };
+
 const TABS = [
   { id: "home", label: "Home", Icon: WalletIcon },
   { id: "activity", label: "Activity", Icon: ClockCounterClockwiseIcon },
@@ -100,10 +109,13 @@ export function WalletSurface(): JSX.Element {
     session.state(),
   );
   const [passkeyDone, setPasskeyDone] = useState(false);
+  const [pairDelivery, setPairDelivery] = useState<PairDelivery>({ name: "idle" });
+  const [pairDeliveryAttempt, setPairDeliveryAttempt] = useState(0);
   // Held in the record rather than in component state: a reload before the
   // other device has read the code must not be the thing that loses it.
   const showReceipt =
-    settings.deviceReceiptToken !== null && settings.deviceReceiptDoneAt === null;
+    settings.deviceReceiptToken !== null &&
+    (settings.deviceReceiptDoneAt === null || pairDelivery.name === "sent");
   const [wallet, setWallet] = useState<BrowserWallet | null>(null);
   const [account, setAccount] = useState<Account>({ name: "idle" });
   const [view, setView] = useState<View>("home");
@@ -174,6 +186,56 @@ export function WalletSurface(): JSX.Element {
     }, 5_000);
     return () => window.clearInterval(timer);
   }, [session]);
+
+  useEffect(() => {
+    if (
+      settings.deviceReceiptToken === null ||
+      settings.deviceReceiptDoneAt !== null ||
+      settings.pairingResponseMailboxId === null ||
+      settings.pairingResponseBindCapability === null ||
+      settings.pairingResponsePublicKey === null
+    ) {
+      return;
+    }
+    let current = true;
+    setPairDelivery({ name: "sending" });
+    const send = async (): Promise<void> => {
+      try {
+        const sender = await getOrCreateCarriedAuthKey();
+        await sendCarriedPairingReceipt({
+          mailboxUrl: settings.mailboxUrl,
+          mailboxId: settings.pairingResponseMailboxId ?? "",
+          bindCapability: settings.pairingResponseBindCapability ?? "",
+          vaultPublicKey: settings.pairingResponsePublicKey ?? "",
+          receiptToken: settings.deviceReceiptToken ?? "",
+          sender,
+        });
+        writeSettings({
+          deviceReceiptDoneAt: new Date().toISOString(),
+          pairingResponseMailboxId: null,
+          pairingResponseBindCapability: null,
+          pairingResponsePublicKey: null,
+        });
+        if (current) setPairDelivery({ name: "sent" });
+      } catch (caught) {
+        if (current) {
+          setPairDelivery({ name: "failed", reason: walletSafeReason(caught) });
+        }
+      }
+    };
+    void send();
+    return () => {
+      current = false;
+    };
+  }, [
+    pairDeliveryAttempt,
+    settings.deviceReceiptDoneAt,
+    settings.deviceReceiptToken,
+    settings.mailboxUrl,
+    settings.pairingResponseBindCapability,
+    settings.pairingResponseMailboxId,
+    settings.pairingResponsePublicKey,
+  ]);
 
   const connect = async (): Promise<void> => {
     setAccount({ name: "connecting" });
@@ -267,30 +329,110 @@ export function WalletSurface(): JSX.Element {
    * code is safe to photograph and useless to anyone else.
    */
   if (showReceipt) {
+    const automatic =
+      pairDelivery.name !== "idle" ||
+      settings.pairingResponseMailboxId !== null;
+    if (pairDelivery.name === "sent") {
+      return frame(
+        <Screen
+          center
+          lede="Compare this code on your home vault."
+          title="Pairing sent"
+        >
+          <Emblem>
+            <CheckCircleIcon />
+          </Emblem>
+          {settings.deviceCode === null ? null : (
+            <p className="fingerprint">{settings.deviceCode}</p>
+          )}
+          <Actions>
+            <Button
+              icon={<CheckCircleIcon />}
+              label="Done"
+              onClick={() => setPairDelivery({ name: "idle" })}
+            />
+          </Actions>
+        </Screen>,
+      );
+    }
     return frame(
       <Screen
-        lede="Your other device is waiting for it."
-        title="Read this code back"
+        lede={automatic ? undefined : "Your other device is waiting for it."}
+        title={automatic ? "Updating your home vault" : "Read this code back"}
       >
-        <QrInvitation
-          code={settings.deviceReceiptToken ?? ""}
-          codeLabel="Code to read back"
-          label="QR code confirming this phone"
-          link={settings.deviceReceiptToken ?? ""}
-          note="It confirms this phone. It holds no keys and no balance."
-        />
-        {settings.deviceCode === null ? null : (
+        {pairDelivery.name === "sending" ? (
+          <StatusLine icon={<ArrowsClockwiseIcon />} iconMotion="spin">
+            Sending the pairing confirmation.
+          </StatusLine>
+        ) : null}
+        {pairDelivery.name === "failed" ? (
+          <>
+            <StatusLine icon={<WarningCircleIcon />} tone="alert">
+              Automatic update did not finish.
+            </StatusLine>
+            <Note tone="caution">{pairDelivery.reason}</Note>
+            <Actions>
+              <Button
+                label="Try again"
+                onClick={() => {
+                  setPairDelivery({ name: "idle" });
+                  setPairDeliveryAttempt((value) => value + 1);
+                }}
+              />
+            </Actions>
+          </>
+        ) : null}
+        {automatic && settings.deviceCode !== null ? (
           <p className="fingerprint">{settings.deviceCode}</p>
+        ) : null}
+        {automatic ? (
+          <details className="detail" open={pairDelivery.name === "failed"}>
+            <summary>Having trouble?</summary>
+            <QrInvitation
+              code={settings.deviceReceiptToken ?? ""}
+              codeLabel="Backup code"
+              label="QR code confirming this phone"
+              link={settings.deviceReceiptToken ?? ""}
+              note="Scan this from the home vault if automatic pairing fails."
+            />
+            <Actions>
+              <Button
+                icon={<CheckCircleIcon />}
+                label="I used the backup code"
+                onClick={() =>
+                  writeSettings({
+                    deviceReceiptDoneAt: new Date().toISOString(),
+                    pairingResponseMailboxId: null,
+                    pairingResponseBindCapability: null,
+                    pairingResponsePublicKey: null,
+                  })
+                }
+              />
+            </Actions>
+          </details>
+        ) : (
+          <>
+            <QrInvitation
+              code={settings.deviceReceiptToken ?? ""}
+              codeLabel="Code to read back"
+              label="QR code confirming this phone"
+              link={settings.deviceReceiptToken ?? ""}
+              note="It confirms this phone. It holds no keys and no balance."
+            />
+            {settings.deviceCode === null ? null : (
+              <p className="fingerprint">{settings.deviceCode}</p>
+            )}
+            <Actions>
+              <Button
+                icon={<CheckCircleIcon />}
+                label="They have it"
+                onClick={() =>
+                  writeSettings({ deviceReceiptDoneAt: new Date().toISOString() })
+                }
+              />
+            </Actions>
+          </>
         )}
-        <Actions>
-          <Button
-            icon={<CheckCircleIcon />}
-            label="They have it"
-            onClick={() =>
-              writeSettings({ deviceReceiptDoneAt: new Date().toISOString() })
-            }
-          />
-        </Actions>
       </Screen>,
     );
   }

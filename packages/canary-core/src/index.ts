@@ -4,6 +4,10 @@ export {
   parseRefillFundArtifact,
   parseRegistrationArtifact,
 } from "./artifact.js";
+export {
+  openCarriedPairingReceipt,
+  sealCarriedPairingReceipt,
+} from "./carried-pairing.js";
 export type {
   RefillFundArtifact,
   RegistrationCanaryArtifact,

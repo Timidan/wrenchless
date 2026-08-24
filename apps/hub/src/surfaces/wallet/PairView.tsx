@@ -142,6 +142,19 @@ export function PairView(props: {
         exposureCapFri: pending.exposureCapFri,
         deviceCode: code,
         deviceReceiptToken: token,
+        deviceReceiptDoneAt: null,
+        pairingResponseMailboxId:
+          pending.schemaVersion === "wrenchless.carried-invitation.v3"
+            ? pending.responseMailboxId
+            : null,
+        pairingResponseBindCapability:
+          pending.schemaVersion === "wrenchless.carried-invitation.v3"
+            ? pending.responseMailboxBindCapability
+            : null,
+        pairingResponsePublicKey:
+          pending.schemaVersion === "wrenchless.carried-invitation.v3"
+            ? pending.responsePublicKey
+            : null,
         carriedPairedAt: new Date().toISOString(),
         carriedAccount: null,
       });

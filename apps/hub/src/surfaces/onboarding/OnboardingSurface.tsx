@@ -1,6 +1,7 @@
 import type { JSX } from "react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
+import { retrieveCarriedPairingReceipt } from "../../lib/carried-pairing-mailbox";
 import { enrollGuardianMailbox } from "../../lib/guardian-mailbox";
 import { WRENCHLESS_MAINNET } from "../../lib/product-config";
 import {
@@ -14,6 +15,7 @@ import {
 import {
   importCarriedRestoreRequests,
   parseCarriedReceipt,
+  type CarriedReceipt,
 } from "../../lib/refill-pairing";
 import {
   getOrCreateVaultControlKey,
@@ -140,9 +142,23 @@ type GuardianStage =
   | { name: "confirm"; bundle: GuardianEnrollmentBundle }
   | { name: "failed"; reason: string };
 
+type CarriedWaitingStage = {
+  name: "waiting";
+  code: string;
+  link: string;
+  responseMailboxId: string;
+  responseReceiveCapability: string;
+};
+
 type CarriedStage =
   | { name: "building" }
-  | { name: "waiting"; code: string; link: string }
+  | CarriedWaitingStage
+  | {
+      name: "confirm";
+      receipt: CarriedReceipt;
+      invitation: CarriedWaitingStage;
+      carriedPublicKey?: string;
+    }
   | { name: "failed"; reason: string };
 
 export function OnboardingSurface(): JSX.Element {
@@ -396,7 +412,7 @@ export function OnboardingSurface(): JSX.Element {
    * the carried phone, so a photographed invitation contains no material that
    * can be used to test four-digit guesses offline.
    */
-  const prepareCarried = (): void => {
+  const prepareCarried = async (): Promise<void> => {
     setLive("Preparing the invitation");
     try {
       const enrollment = coverEnrollment(settings);
@@ -408,6 +424,8 @@ export function OnboardingSurface(): JSX.Element {
         setLive(null);
         return;
       }
+      const control = await getOrCreateVaultControlKey();
+      const responseInbox = await enrollGuardianMailbox(settings.mailboxUrl);
       const token = toCarriedInvitation({
         // Compact, not the module's indented form. This is the one payload that
         // has to fit inside a QR a phone camera can resolve, and the indentation
@@ -416,11 +434,16 @@ export function OnboardingSurface(): JSX.Element {
         enrollmentText: JSON.stringify(enrollment),
         mailboxBindCapability: guardianBindCapability,
         exposureCapFri: settings.exposureCapFri,
+        responseMailboxId: responseInbox.mailboxId,
+        responseMailboxBindCapability: responseInbox.bindCapability,
+        responsePublicKey: control.publicKey,
       });
       setCarried({
         name: "waiting",
         code: token,
         link: invitationLink("/wallet", token),
+        responseMailboxId: responseInbox.mailboxId,
+        responseReceiveCapability: responseInbox.receiveCapability,
       });
       setLive("Waiting for the carried phone");
     } catch (caught) {
@@ -431,16 +454,12 @@ export function OnboardingSurface(): JSX.Element {
 
   useEffect(() => {
     if (step !== "carried" || carried.name !== "building") return;
-    prepareCarried();
+    void prepareCarried();
     // `prepareCarried` reads settings that cannot change while this step is on
     // screen, and re-running it would issue a second, different invitation
     // while someone is scanning the first.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, carried.name]);
-
-  // The route changes without a reload. Render no first-run step while React
-  // hands the completed setup to the home-vault surface.
-  if (setupComplete) return <></>;
 
   /**
    * Reads the phone's answer, and keeps what it carries.
@@ -451,24 +470,52 @@ export function OnboardingSurface(): JSX.Element {
    * that exists nowhere else — is what lets the reserve send money to that
    * phone later, and take an uncollected restore back if it never lands.
    */
-  const confirmCarried = async (): Promise<void> => {
-    const parsed = parseCarriedReceipt(receipt);
+  const readCarriedReceipt = useCallback((
+    value: string,
+    invitation: CarriedWaitingStage,
+    carriedPublicKey?: string,
+  ): boolean => {
+    const parsed = parseCarriedReceipt(value);
     if (!parsed.ok) {
       setReceiptError(parsed.message);
-      return;
+      return false;
     }
     setReceiptError(null);
+    setReceipt("");
+    setCarried(
+      carriedPublicKey === undefined
+        ? { name: "confirm", receipt: parsed.receipt, invitation }
+        : {
+            name: "confirm",
+            receipt: parsed.receipt,
+            invitation,
+            carriedPublicKey,
+          },
+    );
+    setLive("Check the code with the carried phone");
+    return true;
+  }, []);
+
+  const confirmCarriedPairing = async (
+    pairedReceipt: CarriedReceipt,
+    carriedPublicKey?: string,
+  ): Promise<void> => {
     setSavingReceipt(true);
-    setLive("Reading the code");
+    setLive("Finishing setup");
     try {
       const intents = await importCarriedRestoreRequests(
-        parsed.receipt.restoreRequests,
+        pairedReceipt.restoreRequests,
       );
       for (const intent of intents) rememberRefillStateId(intent.stateId);
-      writeSettings({
-        carriedDeviceCode: parsed.receipt.confirmationCode,
+      const pairedSettings = {
+        carriedDeviceCode: pairedReceipt.confirmationCode,
         carriedPairedAt: new Date().toISOString(),
-      });
+      };
+      writeSettings(
+        carriedPublicKey === undefined
+          ? pairedSettings
+          : { ...pairedSettings, carriedSenderPublicKey: carriedPublicKey },
+      );
       setReceipt("");
       setLive(null);
       setStep("done");
@@ -479,6 +526,54 @@ export function OnboardingSurface(): JSX.Element {
       setSavingReceipt(false);
     }
   };
+
+  useEffect(() => {
+    if (step !== "carried" || carried.name !== "waiting") return;
+    const mailboxId = carried.responseMailboxId;
+    const receiveCapability = carried.responseReceiveCapability;
+    let current = true;
+    let timer: number | null = null;
+    const poll = async (): Promise<void> => {
+      try {
+        const control = await readVaultControlKey();
+        if (control === null) {
+          throw new Error("The home-vault control key is unavailable.");
+        }
+        const response = await retrieveCarriedPairingReceipt({
+          mailboxUrl: settings.mailboxUrl,
+          mailboxId,
+          receiveCapability,
+          vaultPrivateKey: control.privateKey,
+        });
+        if (!current) return;
+        if (response !== null) {
+          setLive("Finishing setup");
+          const accepted = readCarriedReceipt(
+            response.receiptToken,
+            carried,
+            response.carriedPublicKey,
+          );
+          if (!current || accepted) return;
+        }
+      } catch {
+        // The carried phone may still be creating its keys or sending chunks.
+      }
+      if (current) timer = window.setTimeout(() => void poll(), 3_000);
+    };
+    void poll();
+    return () => {
+      current = false;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [carried, readCarriedReceipt, settings.mailboxUrl, step]);
+
+  const confirmCarried = (): void => {
+    if (carried.name === "waiting") readCarriedReceipt(receipt, carried);
+  };
+
+  // The route changes without a reload. Render no first-run step while React
+  // hands the completed setup to the home-vault surface.
+  if (setupComplete) return <></>;
 
   const finish = (): void => {
     markOnboarded();
@@ -894,7 +989,43 @@ export function OnboardingSurface(): JSX.Element {
           </StatusLine>
           <TechnicalDetail>{carried.reason}</TechnicalDetail>
           <Actions>
-            <Button label="Try again" onClick={prepareCarried} />
+            <Button
+              label="Try again"
+              onClick={() => setCarried({ name: "building" })}
+            />
+          </Actions>
+          <Live message={live} />
+        </Screen>,
+      );
+    }
+
+    if (carried.name === "confirm") {
+      return shell(
+        <Screen
+          lede="Compare this with the code on the carried phone."
+          onBack={() => {
+            setReceiptError(null);
+            setCarried(carried.invitation);
+            setLive("Waiting for the carried phone");
+          }}
+          title="Check your carried wallet"
+        >
+          <p className="fingerprint">{carried.receipt.confirmationCode}</p>
+          {receiptError === null ? null : (
+            <Note tone="caution">{receiptError}</Note>
+          )}
+          <Actions>
+            <Button
+              disabled={savingReceipt}
+              icon={<CheckCircleIcon />}
+              label={savingReceipt ? "Finishing" : "It matches"}
+              onClick={() =>
+                void confirmCarriedPairing(
+                  carried.receipt,
+                  carried.carriedPublicKey,
+                )
+              }
+            />
           </Actions>
           <Live message={live} />
         </Screen>,
@@ -917,40 +1048,50 @@ export function OnboardingSurface(): JSX.Element {
         <StatusLine icon={<ScanIcon />}>
           Waiting for the carried phone.
         </StatusLine>
-        <form
-          className="wform"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void confirmCarried();
-          }}
-        >
-          <WalletField
-            error={receiptError}
-            hint="Scan it from the phone, or paste it here."
-            label="Code from the carried phone"
+        <Actions>
+          <Button
+            label="Replace invitation"
+            onClick={() => setCarried({ name: "building" })}
+            tone="quiet"
+          />
+        </Actions>
+        <details className="detail">
+          <summary>Having trouble?</summary>
+          <form
+            className="wform"
+            onSubmit={(event) => {
+              event.preventDefault();
+              confirmCarried();
+            }}
           >
-            {({ inputId, describedBy }) => (
-              <textarea
-                aria-describedby={describedBy}
-                className="winput winput--paste"
-                id={inputId}
-                onChange={(event) => setReceipt(event.target.value)}
-                placeholder="wrr2_…"
-                rows={3}
-                spellCheck={false}
-                value={receipt}
+            <WalletField
+              error={receiptError}
+              hint="The carried phone shows this if automatic pairing fails."
+              label="Backup code from the carried phone"
+            >
+              {({ inputId, describedBy }) => (
+                <textarea
+                  aria-describedby={describedBy}
+                  className="winput winput--paste"
+                  id={inputId}
+                  onChange={(event) => setReceipt(event.target.value)}
+                  placeholder="wrr2_…"
+                  rows={3}
+                  spellCheck={false}
+                  value={receipt}
+                />
+              )}
+            </WalletField>
+            <Actions>
+              <Button
+                disabled={savingReceipt || receipt.trim().length === 0}
+                icon={<CaretRightIcon />}
+                label={savingReceipt ? "Reading" : "Continue"}
+                type="submit"
               />
-            )}
-          </WalletField>
-          <Actions>
-            <Button
-              disabled={savingReceipt || receipt.trim().length === 0}
-              icon={<CaretRightIcon />}
-              label={savingReceipt ? "Reading" : "Continue"}
-              type="submit"
-            />
-          </Actions>
-        </form>
+            </Actions>
+          </form>
+        </details>
         <Live message={live} />
       </Screen>,
     );

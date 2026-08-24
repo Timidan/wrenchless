@@ -76,6 +76,22 @@ const settingsSchema = z
     deviceReceiptToken: z.string().nullable().default(null),
     /** Set when the person confirmed the other device had read the receipt. */
     deviceReceiptDoneAt: z.string().nullable().default(null),
+    /** One-use automatic return path supplied by a v3 carried invitation. */
+    pairingResponseMailboxId: z
+      .string()
+      .regex(/^[0-9a-f]{32}$/)
+      .nullable()
+      .default(null),
+    pairingResponseBindCapability: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .nullable()
+      .default(null),
+    pairingResponsePublicKey: z
+      .string()
+      .regex(/^04[0-9a-f]{128}$/)
+      .nullable()
+      .default(null),
     carriedDeviceCode: z.string().nullable().default(null),
     carriedPairedAt: z.string().nullable().default(null),
     guardianPairedAt: z.string().nullable().default(null),
@@ -124,6 +140,9 @@ const EMPTY: HubSettings = {
   deviceCode: null,
   deviceReceiptToken: null,
   deviceReceiptDoneAt: null,
+  pairingResponseMailboxId: null,
+  pairingResponseBindCapability: null,
+  pairingResponsePublicKey: null,
   carriedDeviceCode: null,
   carriedPairedAt: null,
   guardianPairedAt: null,
