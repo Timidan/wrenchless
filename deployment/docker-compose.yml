@@ -70,6 +70,7 @@ services:
       - sponsor_data:/data
     networks:
       - private
+      - sponsor_egress
     healthcheck:
       test:
         - CMD
@@ -87,5 +88,6 @@ volumes:
 networks:
   private:
     internal: true
+  sponsor_egress:
   public_proxy:
     external: true
