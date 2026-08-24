@@ -2,8 +2,12 @@
 
 FROM node:22.23.1-bookworm-slim AS pnpm-base
 ENV PNPM_HOME=/pnpm
+ENV COREPACK_HOME=/corepack
 ENV PATH=$PNPM_HOME:$PATH
-RUN corepack enable && corepack prepare pnpm@11.12.0 --activate
+RUN mkdir -p "$COREPACK_HOME" \
+    && corepack enable \
+    && corepack prepare pnpm@11.12.0 --activate \
+    && chmod -R a+rX "$COREPACK_HOME"
 WORKDIR /app
 
 FROM pnpm-base AS hub-build
