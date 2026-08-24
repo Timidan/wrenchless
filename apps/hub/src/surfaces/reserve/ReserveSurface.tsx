@@ -1309,6 +1309,7 @@ export function ReserveSurface(): JSX.Element {
               <Button
                 disabled={fund.name === "proving" || pause.active}
                 icon={<ArrowsClockwiseIcon />}
+                iconMotion={fund.name === "proving" ? "spin" : undefined}
                 label={
                   pause.active
                     ? "Paused"
@@ -1406,7 +1407,7 @@ export function ReserveSurface(): JSX.Element {
       ) : null}
 
       {rail.name === "settling" ? (
-        <StatusLine icon={<ArrowsClockwiseIcon />}>
+        <StatusLine icon={<ArrowsClockwiseIcon />} iconMotion="spin">
           Private balance is settling.
         </StatusLine>
       ) : null}

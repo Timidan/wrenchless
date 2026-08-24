@@ -143,16 +143,25 @@ export function Button(props: {
   disabled?: boolean | undefined;
   tone?: "outline" | "quiet" | undefined;
   type?: "button" | "submit" | undefined;
+  /** Set only while the state machine backing this button is actively
+   * working; the icon rotates and the button reports `aria-busy`. */
+  iconMotion?: "spin" | undefined;
 }): JSX.Element {
+  const spinning = props.iconMotion === "spin";
   return (
     <button
+      aria-busy={spinning ? "true" : undefined}
       className={props.tone === "quiet" ? "wbtn wbtn--quiet" : "wbtn"}
       disabled={props.disabled === true}
       {...(props.onClick === undefined ? {} : { onClick: props.onClick })}
       type={props.type ?? "button"}
     >
       {props.icon === undefined ? null : (
-        <span aria-hidden="true" className="wbtn__icon">
+        <span
+          aria-hidden="true"
+          className="wbtn__icon"
+          data-icon-motion={spinning ? "spin" : undefined}
+        >
           {props.icon}
         </span>
       )}
@@ -269,10 +278,22 @@ export function StatusLine(props: {
   icon: ReactNode;
   tone?: "plain" | "alert" | undefined;
   children: ReactNode;
+  /** Set only while the state machine behind this line is actively
+   * working; the icon rotates and the line reports `aria-busy`. */
+  iconMotion?: "spin" | undefined;
 }): JSX.Element {
+  const spinning = props.iconMotion === "spin";
   return (
-    <p className="statusline" data-tone={props.tone ?? "plain"}>
-      <span aria-hidden="true" className="statusline__icon">
+    <p
+      aria-busy={spinning ? "true" : undefined}
+      className="statusline"
+      data-tone={props.tone ?? "plain"}
+    >
+      <span
+        aria-hidden="true"
+        className="statusline__icon"
+        data-icon-motion={spinning ? "spin" : undefined}
+      >
         {props.icon}
       </span>
       <span>{props.children}</span>

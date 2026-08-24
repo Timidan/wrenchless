@@ -914,6 +914,39 @@ html.reduced-motion .iconbtn:active {
   height: 20px;
 }
 
+/* Processing icons rotate only while their state machine says work is
+   running. Settled and status icons (balance low, restore, refresh CTAs)
+   never opt in, so this never runs on them. */
+@keyframes processing-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.statusline__icon[data-icon-motion="spin"],
+.wbtn__icon[data-icon-motion="spin"],
+.wmenu__icon[data-icon-motion="spin"] {
+  animation: processing-spin var(--dur-spin) linear infinite;
+  transform-origin: center;
+}
+
+/* These come after (and outweigh, via html.reduced-motion) the spin rule
+   above so an opted-in processing icon still stops rotating once reduced
+   motion is requested, mid-animation or not. */
+html.reduced-motion .statusline__icon[data-icon-motion="spin"],
+html.reduced-motion .wbtn__icon[data-icon-motion="spin"],
+html.reduced-motion .wmenu__icon[data-icon-motion="spin"] {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .statusline__icon[data-icon-motion="spin"],
+  .wbtn__icon[data-icon-motion="spin"],
+  .wmenu__icon[data-icon-motion="spin"] {
+    animation: none;
+  }
+}
+
 .wnote {
   color: var(--ink-body);
   font-size: 0.875rem;

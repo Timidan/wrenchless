@@ -130,6 +130,7 @@ export function ActivityView(): JSX.Element {
           <Button
             disabled={checking}
             icon={<ArrowsClockwiseIcon />}
+            iconMotion={checking ? "spin" : undefined}
             label={checking ? "Checking" : "Check statuses"}
             onClick={() => void check()}
           />

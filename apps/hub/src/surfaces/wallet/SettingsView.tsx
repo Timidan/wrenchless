@@ -93,12 +93,16 @@ export function SettingsView(props: { account: string; onLock: () => void }): JS
       <ul className="wmenu">
         <li>
           <button
+            aria-busy={sync.name === "running" ? "true" : undefined}
             className="wmenu__item"
             disabled={sync.name === "running"}
             onClick={() => void runSync()}
             type="button"
           >
-            <span className="wmenu__icon">
+            <span
+              className="wmenu__icon"
+              data-icon-motion={sync.name === "running" ? "spin" : undefined}
+            >
               <ArrowsClockwiseIcon aria-hidden="true" />
             </span>
             <span className="wmenu__copy">

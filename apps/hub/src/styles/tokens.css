@@ -151,6 +151,9 @@
   --dur-mid: 360ms;
   /* Exits are shorter than the enters they undo: leaving is not an event. */
   --dur-exit: 240ms;
+  /* The one constant-progress motion: a processing icon telling a person
+     work is still running, not settling toward a resting state. */
+  --dur-spin: 900ms;
 
   /* ---- spacing --------------------------------------------------------- */
   --space-1: 4px;

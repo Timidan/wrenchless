@@ -548,7 +548,7 @@ export function SignalsSurface(): JSX.Element {
             Automatic update failed.
           </StatusLine>
         ) : (
-          <StatusLine icon={<ArrowsClockwiseIcon />}>
+          <StatusLine icon={<ArrowsClockwiseIcon />} iconMotion="spin">
             Updating the other device.
           </StatusLine>
         )}
@@ -763,6 +763,7 @@ export function SignalsSurface(): JSX.Element {
         <Button
           disabled={keyState.name !== "ready" || inbox.name === "loading"}
           icon={<ArrowsClockwiseIcon />}
+          iconMotion={inbox.name === "loading" ? "spin" : undefined}
           label={inbox.name === "loading" ? "Checking" : "Check again"}
           onClick={() => {
             if (keyState.name === "ready") void refresh(keyState.key);
