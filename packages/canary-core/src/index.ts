@@ -114,6 +114,12 @@ export type {
   RefillTicketStore,
 } from "./refill-ticket-store.js";
 export {
+  chooseTravelSafeRelease,
+  deriveTravelSafeSecrets,
+  generateTravelSafePhrase,
+} from "./travel-safe.js";
+export type { TravelSafeSecrets } from "./travel-safe.js";
+export {
   buildRefillFundRelayPlan,
   buildRegistrationRelayPlan,
 } from "./relay-plan.js";
