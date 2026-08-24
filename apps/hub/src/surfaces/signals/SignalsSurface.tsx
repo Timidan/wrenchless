@@ -408,7 +408,10 @@ export function SignalsSurface(): JSX.Element {
 
   /* ---------- pairing ---------- */
 
-  if (!paired) {
+  // A QR link is an explicit request to pair this phone again. It must take
+  // precedence over an older local pairing; otherwise the phone silently
+  // resends its previous response while the new home vault waits forever.
+  if (!paired || asking) {
     if (!asking) {
       return shell(
         <Screen
