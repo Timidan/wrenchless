@@ -1,7 +1,9 @@
 import {
   generateGuardianControlKeypair,
+  fingerprintGuardianPublicKey,
   HeartbeatEnvelopeSchema,
   openGuardianControl,
+  openGuardianEnrollmentResponse,
   resolveRestorePause,
   sealRestorePause,
   type GuardianControlPlaintext,
@@ -10,6 +12,10 @@ import {
 import { z } from "zod";
 
 import { deliverHeartbeat } from "./mailbox-client.js";
+import {
+  createGuardianEnrollmentBundle,
+  type GuardianEnrollmentBundle,
+} from "./role-handoff.js";
 
 /**
  * The one channel that runs backwards.
@@ -202,6 +208,50 @@ export async function retrieveRestorePauseCommands(input: {
     }
   }
   return opened;
+}
+
+export async function retrieveGuardianEnrollment(input: {
+  mailboxUrl: string;
+  mailboxId: string;
+  receiveCapability: string;
+  controlPrivateKey: CryptoKey;
+  fetcher?: typeof fetch;
+}): Promise<GuardianEnrollmentBundle | null> {
+  const response = await (input.fetcher ?? fetch)(
+    new URL(
+      `v1/mailboxes/${input.mailboxId}/envelopes`,
+      mailboxBase(input.mailboxUrl),
+    ),
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${input.receiveCapability}` },
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`The control inbox returned HTTP ${response.status}`);
+  }
+  const contents = controlContentsSchema.parse(await response.json());
+  for (const envelope of contents.envelopes) {
+    try {
+      const enrollment = await openGuardianEnrollmentResponse(
+        envelope,
+        input.controlPrivateKey,
+        contents.senderEncryptionPublicKey,
+      );
+      return createGuardianEnrollmentBundle({
+        guardianPublicKey: contents.senderEncryptionPublicKey,
+        guardianFingerprint: await fingerprintGuardianPublicKey(
+          contents.senderEncryptionPublicKey,
+        ),
+        mailboxUrl: input.mailboxUrl,
+        mailboxId: enrollment.mailboxId,
+        mailboxBindCapability: enrollment.mailboxBindCapability,
+      });
+    } catch {
+      // Pause commands and malformed replies are not enrollment responses.
+    }
+  }
+  return null;
 }
 
 /** The guardian's half: seal a pause to the home vault and deliver it. */

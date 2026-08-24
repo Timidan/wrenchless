@@ -175,15 +175,25 @@ export async function generateGuardianHeartbeatKeypair(): Promise<GuardianHeartb
   const publicKeyBytes = new Uint8Array(
     await suite.kem.serializePublicKey(keyPair.publicKey),
   );
-  const digest = new Uint8Array(
-    await crypto.subtle.digest("SHA-256", publicKeyBytes),
-  );
-  const fingerprintHex = bytesToHex(digest.slice(0, 10));
+  const publicKey = bytesToHex(publicKeyBytes);
   return {
     keyPair,
-    publicKey: bytesToHex(publicKeyBytes),
-    fingerprint: fingerprintHex.match(/.{4}/g)?.join("-") ?? fingerprintHex,
+    publicKey,
+    fingerprint: await fingerprintGuardianPublicKey(publicKey),
   };
+}
+
+export async function fingerprintGuardianPublicKey(
+  publicKey: string,
+): Promise<string> {
+  if (!/^04[0-9a-f]{128}$/.test(publicKey)) {
+    throw new Error("guardian public key is not an encoded P-256 key");
+  }
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", hexToBytes(publicKey)),
+  );
+  const fingerprintHex = bytesToHex(digest.slice(0, 10));
+  return fingerprintHex.match(/.{4}/g)?.join("-") ?? fingerprintHex;
 }
 
 /**

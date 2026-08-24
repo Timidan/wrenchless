@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   generateGuardianControlKeypair,
   openGuardianControl,
+  openGuardianEnrollmentResponse,
   resolveRestorePause,
+  sealGuardianEnrollmentResponse,
   sealRestorePause,
 } from "./guardian-control.js";
 
@@ -39,6 +41,42 @@ describe("guardian restore pause", () => {
       action: "PAUSE_NEW_RESTORES",
       requestedAt: "2026-08-21T18:02:00.000Z",
       restoresBlockedUntil: "2026-08-22T18:02:00.000Z",
+    });
+  });
+
+  it("returns guardian enrollment through the authenticated control mailbox", async () => {
+    const vault = await generateGuardianControlKeypair();
+    const guardian = await generateGuardianControlKeypair();
+    const envelope = await sealGuardianEnrollmentResponse(
+      {
+        mailboxId: "a".repeat(32),
+        mailboxBindCapability: "b".repeat(64),
+      },
+      vault.publicKey,
+      guardian.keyPair.privateKey,
+      NOW,
+    );
+
+    expect(envelope.ciphertext).toHaveLength(1056);
+    expect(JSON.stringify(envelope)).not.toContain("b".repeat(64));
+    await expect(
+      openGuardianControl(
+        envelope,
+        vault.keyPair.privateKey,
+        guardian.publicKey,
+      ),
+    ).rejects.toThrow("not a restore pause");
+    await expect(
+      openGuardianEnrollmentResponse(
+        envelope,
+        vault.keyPair.privateKey,
+        guardian.publicKey,
+      ),
+    ).resolves.toMatchObject({
+      action: "ENROLL_GUARDIAN",
+      createdAt: "2026-08-21T18:02:00.000Z",
+      mailboxId: "a".repeat(32),
+      mailboxBindCapability: "b".repeat(64),
     });
   });
 

@@ -54,8 +54,32 @@ const guardianControlPlaintextSchema = z
     }
   });
 
+const guardianEnrollmentResponseSchema = z
+  .object({
+    protocolVersion: z.literal("wrenchless.guardian-enrollment-response.v1"),
+    messageId: z.string().regex(/^[0-9a-f]{32}$/),
+    action: z.literal("ENROLL_GUARDIAN"),
+    createdAt: minuteTimestampSchema,
+    mailboxId: z.string().regex(/^[0-9a-f]{32}$/),
+    mailboxBindCapability: z.string().regex(/^[0-9a-f]{64}$/),
+    nonce: z.string().regex(/^[0-9a-f]{32}$/),
+  })
+  .strict();
+
+const guardianMailboxPlaintextSchema = z.discriminatedUnion("action", [
+  guardianControlPlaintextSchema,
+  guardianEnrollmentResponseSchema,
+]);
+
 export type GuardianControlPlaintext = z.infer<
   typeof guardianControlPlaintextSchema
+>;
+export type GuardianEnrollmentResponse = z.infer<
+  typeof guardianEnrollmentResponseSchema
+>;
+export type SealGuardianEnrollmentResponseInput = Pick<
+  GuardianEnrollmentResponse,
+  "mailboxId" | "mailboxBindCapability"
 >;
 
 export type RestorePauseState = {
@@ -98,7 +122,7 @@ function envelopeAad(
 }
 
 function padPlaintext(
-  plaintext: GuardianControlPlaintext,
+  plaintext: GuardianControlPlaintext | GuardianEnrollmentResponse,
 ): Uint8Array<ArrayBuffer> {
   const encoded = new TextEncoder().encode(JSON.stringify(plaintext));
   if (encoded.length > PLAINTEXT_SIZE - HEADER_SIZE) {
@@ -111,7 +135,9 @@ function padPlaintext(
   return padded;
 }
 
-function unpadPlaintext(padded: ArrayBuffer): GuardianControlPlaintext {
+function unpadPlaintext(
+  padded: ArrayBuffer,
+): GuardianControlPlaintext | GuardianEnrollmentResponse {
   if (padded.byteLength !== PLAINTEXT_SIZE) {
     throw new Error("guardian control plaintext has the wrong fixed size");
   }
@@ -121,7 +147,7 @@ function unpadPlaintext(padded: ArrayBuffer): GuardianControlPlaintext {
     throw new Error("guardian control plaintext length is invalid");
   }
   try {
-    return guardianControlPlaintextSchema.parse(
+    return guardianMailboxPlaintextSchema.parse(
       JSON.parse(
         new TextDecoder().decode(
           bytes.slice(HEADER_SIZE, HEADER_SIZE + payloadLength),
@@ -138,14 +164,44 @@ export async function generateGuardianControlKeypair(): Promise<GuardianHeartbea
   return generateGuardianHeartbeatKeypair();
 }
 
+async function sealGuardianMailboxPlaintext(
+  vaultControlPublicKey: string,
+  guardianPrivateKey: CryptoKey,
+  plaintext: GuardianControlPlaintext | GuardianEnrollmentResponse,
+  createdAt: string,
+  expiresAt: string,
+): Promise<HeartbeatEnvelope> {
+  if (!/^04[0-9a-f]{128}$/.test(vaultControlPublicKey)) {
+    throw new Error("vault control public key is not an encoded P-256 key");
+  }
+  const recipientPublicKey = await suite.kem.deserializePublicKey(
+    hexToBytes(vaultControlPublicKey),
+  );
+  const sealed = await suite.seal(
+    {
+      recipientPublicKey,
+      senderKey: guardianPrivateKey,
+      info: HPKE_INFO,
+    },
+    padPlaintext(plaintext),
+    envelopeAad(plaintext.messageId, createdAt, expiresAt),
+  );
+  return HeartbeatEnvelopeSchema.parse({
+    protocolVersion: "wrenchless.heartbeat.v1",
+    suite: "DHKEM-P256-HKDF-SHA256/HKDF-SHA256/AES-256-GCM",
+    messageId: plaintext.messageId,
+    createdAt,
+    expiresAt,
+    encapsulatedKey: bytesToHex(new Uint8Array(sealed.enc)),
+    ciphertext: bytesToHex(new Uint8Array(sealed.ct)),
+  });
+}
+
 export async function sealRestorePause(
   vaultControlPublicKey: string,
   guardianPrivateKey: CryptoKey,
   now = new Date(),
 ): Promise<HeartbeatEnvelope> {
-  if (!/^04[0-9a-f]{128}$/.test(vaultControlPublicKey)) {
-    throw new Error("vault control public key is not an encoded P-256 key");
-  }
   const messageId = randomHex(16);
   const requestedAt = minuteTimestamp(now);
   const restoresBlockedUntil = new Date(
@@ -162,34 +218,48 @@ export async function sealRestorePause(
     restoresBlockedUntil,
     nonce: randomHex(16),
   });
-  const recipientPublicKey = await suite.kem.deserializePublicKey(
-    hexToBytes(vaultControlPublicKey),
+  return sealGuardianMailboxPlaintext(
+    vaultControlPublicKey,
+    guardianPrivateKey,
+    plaintext,
+    requestedAt,
+    envelopeExpiresAt,
   );
-  const sealed = await suite.seal(
-    {
-      recipientPublicKey,
-      senderKey: guardianPrivateKey,
-      info: HPKE_INFO,
-    },
-    padPlaintext(plaintext),
-    envelopeAad(messageId, requestedAt, envelopeExpiresAt),
-  );
-  return HeartbeatEnvelopeSchema.parse({
-    protocolVersion: "wrenchless.heartbeat.v1",
-    suite: "DHKEM-P256-HKDF-SHA256/HKDF-SHA256/AES-256-GCM",
-    messageId,
-    createdAt: requestedAt,
-    expiresAt: envelopeExpiresAt,
-    encapsulatedKey: bytesToHex(new Uint8Array(sealed.enc)),
-    ciphertext: bytesToHex(new Uint8Array(sealed.ct)),
-  });
 }
 
-export async function openGuardianControl(
+export async function sealGuardianEnrollmentResponse(
+  input: SealGuardianEnrollmentResponseInput,
+  vaultControlPublicKey: string,
+  guardianPrivateKey: CryptoKey,
+  now = new Date(),
+): Promise<HeartbeatEnvelope> {
+  const createdAt = minuteTimestamp(now);
+  const expiresAt = new Date(
+    Date.parse(createdAt) + MAILBOX_RETENTION_MILLISECONDS,
+  ).toISOString();
+  const plaintext = guardianEnrollmentResponseSchema.parse({
+    protocolVersion: "wrenchless.guardian-enrollment-response.v1",
+    messageId: randomHex(16),
+    action: "ENROLL_GUARDIAN",
+    createdAt,
+    mailboxId: input.mailboxId,
+    mailboxBindCapability: input.mailboxBindCapability,
+    nonce: randomHex(16),
+  });
+  return sealGuardianMailboxPlaintext(
+    vaultControlPublicKey,
+    guardianPrivateKey,
+    plaintext,
+    createdAt,
+    expiresAt,
+  );
+}
+
+async function openGuardianMailboxEnvelope(
   envelopeInput: HeartbeatEnvelope,
   vaultControlPrivateKey: CryptoKey,
   guardianPublicKey: string,
-): Promise<GuardianControlPlaintext> {
+): Promise<GuardianControlPlaintext | GuardianEnrollmentResponse> {
   const envelope = HeartbeatEnvelopeSchema.parse(envelopeInput);
   if (!/^04[0-9a-f]{128}$/.test(guardianPublicKey)) {
     throw new Error("guardian public key is not an encoded P-256 key");
@@ -213,13 +283,51 @@ export async function openGuardianControl(
     throw new Error("guardian control could not be decrypted");
   }
   const plaintext = unpadPlaintext(padded);
+  const plaintextCreatedAt =
+    plaintext.action === "ENROLL_GUARDIAN"
+      ? plaintext.createdAt
+      : plaintext.requestedAt;
   if (
     plaintext.messageId !== envelope.messageId ||
-    plaintext.requestedAt !== envelope.createdAt
+    plaintextCreatedAt !== envelope.createdAt
   ) {
-    throw new Error("guardian control plaintext does not match its envelope");
+    throw new Error("guardian plaintext does not match its envelope");
   }
   return plaintext;
+}
+
+export async function openGuardianControl(
+  envelopeInput: HeartbeatEnvelope,
+  vaultControlPrivateKey: CryptoKey,
+  guardianPublicKey: string,
+): Promise<GuardianControlPlaintext> {
+  const plaintext = await openGuardianMailboxEnvelope(
+    envelopeInput,
+    vaultControlPrivateKey,
+    guardianPublicKey,
+  );
+  const command = guardianControlPlaintextSchema.safeParse(plaintext);
+  if (!command.success) {
+    throw new Error("guardian envelope is not a restore pause");
+  }
+  return command.data;
+}
+
+export async function openGuardianEnrollmentResponse(
+  envelopeInput: HeartbeatEnvelope,
+  vaultControlPrivateKey: CryptoKey,
+  guardianPublicKey: string,
+): Promise<GuardianEnrollmentResponse> {
+  const plaintext = await openGuardianMailboxEnvelope(
+    envelopeInput,
+    vaultControlPrivateKey,
+    guardianPublicKey,
+  );
+  const response = guardianEnrollmentResponseSchema.safeParse(plaintext);
+  if (!response.success) {
+    throw new Error("guardian envelope is not an enrollment response");
+  }
+  return response.data;
 }
 
 /**

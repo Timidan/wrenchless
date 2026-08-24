@@ -13,6 +13,7 @@ export type { JsonObject, JsonValue } from "./json.js";
 export {
   generateGuardianHeartbeatKeypair,
   generateMailboxSigningKeypair,
+  fingerprintGuardianPublicKey,
   heartbeatEnvelopeSigningBytes,
   HeartbeatEnvelopeSchema,
   openHeartbeat,
@@ -30,12 +31,16 @@ export type {
 export {
   generateGuardianControlKeypair,
   openGuardianControl,
+  openGuardianEnrollmentResponse,
   resolveRestorePause,
+  sealGuardianEnrollmentResponse,
   sealRestorePause,
 } from "./guardian-control.js";
 export type {
   GuardianControlPlaintext,
+  GuardianEnrollmentResponse,
   RestorePauseState,
+  SealGuardianEnrollmentResponseInput,
 } from "./guardian-control.js";
 export { assertRegistrationOnly } from "./pool-call.js";
 export type { RegistrationActionSummary } from "./pool-call.js";

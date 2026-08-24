@@ -1,7 +1,10 @@
 import type { JSX } from "react";
 import { useCallback, useEffect, useState } from "react";
 
-import type { HeartbeatPlaintext } from "@wrenchless/canary-core";
+import {
+  sealGuardianEnrollmentResponse,
+  type HeartbeatPlaintext,
+} from "@wrenchless/canary-core";
 import {
   getOrCreateGuardianHeartbeatKey,
   readGuardianHeartbeatKey,
@@ -13,7 +16,7 @@ import {
 } from "../../lib/guardian-mailbox";
 import { createGuardianEnrollmentBundle } from "../../lib/role-handoff";
 import { sendRestorePause } from "../../lib/vault-control";
-import { bindMailboxSender } from "../../lib/mailbox-client";
+import { bindMailboxSender, deliverHeartbeat } from "../../lib/mailbox-client";
 import { formatTimestamp, reasonFrom } from "../../adapters/amount";
 import {
   acknowledge,
@@ -30,8 +33,8 @@ import {
   devicePasskeysAvailable,
   verifyDevicePasskey,
 } from "../../adapters/device-passkey";
-import { toPairingCode } from "../../adapters/pairing-code";
-import { useSettings, writeSettings } from "../../adapters/settings";
+import { fromPairingCode, toPairingCode } from "../../adapters/pairing-code";
+import { readSettings, useSettings, writeSettings } from "../../adapters/settings";
 import {
   ArrowsClockwiseIcon,
   CheckCircleIcon,
@@ -94,6 +97,12 @@ type Pause =
   | { name: "sent"; blockedUntil: string }
   | { name: "failed"; reason: string };
 
+type PairDelivery =
+  | { name: "idle" }
+  | { name: "sending" }
+  | { name: "sent" }
+  | { name: "failed"; reason: string };
+
 type View = "home" | "pause";
 
 function endsAt(iso: string): string {
@@ -113,6 +122,7 @@ export function SignalsSurface(): JSX.Element {
   const [pairingCode, setPairingCode] = useState<string | null>(
     settings.guardianResponseToken,
   );
+  const [pairDelivery, setPairDelivery] = useState<PairDelivery>({ name: "idle" });
   const [pairError, setPairError] = useState<string | null>(null);
   const [invitationText, setInvitationText] = useState("");
   const [asking, setAsking] = useState(false);
@@ -155,14 +165,68 @@ export function SignalsSurface(): JSX.Element {
     setInvitationText(token);
   }, []);
 
+  const sendPairingResponse = useCallback(async (code: string): Promise<void> => {
+    const parsed = fromPairingCode(code);
+    if (!parsed.ok) throw new Error(parsed.message);
+    const currentSettings = readSettings();
+    if (
+      currentSettings.controlTargetUrl === null ||
+      currentSettings.controlTargetId === null ||
+      currentSettings.controlTargetPublicKey === null
+    ) {
+      throw new Error("The original pairing request is no longer available.");
+    }
+    const key = await readGuardianHeartbeatKey();
+    if (key === null) throw new Error("This guardian key is unavailable.");
+    const response = await sealGuardianEnrollmentResponse(
+      {
+        mailboxId: parsed.bundle.mailboxId,
+        mailboxBindCapability: parsed.bundle.mailboxBindCapability,
+      },
+      currentSettings.controlTargetPublicKey,
+      key.privateKey,
+    );
+    await deliverHeartbeat(
+      {
+        mailboxUrl: currentSettings.controlTargetUrl,
+        mailboxId: currentSettings.controlTargetId,
+        senderSigningPrivateKey: key.signingPrivateKey,
+      },
+      response,
+    );
+  }, []);
+
+  useEffect(() => {
+    if (pairingCode === null || pairDelivery.name !== "idle") return;
+    let current = true;
+    setPairDelivery({ name: "sending" });
+    setLive("Updating the other device");
+    void sendPairingResponse(pairingCode)
+      .then(() => {
+        if (!current) return;
+        setPairDelivery({ name: "sent" });
+        setLive("The other device updated.");
+      })
+      .catch(() => {
+        if (!current) return;
+        setPairDelivery({
+          name: "failed",
+          reason: "The pairing mailbox did not accept the response.",
+        });
+        setLive("Automatic update did not reach them.");
+      });
+    return () => {
+      current = false;
+    };
+  }, [pairDelivery.name, pairingCode, sendPairingResponse]);
+
   /**
    * Accepts their invitation and answers it in one step.
    *
    * A key without an inbox cannot receive anything and an inbox without a key
    * cannot be read, so offering them separately only creates a state where
-   * neither works. What comes out is the code they have to type back — which is
-   * this phone's own key material, and therefore something their screen could
-   * not have produced on its own.
+   * neither works. The signed response goes back through the control mailbox;
+   * the visible code is only the recovery path if delivery fails.
    */
   const accept = async (): Promise<void> => {
     const parsed = fromGuardianInvitation(invitationText);
@@ -222,10 +286,10 @@ export function SignalsSurface(): JSX.Element {
         }),
       );
       writeSettings({ guardianResponseToken: responseToken });
+      setPairDelivery({ name: "idle" });
       setPairingCode(responseToken);
       setInvitationText("");
       setAsking(false);
-      setLive("Read your code back to them.");
     } catch (caught) {
       setPairError(reasonFrom(caught));
       setLive("Setup did not finish");
@@ -456,14 +520,19 @@ export function SignalsSurface(): JSX.Element {
     );
   }
 
-  /* ---------- the code to read back ---------- */
+  /* ---------- pairing confirmation ---------- */
 
   if (pairingCode !== null) {
+    const deliveryFailed = pairDelivery.name === "failed";
     return shell(
       <Screen
         center
-        lede="They are waiting for it on their setup screen."
-        title="Read this code back"
+        lede={
+          deliveryFailed
+            ? "Use the backup code below."
+            : "Return to the other device."
+        }
+        title={deliveryFailed ? "One more step" : "Guardian paired"}
       >
         <Emblem>
           <CheckCircleIcon />
@@ -471,12 +540,34 @@ export function SignalsSurface(): JSX.Element {
         {keyState.name === "ready" ? (
           <p className="fingerprint">{keyState.key.fingerprint}</p>
         ) : null}
-        <CopyValue
-          label="Your code"
-          note="It lets their wallet reach you, and nothing else."
-          value={pairingCode}
-        />
+        {pairDelivery.name === "sent" ? (
+          <StatusLine icon={<CheckCircleIcon />}>Other device updated.</StatusLine>
+        ) : deliveryFailed ? (
+          <StatusLine icon={<WarningCircleIcon />} tone="alert">
+            Automatic update failed.
+          </StatusLine>
+        ) : (
+          <StatusLine icon={<ArrowsClockwiseIcon />}>
+            Updating the other device.
+          </StatusLine>
+        )}
+        <details className="detail" open={deliveryFailed}>
+          <summary>Having trouble?</summary>
+          <CopyValue
+            label="Backup code"
+            note="Paste this into the other device."
+            value={pairingCode}
+          />
+          {pairDelivery.name === "failed" ? <p>{pairDelivery.reason}</p> : null}
+        </details>
         <Actions>
+          {deliveryFailed ? (
+            <Button
+              label="Try again"
+              onClick={() => setPairDelivery({ name: "idle" })}
+              tone="quiet"
+            />
+          ) : null}
           <Button
             label="Done"
             onClick={() => {

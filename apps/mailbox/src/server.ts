@@ -316,7 +316,12 @@ export function createMailboxServer(
           sendJson(response, 401, { error: "unauthorized" });
           return;
         }
-        if (!rates.allow(`receive:${remoteAddress(request, trustProxy)}`, 480)) {
+        if (
+          !rates.allow(
+            `receive:${path.mailboxId}:${remoteAddress(request, trustProxy)}`,
+            480,
+          )
+        ) {
           response.setHeader("Retry-After", "3600");
           sendJson(response, 429, { error: "rate_limited" });
           return;

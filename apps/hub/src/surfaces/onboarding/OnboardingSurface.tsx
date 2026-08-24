@@ -15,7 +15,11 @@ import {
   importCarriedRestoreRequests,
   parseCarriedReceipt,
 } from "../../lib/refill-pairing";
-import { getOrCreateVaultControlKey } from "../../lib/vault-control";
+import {
+  getOrCreateVaultControlKey,
+  readVaultControlKey,
+  retrieveGuardianEnrollment,
+} from "../../lib/vault-control";
 import {
   formatStrk,
   formatStrkExact,
@@ -304,6 +308,51 @@ export function OnboardingSurface(): JSX.Element {
       setLive(null);
     }
   };
+
+  useEffect(() => {
+    if (step !== "guardian" || guardian.name !== "waiting") return;
+    const mailboxId = settings.controlInboxId;
+    const receiveCapability = settings.controlInboxReceiveCapability;
+    if (mailboxId === null || receiveCapability === null) return;
+    let current = true;
+    let timer: number | null = null;
+    const poll = async (): Promise<void> => {
+      try {
+        const control = await readVaultControlKey();
+        if (control === null) {
+          throw new Error("The home-vault control key is unavailable.");
+        }
+        const bundle = await retrieveGuardianEnrollment({
+          mailboxUrl: settings.mailboxUrl,
+          mailboxId,
+          receiveCapability,
+          controlPrivateKey: control.privateKey,
+        });
+        if (!current) return;
+        if (bundle !== null) {
+          setTheirCode("");
+          setTheirCodeError(null);
+          setGuardian({ name: "confirm", bundle });
+          setLive("Check the code with them");
+          return;
+        }
+      } catch {
+        // The sender is not bound until the other device finishes its passkey.
+      }
+      if (current) timer = window.setTimeout(() => void poll(), 3_000);
+    };
+    void poll();
+    return () => {
+      current = false;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [
+    guardian.name,
+    settings.controlInboxId,
+    settings.controlInboxReceiveCapability,
+    settings.mailboxUrl,
+    step,
+  ]);
 
   const readTheirCode = (): void => {
     const parsed = fromPairingCode(theirCode);
@@ -783,40 +832,43 @@ export function OnboardingSurface(): JSX.Element {
             tone="quiet"
           />
         </Actions>
-        <form
-          className="wform"
-          onSubmit={(event) => {
-            event.preventDefault();
-            readTheirCode();
-          }}
-        >
-          <WalletField
-            error={theirCodeError}
-            hint="Their phone shows this once it has read your invitation."
-            label="Code from their phone"
+        <details className="detail">
+          <summary>Having trouble?</summary>
+          <form
+            className="wform"
+            onSubmit={(event) => {
+              event.preventDefault();
+              readTheirCode();
+            }}
           >
-            {({ inputId, describedBy }) => (
-              <textarea
-                aria-describedby={describedBy}
-                className="winput winput--paste"
-                id={inputId}
-                onChange={(event) => setTheirCode(event.target.value)}
-                placeholder="wrl2_…"
-                rows={3}
-                spellCheck={false}
-                value={theirCode}
+            <WalletField
+              error={theirCodeError}
+              hint="Their phone shows this if automatic pairing fails."
+              label="Backup code from their phone"
+            >
+              {({ inputId, describedBy }) => (
+                <textarea
+                  aria-describedby={describedBy}
+                  className="winput winput--paste"
+                  id={inputId}
+                  onChange={(event) => setTheirCode(event.target.value)}
+                  placeholder="wrl2_…"
+                  rows={3}
+                  spellCheck={false}
+                  value={theirCode}
+                />
+              )}
+            </WalletField>
+            <Actions>
+              <Button
+                disabled={theirCode.trim().length === 0}
+                icon={<CaretRightIcon />}
+                label="Continue"
+                type="submit"
               />
-            )}
-          </WalletField>
-          <Actions>
-            <Button
-              disabled={theirCode.trim().length === 0}
-              icon={<CaretRightIcon />}
-              label="Continue"
-              type="submit"
-            />
-          </Actions>
-        </form>
+            </Actions>
+          </form>
+        </details>
         <Live message={live} />
       </Screen>,
     );
