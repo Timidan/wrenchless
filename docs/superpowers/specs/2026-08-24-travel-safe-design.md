@@ -148,8 +148,8 @@ cleanup from destroying the only local key for real parked funds.
 ### Recovery phrase
 
 Wrenchless generates 128 random bits and encodes them as a twelve-word BIP-39
-phrase. The hub declares `@scure/bip39` as a direct dependency rather than
-depending on a transitive copy.
+phrase. The canary core declares `@scure/bip39` as a direct dependency rather
+than depending on a transitive copy.
 
 The validated phrase is converted back to its original entropy. Domain-separated
 HKDF-SHA256 expansion derives:
@@ -195,7 +195,7 @@ Persisted ticket status survives reload and uses strict transitions:
 View state is derived from the current screen, helper state, chain time, and the
 persisted ticket. It is never stored as lifecycle truth:
 
-- `DRAFT`, `FUND_PREPARING`, and `FUND_REVIEW` describe the create flow;
+- `DRAFT`, `FUND_REVIEW`, and `FUND_PREPARING` describe the create flow;
 - `LOCKED` means helper state `Funded` at or before the return date;
 - `RETURN_READY` means helper state `Funded` after the return date;
 - `RETURNED` means helper state `Refunded`;
@@ -238,11 +238,13 @@ It does not overwrite a different active local safe.
   default.
 - The UI compares expiry with chain time from a recent RPC block rather than
   trusting only the device clock.
-- Code and copy use `returnDate` for the contract's safe unlock time and
-  `submissionDeadline` for the short validity of a prepared CLAIM or REFUND.
-  Both values are never called `expiry` at the same interface boundary.
-- A prepared FUND exposes its `submissionDeadline`. Review shows the remaining
-  validity and re-prepares an expired artifact rather than submitting it.
+- App-domain code and copy use `returnDateSeconds` for the safe's unlock time.
+  The existing core artifact and contract boundary may retain the Cairo field
+  name `expiry`, but it is mapped once and never presented as a second deadline.
+- The STRK20 FUND proof is short-lived. Review happens before proof preparation;
+  **Park it** prepares and immediately hands the artifact to the sponsor in one
+  contiguous pending action. The proof is never persisted or left waiting on a
+  review screen, and every retry prepares a new proof.
 - Long countdowns update once per minute; below one hour they may update once per
   second. Reduced-motion mode uses static text and no ticking animation.
 
@@ -356,15 +358,15 @@ Errors must identify the next safe action:
 - insufficient private STRK or insufficient return-fee reserve;
 - passkey unavailable, cancelled, or belonging to another origin;
 - phrase invalid or safe not found;
-- FUND artifact past its submission deadline or sponsor unavailable;
+- FUND proof rejected as stale or sponsor unavailable;
 - sponsor accepted FUND but the transaction reverted or never reached funded
   state;
 - return date passed while FUND review was open, requiring a new date and proof;
 - connected Ready account changed after an artifact was prepared, requiring a
   fresh destination review;
 - safe not yet eligible for REFUND;
-- CLAIM submission deadline passed while preparing, in which case refresh state
-  and offer REFUND if the return date has now passed;
+- return date passed while CLAIM was preparing, in which case refresh state and
+  offer REFUND;
 - helper already terminal;
 - Ready rejection, proof failure, or transaction pending beyond the UI timeout.
 
