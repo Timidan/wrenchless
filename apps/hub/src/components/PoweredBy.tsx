@@ -17,9 +17,9 @@ interface PoweredByProps {
  *
  * The STRK[20] half is typographic on purpose. The protocol has no official
  * icon, and inventing one would put a mark on the page that no one else uses.
- * The Starknet half is the official lockup, unaltered, at 16px with the
- * brand's clear space (half the lockup height, so 8px) satisfied by the pill's
- * own padding on three sides and by the gap on the fourth.
+ * The Starknet half uses the official mark beside a text label. Keeping the
+ * mark local means this credit never depends on a font or image request to a
+ * third-party host.
  *
  * Nothing here animates and nothing here is a link: it is a credit line, and a
  * credit line that reaches for the cursor reads as an advert.
@@ -33,15 +33,18 @@ export function PoweredBy({ ground = "light" }: PoweredByProps): JSX.Element {
         <span className="powered__bracket">[20]</span>
       </span>
       <span className="powered__on">on</span>
-      <img
-        className="powered__lockup"
-        src={`/logos/starknet-wordmark-${ground}.svg`}
-        alt="Starknet"
-        width={70}
-        height={16}
-        loading="lazy"
-        decoding="async"
-      />
+      <span className="powered__network">
+        <img
+          className="powered__mark"
+          src="/logos/starknet-mark-light.svg"
+          alt=""
+          width={16}
+          height={16}
+          loading="lazy"
+          decoding="async"
+        />
+        <span>Starknet</span>
+      </span>
     </span>
   );
 }

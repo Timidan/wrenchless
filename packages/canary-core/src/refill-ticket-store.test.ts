@@ -1,104 +1,144 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  createRefillTicketStore,
-  generateRefillTicketSealingKey,
-  type RefillTicket,
-  type RefillTicketStorage,
+  createTravelSafeTicketStore,
+  generateTravelSafeTicketSealingKey,
+  TravelSafeTicketSchema,
+  type TravelSafeTicket,
+  type TravelSafeTicketStorage,
 } from "./refill-ticket-store.js";
 
-const CREATED_AT = "2026-08-21T18:00:00.000Z";
-const UPDATED_AT = "2026-08-21T18:05:00.000Z";
+const CREATED_AT = "2026-08-24T12:00:00.000Z";
+const UPDATED_AT = "2026-08-24T12:05:00.000Z";
 
-const COVER_TICKET: RefillTicket = {
-  schemaVersion: "wrenchless.refill-ticket.v1",
-  role: "cover",
+const TICKET: TravelSafeTicket = {
+  schemaVersion: "wrenchless.travel-safe-ticket.v1",
+  role: "safe",
   stateId: "0x111",
-  status: "CREATED",
-  claimPrivateKey: "0x12345",
-  claimPublicKey:
-    "0x65b7a03cb44c41a9184e56b26dd11d04a6f7fe3c4fdfc5a7b77e3e486a890dd",
+  status: "PHRASE_CONFIRMED",
+  claimCommitment: "0x222",
+  refundPrivateKey: "0x333",
+  refundPublicKey: "0x444",
+  tokenAddress: "0x555",
+  amountFri: "1000000000000000000",
+  returnDateSeconds: "1800003600",
+  fundProofExpiresAtBlock: null,
+  fundTransactionHash: null,
+  returnSubmittedAtBlock: null,
+  returnTransactionHash: null,
   createdAt: CREATED_AT,
   updatedAt: CREATED_AT,
 };
 
-type MemoryStorageFixture = {
-  storage: RefillTicketStorage;
+type MemoryStorageHarness = {
+  storage: TravelSafeTicketStorage;
   readOnlyValue(): string;
   replaceOnlyValue(value: string): void;
 };
 
-function createMemoryStorage(): MemoryStorageFixture {
+function memoryStorage(): MemoryStorageHarness {
   const values = new Map<string, string>();
   const onlyEntry = (): [string, string] => {
     const entry = values.entries().next().value;
-    if (entry === undefined) {
-      throw new Error("memory storage is empty");
-    }
+    if (entry === undefined) throw new Error("memory storage is empty");
     return entry;
   };
   return {
     storage: {
-      getItem(key) {
-        return values.get(key) ?? null;
-      },
-      setItem(key, value) {
-        values.set(key, value);
-      },
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, value),
+      removeItem: (key) => values.delete(key),
     },
-    readOnlyValue() {
-      return onlyEntry()[1];
-    },
-    replaceOnlyValue(value) {
-      values.set(onlyEntry()[0], value);
-    },
+    readOnlyValue: () => onlyEntry()[1],
+    replaceOnlyValue: (value) => values.set(onlyEntry()[0], value),
   };
 }
 
-describe("encrypted refill ticket storage", () => {
-  it("seals private material and enforces the refill lifecycle", async () => {
-    const memory = createMemoryStorage();
-    const store = createRefillTicketStore(
+describe("encrypted Travel Safe ticket storage", () => {
+  it("opens tickets written before receipt reconciliation fields existed", () => {
+    const {
+      fundProofExpiresAtBlock: _oldProofExpiry,
+      returnSubmittedAtBlock: _oldReturnBlock,
+      ...oldTicket
+    } = TICKET;
+
+    expect(TravelSafeTicketSchema.parse(oldTicket)).toMatchObject({
+      fundProofExpiresAtBlock: null,
+      returnSubmittedAtBlock: null,
+    });
+  });
+
+  it("seals the refund key and enforces the lifecycle", async () => {
+    const memory = memoryStorage();
+    const store = createTravelSafeTicketStore(
       memory.storage,
-      await generateRefillTicketSealingKey(),
+      await generateTravelSafeTicketSealingKey(),
     );
 
-    await store.saveNew(COVER_TICKET);
-    expect(memory.readOnlyValue()).not.toContain(COVER_TICKET.claimPrivateKey);
-    expect(await store.get(COVER_TICKET.stateId)).toEqual(COVER_TICKET);
-
-    const funded = await store.transition(
-      COVER_TICKET.stateId,
-      "FUNDED",
+    await store.saveNew(TICKET);
+    expect(memory.readOnlyValue()).not.toContain(TICKET.refundPrivateKey);
+    expect(await store.get(TICKET.stateId)).toEqual(TICKET);
+    await store.transition(
+      TICKET.stateId,
+      "FUND_SUBMITTING",
+      { fundProofExpiresAtBlock: "123456" },
       UPDATED_AT,
     );
-    expect(funded.status).toBe("FUNDED");
-    await expect(store.saveNew(COVER_TICKET)).rejects.toThrow(
-      "refill ticket already exists",
+    const funded = await store.transition(
+      TICKET.stateId,
+      "FUNDED",
+      { fundTransactionHash: "0x666" },
+      UPDATED_AT,
+    );
+    expect(funded).toMatchObject({
+      status: "FUNDED",
+      fundProofExpiresAtBlock: "123456",
+      fundTransactionHash: "0x666",
+    });
+    await store.transition(
+      TICKET.stateId,
+      "RETURN_SUBMITTING",
+      { returnSubmittedAtBlock: "123500" },
+      UPDATED_AT,
+    );
+    const terminal = await store.transition(
+      TICKET.stateId,
+      "TERMINAL",
+      { returnTransactionHash: "0x777" },
+      UPDATED_AT,
+    );
+    expect(terminal.status).toBe("TERMINAL");
+    expect(terminal.returnSubmittedAtBlock).toBe("123500");
+
+    await expect(store.saveNew(TICKET)).rejects.toThrow(
+      "Travel Safe ticket already exists",
     );
     await expect(
-      store.transition(COVER_TICKET.stateId, "REFUNDED"),
-    ).rejects.toThrow("invalid refill ticket transition FUNDED -> REFUNDED");
+      store.transition(TICKET.stateId, "FUNDED"),
+    ).rejects.toThrow("invalid Travel Safe ticket transition TERMINAL -> FUNDED");
+
+    store.remove(TICKET.stateId);
+    expect(await store.get(TICKET.stateId)).toBeNull();
   });
 
   it("rejects ciphertext tampering", async () => {
-    const memory = createMemoryStorage();
-    const store = createRefillTicketStore(
+    const memory = memoryStorage();
+    const store = createTravelSafeTicketStore(
       memory.storage,
-      await generateRefillTicketSealingKey(),
+      await generateTravelSafeTicketSealingKey(),
     );
-    await store.saveNew(COVER_TICKET);
+    await store.saveNew(TICKET);
 
     const sealed = memory.readOnlyValue();
     const marker = '"ciphertext":"';
-    const ciphertextIndex = sealed.indexOf(marker) + marker.length;
-    const replacement = sealed[ciphertextIndex] === "0" ? "1" : "0";
+    const index = sealed.indexOf(marker) + marker.length;
+    const replacement = sealed[index] === "0" ? "1" : "0";
     memory.replaceOnlyValue(
-      `${sealed.slice(0, ciphertextIndex)}${replacement}${sealed.slice(ciphertextIndex + 1)}`,
+      `${sealed.slice(0, index)}${replacement}${sealed.slice(index + 1)}`,
     );
 
-    await expect(store.get(COVER_TICKET.stateId)).rejects.toThrow(
-      "stored refill ticket could not be decrypted",
+    await expect(store.get(TICKET.stateId)).rejects.toThrow(
+      "stored Travel Safe ticket could not be decrypted",
     );
   });
 });

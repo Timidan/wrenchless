@@ -1,19 +1,17 @@
 import { z } from "zod";
 
 import {
-  assertReadyCoverContext,
-  inspectReadyCoverAccount,
+  assertReadyPrivateContext,
   readReadyPoolFee,
   readReadyShieldedBalance,
-  type ReadyCoverWallet,
+  type ReadyPrivateWallet,
 } from "./ready-cover.js";
 
-const READY_WALLET_API_VERSION = "0.10.3";
 const MAINNET_RPC = "https://api.cartridge.gg/x/starknet/mainnet";
 const GET_PUBLIC_KEY_SELECTOR =
   "0x01a35984e05126dbecb7c3bb9929e7dd9106d460c59b1633739a5c733a5fb13b";
 const STARK_FIELD_PRIME = (1n << 251n) + 17n * (1n << 192n) + 1n;
-const U128_MAX = (1n << 128n) - 1n;
+const RPC_TIMEOUT_MILLISECONDS = 30_000;
 
 const rpcCallSchema = z.union([
   z.object({
@@ -28,26 +26,18 @@ const rpcCallSchema = z.union([
   }),
 ]);
 
-const transactionSchema = z.object({
-  transaction_hash: z.string().regex(/^0x[0-9a-f]+$/),
-});
-
 export type ReadyPrivateReadiness = {
   account: string;
   registered: boolean;
-  publicBalanceFri: string;
   shieldedBalanceFri: string;
   poolFeeFri: string;
 };
 
-export function minimumReadyPrivateDepositFri(poolFeeFri: string): string {
-  if (!/^[0-9]+$/.test(poolFeeFri)) {
-    throw new Error("The live private-transfer fee is invalid");
-  }
-  // Ready takes one pool fee from the public deposit. Leaving one more full
-  // fee privately is what lets the first recipient-built claim be submitted.
-  return (2n * BigInt(poolFeeFri)).toString();
-}
+export type TravelSafeReadiness = ReadyPrivateReadiness & {
+  returnReserveFri: string;
+  maxParkableFri: string;
+  canPark: boolean;
+};
 
 function canonicalFelt(value: string, label: string): string {
   let parsed: bigint;
@@ -75,6 +65,7 @@ async function readRegistration(input: {
   const response = await fetcher(input.rpcUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(RPC_TIMEOUT_MILLISECONDS),
     body: JSON.stringify({
       id: 1,
       jsonrpc: "2.0",
@@ -103,20 +94,14 @@ async function readRegistration(input: {
 }
 
 export async function inspectReadyPrivateReadiness(input: {
-  wallet: ReadyCoverWallet;
+  wallet: ReadyPrivateWallet;
   poolAddress: string;
   tokenAddress: string;
   rpcUrl?: string;
   fetcher?: typeof fetch;
 }): Promise<ReadyPrivateReadiness> {
   const fetcher = input.fetcher ?? fetch;
-  const accountInput: Parameters<typeof inspectReadyCoverAccount>[0] = {
-    wallet: input.wallet,
-    tokenAddress: input.tokenAddress,
-    fetcher,
-  };
-  if (input.rpcUrl !== undefined) accountInput.rpcUrl = input.rpcUrl;
-  const account = await inspectReadyCoverAccount(accountInput);
+  const { account } = await assertReadyPrivateContext(input.wallet);
   const feeInput: Parameters<typeof readReadyPoolFee>[0] = {
     poolAddress: input.poolAddress,
     fetcher,
@@ -124,7 +109,7 @@ export async function inspectReadyPrivateReadiness(input: {
   if (input.rpcUrl !== undefined) feeInput.rpcUrl = input.rpcUrl;
   const [registered, shielded, fee] = await Promise.all([
     readRegistration({
-      account: account.account,
+      account,
       poolAddress: input.poolAddress,
       rpcUrl: input.rpcUrl ?? MAINNET_RPC,
       fetcher,
@@ -136,38 +121,28 @@ export async function inspectReadyPrivateReadiness(input: {
     readReadyPoolFee(feeInput),
   ]);
   return {
-    account: account.account,
+    account,
     registered,
-    publicBalanceFri: account.publicBalanceFri,
     shieldedBalanceFri: shielded.shieldedBalanceFri,
     poolFeeFri: fee.poolFeeFri,
   };
 }
 
-export async function submitReadyPrivateDeposit(input: {
-  wallet: ReadyCoverWallet;
+export async function inspectTravelSafeReadiness(input: {
+  wallet: ReadyPrivateWallet;
+  poolAddress: string;
   tokenAddress: string;
-  amountFri: string;
-  poolFeeFri: string;
-}): Promise<{ transactionHash: string }> {
-  await assertReadyCoverContext(input.wallet);
-  if (!/^[1-9][0-9]*$/.test(input.amountFri)) {
-    throw new Error("Enter an amount greater than zero");
-  }
-  const amount = BigInt(input.amountFri);
-  if (amount > U128_MAX) throw new Error("That amount is too large");
-  if (amount < BigInt(minimumReadyPrivateDepositFri(input.poolFeeFri))) {
-    throw new Error("Add enough to leave one private-transfer fee after setup");
-  }
-  const token = canonicalFelt(input.tokenAddress, "token");
-  const result = transactionSchema.parse(
-    await input.wallet.request<unknown>({
-      type: "wallet_strk20InvokeTransaction",
-      params: {
-        actions: [{ type: "deposit", token, amount: amount.toString() }],
-        api_version: READY_WALLET_API_VERSION,
-      },
-    }),
-  );
-  return { transactionHash: result.transaction_hash };
+  rpcUrl?: string;
+  fetcher?: typeof fetch;
+}): Promise<TravelSafeReadiness> {
+  const readiness = await inspectReadyPrivateReadiness(input);
+  const balance = BigInt(readiness.shieldedBalanceFri);
+  const reserve = BigInt(readiness.poolFeeFri);
+  const maxParkable = balance > reserve ? balance - reserve : 0n;
+  return {
+    ...readiness,
+    returnReserveFri: reserve.toString(),
+    maxParkableFri: maxParkable.toString(),
+    canPark: readiness.registered && maxParkable > 0n,
+  };
 }

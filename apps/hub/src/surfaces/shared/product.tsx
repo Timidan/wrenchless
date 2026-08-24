@@ -1,18 +1,20 @@
 import type { JSX, ReactNode } from "react";
-import { useId } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { StrkTokenMark } from "../../components/StrkTokenMark";
 import { WrenchlessMark } from "../../components/WrenchlessMark";
 import { CaretLeftIcon } from "../../components/icons";
+import { motionProfile } from "../../lib/motion";
 
 /**
- * The parts all four devices are built from.
+ * The parts the two product surfaces are built from.
  *
- * Three of them are a phone in someone's hand and the fourth is a phone-shaped
- * setup flow, so they share one frame rather than each inventing a chrome. What
- * differs between them is the label in the corner and what the screen is for —
- * never the geometry, the type or the controls, because a person who has seen
- * one of these should not have to learn the next.
+ * There is one device now — the phone in the traveller's hand — and two things
+ * it does: hold a Travel Safe, and open one again from twelve words. They share
+ * one frame rather than each inventing a chrome. What differs is the label in
+ * the corner and what the screen is for — never the geometry, the type or the
+ * controls, because a person who has seen one of these should not have to learn
+ * the next.
  *
  * Two rules run through everything here. A figure is never invented: an amount
  * that has not been read yet draws a shape, not a zero. And state is never
@@ -20,14 +22,14 @@ import { CaretLeftIcon } from "../../components/icons";
  * and the tint only agrees with the words.
  */
 
-export type ProductRole = "wallet" | "vault" | "guardian" | "setup";
+export type ProductRole = "safe" | "recover";
 
 /**
- * The frame: a lockup, whose device this is, and one optional control.
+ * The frame: a lockup, what this surface is, and one optional control.
  *
- * The account line is deliberately two small lines rather than one: the role is
- * the thing to read at a glance, and the address is there to check when you
- * already suspect you are on the wrong device.
+ * The account line is deliberately two small lines rather than one: what the
+ * surface is is the thing to read at a glance, and the account is there to
+ * check when you already suspect you are about to sign from the wrong one.
  */
 export function ProductFrame(props: {
   role: ProductRole;
@@ -45,7 +47,6 @@ export function ProductFrame(props: {
    */
   step?: { display: string; label: string } | undefined;
   action?: ReactNode;
-  tabs?: ReactNode;
   children: ReactNode;
 }): JSX.Element {
   return (
@@ -74,7 +75,6 @@ export function ProductFrame(props: {
         <main className="product__main" id="product-main">
           {props.children}
         </main>
-        {props.tabs}
       </div>
     </div>
   );
@@ -91,11 +91,7 @@ export function ProductFrame(props: {
 export function Screen(props: {
   title?: string | undefined;
   lede?: string | undefined;
-  /**
-   * The one place a heading is allowed to carry the alert hue, and it is on the
-   * screen that is not the covert one. It never carries the message on its own:
-   * the words say what happened, and the colour only agrees with them.
-   */
+  /** The words carry an alert; the colour only agrees with them. */
   tone?: "alert" | undefined;
   onBack?: (() => void) | undefined;
   center?: boolean | undefined;
@@ -313,18 +309,6 @@ export function Note(props: {
   );
 }
 
-export function Section(props: {
-  title: string;
-  action?: ReactNode;
-}): JSX.Element {
-  return (
-    <div className="sectionhead">
-      <p className="eyebrow">{props.title}</p>
-      {props.action}
-    </div>
-  );
-}
-
 export function WalletField(props: {
   label: string;
   hint?: string | undefined;
@@ -362,23 +346,6 @@ export function WalletField(props: {
   );
 }
 
-/** What is missing, and the one thing to do about it. */
-export function Empty(props: {
-  title: string;
-  body: string;
-  action?: ReactNode;
-}): JSX.Element {
-  return (
-    <div className="wempty">
-      <p className="wempty__title">{props.title}</p>
-      <p className="wempty__body">{props.body}</p>
-      {props.action === undefined ? null : (
-        <div className="wempty__action">{props.action}</div>
-      )}
-    </div>
-  );
-}
-
 /** One live region per screen, so a change is announced once and not thrice. */
 export function Live(props: { message: string | null }): JSX.Element {
   return (
@@ -391,7 +358,7 @@ export function Live(props: { message: string | null }): JSX.Element {
 /**
  * Waiting, with no invented progress.
  *
- * Preparing a private restore takes as long as it takes and nothing here can
+ * Preparing a private action takes as long as it takes and nothing here can
  * predict it. An elapsed count is the honest shape; a bar filling to 90% and
  * stopping is a promise the code cannot keep.
  */
@@ -406,29 +373,118 @@ export function Waiting(props: { seconds: number | null }): JSX.Element {
   );
 }
 
-/**
- * The technical half of a failure, folded away.
- *
- * A person needs one sentence about what happened and what to do next; the
- * HTTP status, the RPC message and the contract's own words are for whoever
- * they eventually show the screen to. So the sentence stays in the open and
- * this holds the rest, closed, and only on the surfaces where reading it costs
- * nothing — never on the carried wallet.
- */
-export function TechnicalDetail(props: { children: ReactNode }): JSX.Element {
-  return (
-    <details className="detail">
-      <summary>What the service said</summary>
-      <p>{props.children}</p>
-    </details>
-  );
-}
-
 /** The circular glyph a full-screen prompt is built around. */
 export function Emblem(props: { children: ReactNode }): JSX.Element {
   return (
     <span aria-hidden="true" className="emblem">
       {props.children}
     </span>
+  );
+}
+
+/**
+ * The twelve words, numbered, read-only, and never a control.
+ *
+ * They are set in the mono face at a size somebody can copy onto paper from
+ * arm's length, in a grid rather than a paragraph, because a phrase written as
+ * prose is a phrase people transcribe in the wrong order.
+ */
+export function Phrase(props: { words: readonly string[] }): JSX.Element {
+  return (
+    <ol className="phrase">
+      {props.words.map((word, index) => (
+        <li className="phrase__word" key={`${String(index)}-${word}`}>
+          <span aria-hidden="true" className="phrase__index">
+            {String(index + 1).padStart(2, "0")}
+          </span>
+          <span className="phrase__text">{word}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function formatRemaining(seconds: number): string {
+  const days = Math.floor(seconds / 86_400);
+  const hours = Math.floor((seconds % 86_400) / 3_600);
+  const minutes = Math.floor((seconds % 3_600) / 60);
+  const rest = seconds % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${rest}s`;
+  return `${rest}s`;
+}
+
+/**
+ * How long the safe still has, counted down from the chain's own clock.
+ *
+ * The starting figure is the difference between the return date and the
+ * timestamp of the accepted block the state was read at — never the device
+ * clock, which decides nothing here. What ticks afterwards is only elapsed
+ * time on this page, so the number stays a reading of that block rather than
+ * an opinion about now, and the screen re-reads the chain to change state.
+ *
+ * Above an hour it moves once a minute, below it once a second, and under
+ * reduced motion it does not move at all: the same figure, said once.
+ */
+export function Countdown(props: {
+  returnDateSeconds: string;
+  chainTimeSeconds: string;
+}): JSX.Element {
+  const span = Number(props.returnDateSeconds) - Number(props.chainTimeSeconds);
+  const anchor = useRef(0);
+  const [elapsed, setElapsed] = useState(0);
+  const { reduced } = motionProfile();
+  const remaining = Number.isFinite(span) ? Math.max(0, Math.round(span - elapsed)) : 0;
+  const fast = remaining <= 3_600;
+
+  useEffect(() => {
+    if (reduced || !Number.isFinite(span)) return;
+    if (anchor.current === 0) anchor.current = performance.now();
+    const step = fast ? 1_000 : 60_000;
+    const timer = window.setInterval(() => {
+      setElapsed((performance.now() - anchor.current) / 1_000);
+    }, step);
+    return () => window.clearInterval(timer);
+  }, [fast, reduced, span]);
+
+  if (!Number.isFinite(span)) return <p className="countdown" />;
+  return (
+    <p className="countdown" data-live={reduced ? undefined : ""}>
+      <span aria-hidden="true" className="countdown__tick" />
+      <span className="countdown__value">
+        {remaining === 0
+          ? "The return date has passed"
+          : `${reduced ? "About " : ""}${formatRemaining(remaining)} left`}
+      </span>
+    </p>
+  );
+}
+
+/**
+ * One transaction, as evidence rather than as decoration.
+ *
+ * Shown only when this browser actually has a hash for it; there is no row
+ * standing by with a dash in it, because an empty reference reads as a
+ * transaction that failed rather than as one that was never made here.
+ */
+export function TransactionRef(props: {
+  label: string;
+  hash: string;
+  href: string;
+}): JSX.Element {
+  return (
+    <p className="txref">
+      <span className="txref__label">{props.label}</span>
+      <a
+        className="wref"
+        href={props.href}
+        rel="noreferrer noopener"
+        target="_blank"
+        title={props.hash}
+      >
+        {props.hash}
+      </a>
+    </p>
   );
 }

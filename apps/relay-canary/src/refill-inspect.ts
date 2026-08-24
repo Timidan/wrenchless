@@ -114,6 +114,8 @@ type RefillFundInspectionInput = {
   config: RelayCanaryConfig;
   configuredHelperAddress: string;
   client: RefillFundClient;
+  minimumAmountFri?: bigint;
+  minimumRemainingDurationSeconds?: bigint;
   beforeBroadcast?: (maximumSpendFri: bigint) => Promise<void>;
 };
 
@@ -161,6 +163,19 @@ export async function inspectRefillFund(
   if (BigInt(artifact.expiry) <= latestBlockTimestamp) {
     throw new Error("refill ticket is already expired");
   }
+  if (
+    input.minimumAmountFri !== undefined &&
+    BigInt(artifact.amountFri) < input.minimumAmountFri
+  ) {
+    throw new Error("refill amount is below the sponsor minimum");
+  }
+  if (
+    input.minimumRemainingDurationSeconds !== undefined &&
+    BigInt(artifact.expiry) - latestBlockTimestamp <
+      input.minimumRemainingDurationSeconds
+  ) {
+    throw new Error("refill duration is below the sponsor minimum");
+  }
 
   const proofSummary = assertRefillFundProofFacts({
     artifact,
@@ -202,7 +217,7 @@ export async function inspectRefillFund(
       config.relayPrivateKey,
     );
     assertRelayFeeWithinCap(estimatedFee, config.maxTransactionFeeFri, "signed");
-    await input.beforeBroadcast?.(plan.poolFeeFri + estimatedFee.overallFeeFri);
+    await input.beforeBroadcast?.(plan.maxSpendFri);
     transactionHash = await client.broadcast(
       plan,
       artifact,

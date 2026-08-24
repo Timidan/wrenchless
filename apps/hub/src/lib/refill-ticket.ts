@@ -1,27 +1,19 @@
 import {
-  computeRefillClaimCommitment,
-  createRefillKeypair,
-  createRefillTicketStore,
-  generateRefillTicketSealingKey,
-  type RefillTicketStore,
-  type RefillTicket,
-  type RefillTicketStatus,
+  createTravelSafeTicketStore,
+  generateTravelSafeTicketSealingKey,
+  removeTravelSafeTicket,
+  type TravelSafeSecrets,
+  type TravelSafeTicket,
+  type TravelSafeTicketStatus,
+  type TravelSafeTicketStore,
+  type TravelSafeTicketTransitionPatch,
 } from "@wrenchless/canary-core";
+
+import { readSettings, writeSettings } from "../adapters/settings.js";
 
 const KEY_DATABASE = "wrenchless-local-secrets-v1";
 const KEY_STORE = "keys";
-const STARK_FIELD_PRIME = (1n << 251n) + 17n * (1n << 192n) + 1n;
-
-export type CoverRefillRequest = {
-  schemaVersion: "wrenchless.cover-refill-request.v1";
-  stateId: string;
-  claimCommitment: string;
-  createdAt: string;
-};
-
-export type VaultRefillIntent = CoverRefillRequest & {
-  refundPublicKey: string;
-};
+const SAFE_KEY = "safe";
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -66,18 +58,18 @@ async function openKeyDatabase(): Promise<IDBDatabase> {
   return requestResult(request);
 }
 
-async function getOrCreateSealingKey(role: "cover" | "vault"): Promise<CryptoKey> {
+async function getOrCreateSealingKey(): Promise<CryptoKey> {
   const database = await openKeyDatabase();
   try {
     const read = database.transaction(KEY_STORE, "readonly");
     const stored = await requestResult<CryptoKey | undefined>(
-      read.objectStore(KEY_STORE).get(role),
+      read.objectStore(KEY_STORE).get(SAFE_KEY),
     );
     if (stored !== undefined) return stored;
 
-    const key = await generateRefillTicketSealingKey();
+    const key = await generateTravelSafeTicketSealingKey();
     const write = database.transaction(KEY_STORE, "readwrite");
-    write.objectStore(KEY_STORE).add(key, role);
+    write.objectStore(KEY_STORE).add(key, SAFE_KEY);
     await transactionComplete(write);
     return key;
   } finally {
@@ -85,189 +77,76 @@ async function getOrCreateSealingKey(role: "cover" | "vault"): Promise<CryptoKey
   }
 }
 
-async function localTicketStore(
-  role: "cover" | "vault",
-): Promise<RefillTicketStore> {
-  return createRefillTicketStore(localStorage, await getOrCreateSealingKey(role));
-}
-
-function randomStateId(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(32));
-  const candidate = BigInt(
-    `0x${Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("")}`,
+async function localTicketStore(): Promise<TravelSafeTicketStore> {
+  return createTravelSafeTicketStore(
+    localStorage,
+    await getOrCreateSealingKey(),
   );
-  return `0x${((candidate % (STARK_FIELD_PRIME - 1n)) + 1n).toString(16)}`;
 }
 
-export function createRefillReleaseNonce(): string {
-  return randomStateId();
-}
-
-export async function createCoverRefillRequest(
-  now = new Date(),
-): Promise<CoverRefillRequest> {
-  const stateId = randomStateId();
-  const claim = createRefillKeypair();
-  const timestamp = now.toISOString();
-  await (await localTicketStore("cover")).saveNew({
-    schemaVersion: "wrenchless.refill-ticket.v1",
-    role: "cover",
-    stateId,
-    status: "CREATED",
-    claimPrivateKey: claim.privateKey,
-    claimPublicKey: claim.publicKey,
+export async function createTravelSafeTicket(input: {
+  secrets: TravelSafeSecrets;
+  tokenAddress: string;
+  amountFri: string;
+  returnDateSeconds: string;
+  now?: Date;
+}): Promise<TravelSafeTicket> {
+  if (readSettings().activeSafeStateId !== null) {
+    throw new Error("Finish or clear the current Travel Safe first");
+  }
+  const timestamp = (input.now ?? new Date()).toISOString();
+  const ticket: TravelSafeTicket = {
+    schemaVersion: "wrenchless.travel-safe-ticket.v1",
+    role: "safe",
+    stateId: input.secrets.stateId,
+    status: "PHRASE_CONFIRMED",
+    claimCommitment: input.secrets.claimCommitment,
+    refundPrivateKey: input.secrets.refundPrivateKey,
+    refundPublicKey: input.secrets.refundPublicKey,
+    tokenAddress: input.tokenAddress,
+    amountFri: input.amountFri,
+    returnDateSeconds: input.returnDateSeconds,
+    fundProofExpiresAtBlock: null,
+    fundTransactionHash: null,
+    returnSubmittedAtBlock: null,
+    returnTransactionHash: null,
     createdAt: timestamp,
     updatedAt: timestamp,
-  });
-
-  return {
-    schemaVersion: "wrenchless.cover-refill-request.v1",
-    stateId,
-    claimCommitment: computeRefillClaimCommitment(stateId, claim.publicKey),
-    createdAt: timestamp,
   };
-}
-
-export async function createCoverRefillRequestBatch(
-  count = 3,
-): Promise<CoverRefillRequest[]> {
-  if (!Number.isSafeInteger(count) || count < 1 || count > 3) {
-    throw new Error("Create between one and three restore requests");
-  }
-  const requests: CoverRefillRequest[] = [];
-  for (let index = 0; index < count; index += 1) {
-    requests.push(await createCoverRefillRequest());
-  }
-  return requests;
-}
-
-export async function readCoverRefillTicket(
-  stateId: string,
-): Promise<Extract<RefillTicket, { role: "cover" }>> {
-  const ticket = await (await localTicketStore("cover")).get(stateId);
-  if (ticket === null || ticket.role !== "cover") {
-    throw new Error("cover refill ticket does not exist in this browser");
-  }
+  await (await localTicketStore()).saveNew(ticket);
+  writeSettings({ activeSafeStateId: ticket.stateId });
   return ticket;
 }
 
-export async function readVaultRefillTicket(
+export async function readTravelSafeTicket(
   stateId: string,
-): Promise<Extract<RefillTicket, { role: "vault" }>> {
-  const ticket = await (await localTicketStore("vault")).get(stateId);
-  if (ticket === null || ticket.role !== "vault") {
-    throw new Error("vault refill ticket does not exist in this browser");
-  }
+): Promise<TravelSafeTicket> {
+  const ticket = await (await localTicketStore()).get(stateId);
+  if (ticket === null) throw new Error("Travel Safe ticket is not on this device");
   return ticket;
 }
 
-export async function readVaultRefillIntent(
+export async function readActiveTravelSafeTicket(): Promise<TravelSafeTicket | null> {
+  const stateId = readSettings().activeSafeStateId;
+  return stateId === null ? null : readTravelSafeTicket(stateId);
+}
+
+export async function transitionStoredTravelSafeTicket(
   stateId: string,
-): Promise<VaultRefillIntent> {
-  const ticket = await readVaultRefillTicket(stateId);
-  return {
-    schemaVersion: "wrenchless.cover-refill-request.v1",
-    stateId: ticket.stateId,
-    claimCommitment: ticket.claimCommitment,
-    createdAt: ticket.createdAt,
-    refundPublicKey: ticket.refundPublicKey,
-  };
+  nextStatus: TravelSafeTicketStatus,
+  patch: TravelSafeTicketTransitionPatch = {},
+): Promise<TravelSafeTicket> {
+  return (await localTicketStore()).transition(stateId, nextStatus, patch);
 }
 
-export async function markCoverRefillClaimed(
-  stateId: string,
-  now = new Date(),
-): Promise<Extract<RefillTicket, { role: "cover" }>> {
-  const store = await localTicketStore("cover");
-  let ticket = await store.get(stateId);
-  if (ticket === null || ticket.role !== "cover") {
-    throw new Error("cover refill ticket does not exist in this browser");
+export async function clearTravelSafeTicket(stateId: string): Promise<void> {
+  const settings = readSettings();
+  if (
+    settings.activeSafeStateId !== null &&
+    BigInt(settings.activeSafeStateId) !== BigInt(stateId)
+  ) {
+    throw new Error("That Travel Safe is not active on this device");
   }
-
-  const timestamp = now.toISOString();
-  while (ticket.status !== "CLAIMED") {
-    let nextStatus: RefillTicketStatus;
-    switch (ticket.status) {
-      case "CREATED":
-        nextStatus = "FUNDED";
-        break;
-      case "FUNDED":
-        nextStatus = "CLAIMABLE";
-        break;
-      case "CLAIMABLE":
-        nextStatus = "CLAIMING";
-        break;
-      case "CLAIMING":
-        nextStatus = "CLAIMED";
-        break;
-      default:
-        throw new Error(`cannot mark ${ticket.status} refill ticket as claimed`);
-    }
-    const transitioned = await store.transition(stateId, nextStatus, timestamp);
-    if (transitioned.role !== "cover") {
-      throw new Error("stored refill ticket changed roles");
-    }
-    ticket = transitioned;
-  }
-  return ticket;
-}
-
-function assertCoverRefillRequest(
-  request: CoverRefillRequest,
-): CoverRefillRequest {
-  if (request.schemaVersion !== "wrenchless.cover-refill-request.v1") {
-    throw new Error("unsupported cover refill request");
-  }
-  for (const [label, value] of [
-    ["state ID", request.stateId],
-    ["claim commitment", request.claimCommitment],
-  ] as const) {
-    if (!/^0x(?:0|[1-9a-f][0-9a-f]*)$/.test(value)) {
-      throw new Error(`${label} is not a canonical felt`);
-    }
-    const parsed = BigInt(value);
-    if (parsed === 0n || parsed >= STARK_FIELD_PRIME) {
-      throw new Error(`${label} is outside the non-zero Stark field`);
-    }
-  }
-  if (Number.isNaN(Date.parse(request.createdAt))) {
-    throw new Error("cover refill request timestamp is invalid");
-  }
-  return request;
-}
-
-export async function createVaultRefillIntent(
-  request: CoverRefillRequest,
-  now = new Date(),
-): Promise<VaultRefillIntent> {
-  const coverRequest = assertCoverRefillRequest(request);
-  const store = await localTicketStore("vault");
-  const existing = await store.get(coverRequest.stateId);
-  if (existing !== null) {
-    if (
-      existing.role !== "vault" ||
-      BigInt(existing.claimCommitment) !== BigInt(coverRequest.claimCommitment)
-    ) {
-      throw new Error("A different restore request already uses this state ID");
-    }
-    return {
-      ...coverRequest,
-      refundPublicKey: existing.refundPublicKey,
-    };
-  }
-  const refund = createRefillKeypair();
-  const timestamp = now.toISOString();
-  await store.saveNew({
-    schemaVersion: "wrenchless.refill-ticket.v1",
-    role: "vault",
-    stateId: coverRequest.stateId,
-    status: "CREATED",
-    claimCommitment: coverRequest.claimCommitment,
-    refundPrivateKey: refund.privateKey,
-    refundPublicKey: refund.publicKey,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  });
-
-  return { ...coverRequest, refundPublicKey: refund.publicKey };
+  removeTravelSafeTicket(localStorage, stateId);
+  writeSettings({ activeSafeStateId: null });
 }

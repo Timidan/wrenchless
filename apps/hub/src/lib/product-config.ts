@@ -27,26 +27,9 @@ function serviceUrl(name: string, configured: string | undefined, developmentUrl
 }
 
 export const WRENCHLESS_SERVICES = {
-  mailboxUrl: serviceUrl(
-    "VITE_MAILBOX_URL",
-    import.meta.env.VITE_MAILBOX_URL,
-    "http://localhost:8787",
-  ),
   sponsorUrl: serviceUrl(
     "VITE_SPONSOR_URL",
     import.meta.env.VITE_SPONSOR_URL,
     "http://localhost:8788",
   ),
-} as const;
-
-/**
- * The one product threshold the carried wallet reads.
- *
- * "Running low" has to be a ratio rather than a figure, because the limit is
- * the person's own and a fixed number would be wrong for most of them. Two
- * fifths is where a wallet stops being able to cover an ordinary day's spending
- * without thinking about it.
- */
-export const WRENCHLESS_PRODUCT = {
-  lowBalanceRatio: 0.4,
 } as const;

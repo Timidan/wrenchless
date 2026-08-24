@@ -166,8 +166,8 @@
 }
 
 .nav__mark {
-  width: var(--mark-size);
-  height: var(--mark-size);
+  width: 28px;
+  height: 28px;
   flex: 0 0 auto;
 }
 
@@ -246,7 +246,7 @@ html.reduced-motion .nav__cta {
   gap: var(--space-2);
   min-height: 44px;
   padding: 12px 24px;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: var(--r-pill);
   font-family: var(--font-sans);
   font-size: 16px;
@@ -276,13 +276,27 @@ html.reduced-motion .nav__cta {
 }
 
 .btn--primary {
-  background: var(--ink);
-  color: var(--white);
+  border-color: var(--ink-secondary);
+  background: transparent;
+  color: var(--ink);
 }
 
 .on-dark .btn--primary {
-  background: var(--white);
-  color: var(--ink);
+  border-color: rgba(255, 255, 255, 0.68);
+  background: transparent;
+  color: var(--paper);
+}
+
+@media (hover: hover) {
+  .btn--primary:hover {
+    border-color: var(--ink);
+    background: rgba(20, 20, 20, 0.06);
+  }
+
+  .on-dark .btn--primary:hover {
+    border-color: var(--paper);
+    background: rgba(255, 255, 255, 0.1);
+  }
 }
 
 .btn--secondary {
@@ -293,8 +307,8 @@ html.reduced-motion .nav__cta {
 
 @media (hover: hover) {
   .btn--secondary:hover {
-    background: var(--ink);
-    color: var(--white);
+    border-color: var(--ink);
+    background: rgba(20, 20, 20, 0.06);
   }
 }
 
@@ -305,21 +319,21 @@ html.reduced-motion .nav__cta {
 
 @media (hover: hover) {
   .on-dark .btn--secondary:hover {
-    background: var(--white);
-    color: var(--ink);
+    border-color: var(--paper);
+    background: rgba(255, 255, 255, 0.1);
   }
 }
 
 /* A finger has no hover state to fall back on, so the secondary button says
    the same thing on press that the primary one says by scaling. */
 .btn--secondary:active {
-  background: var(--ink);
-  color: var(--white);
+  border-color: var(--ink);
+  background: rgba(20, 20, 20, 0.1);
 }
 
 .on-dark .btn--secondary:active {
-  background: var(--white);
-  color: var(--ink);
+  border-color: var(--paper);
+  background: rgba(255, 255, 255, 0.14);
 }
 
 /* The nav pill, in the header's two states. It has to sit after .btn so the
@@ -332,8 +346,9 @@ html.reduced-motion .nav__cta {
    ground behind it. It also shrinks with the bar: the 36px minimum is still
    well clear of the 24px target-size floor. */
 .nav__cta {
-  background: var(--white);
-  color: var(--ink);
+  border-color: rgba(255, 255, 255, 0.68);
+  background: transparent;
+  color: var(--paper);
   /* Both custom properties are declared on `.nav`, which is an ancestor of
      every element this rule can match, so they always resolve and a fallback
      here would be a value that can never be used. */
@@ -349,8 +364,9 @@ html.reduced-motion .nav__cta {
 .nav[data-scrolled="true"] .nav__cta {
   padding: 10px 16px;
   font-size: 15px;
-  background: var(--ink);
-  color: var(--white);
+  border-color: var(--ink-secondary);
+  background: transparent;
+  color: var(--ink);
 }
 
 /* A mouse does not need the 44px floor, so on a wide window the pill shrinks
@@ -463,15 +479,30 @@ html.reduced-motion .btn__roll-track {
 .evidence__head {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: var(--space-5);
+}
+
+.evidence__token {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-pill);
+}
+
+.evidence__token-mark {
+  width: 30px;
+  height: 30px;
 }
 
 .evidence__intro {
   max-width: 52ch;
   color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: var(--size-ui);
-  line-height: 1.7;
+  font-family: var(--font-sans);
+  font-size: var(--size-body);
+  line-height: 1.45;
 }
 
 /* The ledger is not a grid child, so it does not get the grid's inset for
@@ -500,19 +531,31 @@ html.reduced-motion .btn__roll-track {
 @media (min-width: 56rem) {
   .station {
     grid-template-columns:
-      minmax(0, 2.5rem) minmax(0, 160px) minmax(0, 1fr)
+      minmax(0, 3rem) minmax(0, 180px) minmax(0, 1fr)
       minmax(0, 240px);
     align-items: baseline;
     gap: var(--space-6);
   }
 }
 
-.station__index {
+.station__icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
   color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: var(--size-ui);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
+}
+
+.station__icon > svg {
+  width: 30px;
+  height: 30px;
+}
+
+.station__brand-mark {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-pill);
 }
 
 .station__name {
@@ -641,11 +684,20 @@ html.motion-on .station {
   border-bottom: 0;
 }
 
-html.motion-on .station__index {
-  font-size: clamp(3rem, 1.9rem + 2.6vw, 5rem);
-  line-height: 1;
-  letter-spacing: -0.02em;
+html.motion-on .station__icon {
+  width: clamp(3rem, 1.9rem + 2.6vw, 5rem);
+  height: clamp(3rem, 1.9rem + 2.6vw, 5rem);
   transition: color var(--dur-mid) var(--ease-settle);
+}
+
+html.motion-on .station__icon > svg {
+  width: 64%;
+  height: 64%;
+}
+
+html.motion-on .station__brand-mark {
+  width: 64%;
+  height: 64%;
 }
 
 html.motion-on .station__name {
@@ -672,7 +724,7 @@ html.motion-on .station__proof {
     transform var(--dur-exit) var(--ease-settle);
 }
 
-html.motion-on .station[data-reached="true"] .station__index {
+html.motion-on .station[data-reached="true"] .station__icon {
   color: var(--ink);
 }
 
@@ -741,11 +793,8 @@ html.motion-on .evidence__fill {
 
    Two halves. STRK[20] is typographic because the protocol has no official
    mark, and its brackets carry Starknet's coral, which is the treatment the
-   protocol uses for its own name. Starknet's half is the official lockup,
-   unaltered: the mark and the wordmark are one file, so nothing here composes
-   them by hand. The brand asks for clear space of half the lockup's height,
-   which at 16px is 8px; the pill's 10px and 18px padding covers three sides
-   and the 10px gap covers the fourth.                                       */
+   protocol uses for its own name. Starknet's half uses the official mark and
+   a plain text label so the credit is local, legible and reliable.           */
 
 .powered {
   display: inline-flex;
@@ -793,20 +842,25 @@ html.motion-on .evidence__fill {
   color: var(--coral);
 }
 
-.powered__lockup {
-  flex: none;
-  width: auto;
-  height: 16px;
+.powered__network {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1;
 }
 
-/* The one mark on the white bed, inline in the ledger's caveat line. It is
-   sized to the 12px mono line's own 1.7 leading, so the paragraph keeps its
-   rhythm instead of opening a gap around it. */
-.evidence__mark {
-  display: inline-block;
-  width: 20px;
-  height: 20px;
-  vertical-align: -0.42em;
+.powered[data-ground="dark"] .powered__network {
+  color: var(--paper);
+}
+
+.powered__mark {
+  flex: none;
+  width: 16px;
+  height: 16px;
 }
 
 /* ================= document pages =================
@@ -901,8 +955,9 @@ html.document-page .page::after {
     width: min(76vw, 26rem);
   }
 
-  html.motion-on .station__index {
-    font-size: clamp(2.25rem, 1.6rem + 3vw, 3.25rem);
+  html.motion-on .station__icon {
+    width: clamp(2.75rem, 2rem + 3vw, 3.5rem);
+    height: clamp(2.75rem, 2rem + 3vw, 3.5rem);
   }
 
   html.motion-on .station__name {

@@ -4,48 +4,12 @@ export {
   parseRefillFundArtifact,
   parseRegistrationArtifact,
 } from "./artifact.js";
-export {
-  openCarriedPairingReceipt,
-  sealCarriedPairingReceipt,
-} from "./carried-pairing.js";
 export type {
   RefillFundArtifact,
   RegistrationCanaryArtifact,
 } from "./artifact.js";
 export { jsonValueSchema, parseJsonText } from "./json.js";
 export type { JsonObject, JsonValue } from "./json.js";
-export {
-  generateGuardianHeartbeatKeypair,
-  generateMailboxSigningKeypair,
-  fingerprintGuardianPublicKey,
-  heartbeatEnvelopeSigningBytes,
-  HeartbeatEnvelopeSchema,
-  openHeartbeat,
-  sealHeartbeat,
-} from "./heartbeat.js";
-export type {
-  GuardianHeartbeatKeypair,
-  MailboxSigningKeypair,
-  HeartbeatEnvelope,
-  HeartbeatPaymentOutcome,
-  HeartbeatPlaintext,
-  HeartbeatSignal,
-  SealHeartbeatInput,
-} from "./heartbeat.js";
-export {
-  generateGuardianControlKeypair,
-  openGuardianControl,
-  openGuardianEnrollmentResponse,
-  resolveRestorePause,
-  sealGuardianEnrollmentResponse,
-  sealRestorePause,
-} from "./guardian-control.js";
-export type {
-  GuardianControlPlaintext,
-  GuardianEnrollmentResponse,
-  RestorePauseState,
-  SealGuardianEnrollmentResponseInput,
-} from "./guardian-control.js";
 export { assertRegistrationOnly } from "./pool-call.js";
 export type { RegistrationActionSummary } from "./pool-call.js";
 export {
@@ -101,17 +65,19 @@ export type {
   SubmittedRefillRefund,
 } from "./refill-claim.js";
 export {
-  createRefillTicketStore,
-  generateRefillTicketSealingKey,
-  RefillTicketSchema,
-  RefillTicketStatusSchema,
-  transitionRefillTicket,
+  createTravelSafeTicketStore,
+  generateTravelSafeTicketSealingKey,
+  removeTravelSafeTicket,
+  TravelSafeTicketSchema,
+  TravelSafeTicketStatusSchema,
+  transitionTravelSafeTicket,
 } from "./refill-ticket-store.js";
 export type {
-  RefillTicket,
-  RefillTicketStatus,
-  RefillTicketStorage,
-  RefillTicketStore,
+  TravelSafeTicket,
+  TravelSafeTicketStatus,
+  TravelSafeTicketStorage,
+  TravelSafeTicketStore,
+  TravelSafeTicketTransitionPatch,
 } from "./refill-ticket-store.js";
 export {
   chooseTravelSafeRelease,

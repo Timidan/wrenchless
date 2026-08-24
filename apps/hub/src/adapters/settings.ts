@@ -2,173 +2,102 @@ import { useSyncExternalStore } from "react";
 import { z } from "zod";
 
 import { WRENCHLESS_SERVICES } from "../lib/product-config";
-import {
-  parseCoverEnrollmentBundle,
-  serializeRoleHandoffBundle,
-  type CoverEnrollmentBundle,
-} from "../lib/role-handoff";
 
-/**
- * What this browser remembers between visits, and nothing more.
- *
- * The wallet's half of the enrollment is stored exactly as the role-handoff
- * module produced it, as one serialized bundle that is re-parsed by that module
- * on the way out. Keeping it whole is deliberate: a record that stored the five
- * fields loosely would be a second place where their shape is defined, and the
- * two would drift.
- *
- * The enrollment bundle contains only the mailbox destination and the vault's
- * public encryption key. Sending is authorized separately by the carried
- * device's non-extractable signing key.
- *
- * Nothing here is safety state. The classification a valid code selects lives
- * inside the session module and never reaches this record or any component.
- */
+const STORAGE_KEY = "wrenchless.hub-settings.v3";
+const LEGACY_STORAGE_KEY = "wrenchless.hub-settings.v2";
 
-// The signed-mailbox protocol is intentionally a clean setup boundary. Keeping
-// v1 would let an apparently complete setup retain enrollment data that the new
-// server must reject.
-const STORAGE_KEY = "wrenchless.hub-settings.v2";
-
-/** 100 STRK. A starting ceiling, meant to be changed, never a promise. */
-export const DEFAULT_EXPOSURE_CAP_FRI = (100n * 10n ** 18n).toString();
+const feltSchema = z.string().regex(/^0x[0-9a-fA-F]+$/);
 
 const settingsSchema = z
   .object({
-    schemaVersion: z.literal("wrenchless.hub-settings.v2"),
-    mailboxUrl: z.string(),
-    sponsorUrl: z.string(),
-    exposureCapFri: z.string().regex(/^[0-9]+$/),
-    /** A serialized `wrenchless.cover-enrollment.v2` bundle, or nothing. */
-    coverEnrollmentText: z.string().nullable(),
-    /** The reading device's own retrieval capability. Never handed out. */
-    inboxId: z.string().nullable(),
-    inboxReceiveCapability: z.string().nullable(),
-    /** One-time refill codes made or funded in this browser. */
-    refillStateIds: z.array(z.string()).max(24),
-    /** Set when first-run setup finished on this device. */
-    onboardedAt: z.string().nullable(),
-    /**
-     * This device's own passkey, as the credential ID and public key the
-     * verifier needs. Never the private key: that never leaves the
-     * authenticator, which is the whole point of it.
-     */
-    devicePasskeyId: z.string().nullable().default(null),
-    devicePasskeyPublicKey: z.string().nullable().default(null),
-    /** The Ready Wallet account the home vault holds the reserve in. */
-    reserveAccount: z.string().nullable().default(null),
-    /** The Ready Wallet account used on this carried device. Never shared. */
-    carriedAccount: z.string().nullable().default(null),
-    /**
-     * Confirmation codes, both directions of one handshake.
-     *
-     * `deviceCode` is what this device shows after it accepts an invitation;
-     * `carriedDeviceCode` is what the home vault recorded when the carried
-     * phone read its code back. The vault cannot compute the second one, which
-     * is what makes typing it back evidence rather than ceremony.
-     */
-    deviceCode: z.string().nullable().default(null),
-    /**
-     * The receipt this device showed after pairing, kept so leaving the screen
-     * does not mean minting a second batch of one-time restore requests.
-     * It holds public commitments and a confirmation code, and no key.
-     */
-    deviceReceiptToken: z.string().nullable().default(null),
-    /** Set when the person confirmed the other device had read the receipt. */
-    deviceReceiptDoneAt: z.string().nullable().default(null),
-    /** One-use automatic return path supplied by a v3 carried invitation. */
-    pairingResponseMailboxId: z
-      .string()
-      .regex(/^[0-9a-f]{32}$/)
-      .nullable()
-      .default(null),
-    pairingResponseBindCapability: z
-      .string()
-      .regex(/^[0-9a-f]{64}$/)
-      .nullable()
-      .default(null),
-    pairingResponsePublicKey: z
-      .string()
-      .regex(/^04[0-9a-f]{128}$/)
-      .nullable()
-      .default(null),
-    carriedDeviceCode: z.string().nullable().default(null),
-    carriedPairedAt: z.string().nullable().default(null),
-    guardianPairedAt: z.string().nullable().default(null),
-    /** Kept only until the guardian confirms the vault copied its reply. */
-    guardianResponseToken: z.string().nullable().default(null),
-    /** Authenticated carried-message key learned from the home vault. */
-    carriedSenderPublicKey: z.string().nullable().default(null),
-    /**
-     * The home vault's own control inbox: where a guardian's pause command
-     * arrives. The vault keeps the retrieval capability. A one-time invitation
-     * binds the guardian's signing key to the mailbox, so later writes must be
-     * signed and the guardian still cannot read the inbox.
-     */
-    controlInboxId: z.string().nullable().default(null),
-    controlInboxReceiveCapability: z.string().nullable().default(null),
-    /** When the home vault last dismissed a pause it had already seen. */
-    pauseLiftedAt: z.string().nullable().default(null),
-    /**
-     * The guardian device's half of the same channel: where to send, what to
-     * seal it to, and whose name to put on the screen.
-     */
-    controlTargetUrl: z.string().nullable().default(null),
-    controlTargetId: z.string().nullable().default(null),
-    controlTargetPublicKey: z.string().nullable().default(null),
-    signalAlias: z.string().nullable().default(null),
-    signalInstruction: z.string().nullable().default(null),
+    schemaVersion: z.literal("wrenchless.hub-settings.v3"),
+    sponsorUrl: z.string().url(),
+    devicePasskeyId: z.string().nullable(),
+    devicePasskeyPublicKey: z.string().nullable(),
+    activeSafeStateId: feltSchema.nullable(),
   })
   .strict();
+
+const transitionalSettingsSchema = settingsSchema
+  .extend({ legacyRecoveryStateIds: z.array(feltSchema).max(24) })
+  .strict();
+
+const legacySettingsSchema = z
+  .object({
+    sponsorUrl: z.string().url().optional(),
+    devicePasskeyId: z.string().nullable().optional(),
+    devicePasskeyPublicKey: z.string().nullable().optional(),
+    refillStateIds: z.array(feltSchema).max(24).optional(),
+  })
+  .passthrough();
 
 export type HubSettings = z.infer<typeof settingsSchema>;
 
 const EMPTY: HubSettings = {
-  schemaVersion: "wrenchless.hub-settings.v2",
-  mailboxUrl: WRENCHLESS_SERVICES.mailboxUrl,
+  schemaVersion: "wrenchless.hub-settings.v3",
   sponsorUrl: WRENCHLESS_SERVICES.sponsorUrl,
-  exposureCapFri: DEFAULT_EXPOSURE_CAP_FRI,
-  coverEnrollmentText: null,
-  inboxId: null,
-  inboxReceiveCapability: null,
-  refillStateIds: [],
-  onboardedAt: null,
   devicePasskeyId: null,
   devicePasskeyPublicKey: null,
-  reserveAccount: null,
-  carriedAccount: null,
-  deviceCode: null,
-  deviceReceiptToken: null,
-  deviceReceiptDoneAt: null,
-  pairingResponseMailboxId: null,
-  pairingResponseBindCapability: null,
-  pairingResponsePublicKey: null,
-  carriedDeviceCode: null,
-  carriedPairedAt: null,
-  guardianPairedAt: null,
-  guardianResponseToken: null,
-  carriedSenderPublicKey: null,
-  controlInboxId: null,
-  controlInboxReceiveCapability: null,
-  pauseLiftedAt: null,
-  controlTargetUrl: null,
-  controlTargetId: null,
-  controlTargetPublicKey: null,
-  signalAlias: null,
-  signalInstruction: null,
+  activeSafeStateId: null,
 };
 
-function load(): HubSettings {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored === null) return EMPTY;
-  // A record this browser can no longer read is replaced, not repaired: a
-  // half-parsed capability is worse than asking for setup again.
+function parseStored(value: string | null): {
+  settings: HubSettings;
+  strippedUnusedData: boolean;
+} | null {
+  if (value === null) return null;
   try {
-    const parsed = settingsSchema.safeParse(JSON.parse(stored));
-    return parsed.success ? parsed.data : EMPTY;
+    const json = JSON.parse(value);
+    const parsed = settingsSchema.safeParse(json);
+    if (parsed.success) {
+      return { settings: parsed.data, strippedUnusedData: false };
+    }
+    const transitional = transitionalSettingsSchema.safeParse(json);
+    if (!transitional.success) return null;
+    const {
+      legacyRecoveryStateIds: _discarded,
+      ...settings
+    } = transitional.data;
+    return {
+      settings: settingsSchema.parse(settings),
+      strippedUnusedData: true,
+    };
   } catch {
-    return EMPTY;
+    return null;
   }
+}
+
+function migrateLegacy(value: string | null): HubSettings | null {
+  if (value === null) return null;
+  try {
+    const parsed = legacySettingsSchema.safeParse(JSON.parse(value));
+    if (!parsed.success) return null;
+    return settingsSchema.parse({
+      ...EMPTY,
+      sponsorUrl: parsed.data.sponsorUrl ?? EMPTY.sponsorUrl,
+      devicePasskeyId: parsed.data.devicePasskeyId ?? null,
+      devicePasskeyPublicKey: parsed.data.devicePasskeyPublicKey ?? null,
+    });
+  } catch {
+    return null;
+  }
+}
+
+function load(): HubSettings {
+  const current = parseStored(localStorage.getItem(STORAGE_KEY));
+  if (current !== null) {
+    if (current.strippedUnusedData) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(current.settings));
+    }
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+    return current.settings;
+  }
+  const migrated = migrateLegacy(localStorage.getItem(LEGACY_STORAGE_KEY));
+  if (migrated === null) return EMPTY;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+  // Successful migration deliberately strips old bearer capabilities.
+  localStorage.removeItem(LEGACY_STORAGE_KEY);
+  return migrated;
 }
 
 let snapshot: HubSettings = EMPTY;
@@ -191,13 +120,6 @@ export function writeSettings(
   for (const listener of listeners) listener();
 }
 
-/**
- * Declared once, outside the hook.
- *
- * `useSyncExternalStore` compares the subscribe function by identity: a fresh
- * arrow on every render makes React tear the subscription down and set it up
- * again on every commit.
- */
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
@@ -205,64 +127,10 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-function emptySettings(): HubSettings {
-  return EMPTY;
-}
-
 export function useSettings(): HubSettings {
-  return useSyncExternalStore(subscribe, current, emptySettings);
+  return useSyncExternalStore(subscribe, current, () => EMPTY);
 }
 
 export function readSettings(): HubSettings {
   return current();
-}
-
-export function rememberRefillStateId(stateId: string): void {
-  const existing = current().refillStateIds;
-  if (existing.includes(stateId)) return;
-  writeSettings({ refillStateIds: [stateId, ...existing].slice(0, 24) });
-}
-
-/**
- * The stored enrollment, re-parsed by the module that defined it.
- *
- * Returns null rather than throwing when the record is absent or no longer
- * valid, because both cases mean the same thing to every caller: this device
- * is not set up, and the screens must say so instead of half-working.
- */
-export function coverEnrollment(
-  settings: HubSettings,
-): CoverEnrollmentBundle | null {
-  if (settings.coverEnrollmentText === null) return null;
-  try {
-    return parseCoverEnrollmentBundle(settings.coverEnrollmentText);
-  } catch {
-    return null;
-  }
-}
-
-export function markOnboarded(): void {
-  if (current().onboardedAt !== null) return;
-  writeSettings({ onboardedAt: new Date().toISOString() });
-}
-
-/**
- * Whether this browser can act as the wallet at all.
- *
- * Both halves have to be present: a paired reader, and a pair of access codes.
- * The codes live in the session module's own storage, so the caller passes what
- * that module reported rather than this record guessing at it.
- */
-export function walletIsReady(
-  settings: HubSettings,
-  codesAreSet: boolean,
-): boolean {
-  return coverEnrollment(settings) !== null && codesAreSet;
-}
-
-export function storeCoverEnrollment(bundle: CoverEnrollmentBundle): void {
-  writeSettings({
-    coverEnrollmentText: serializeRoleHandoffBundle(bundle),
-    mailboxUrl: bundle.mailboxUrl,
-  });
 }

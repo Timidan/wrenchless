@@ -1,45 +1,82 @@
-import type { JSX } from "react";
+import type { ComponentType, JSX } from "react";
 import { useRef } from "react";
 import { gsap, useGSAP } from "../lib/gsap";
 import { motionProfile } from "../lib/motion";
-import { useSectionReveal } from "../lib/reveal";
+import { ReadyWalletMark } from "./ReadyWalletMark";
+import { StrkTokenMark } from "./StrkTokenMark";
+import {
+  FingerprintIcon,
+  KeyIcon,
+  LockSimpleIcon,
+  WarningCircleIcon,
+} from "./icons";
 
 interface Station {
   name: string;
   line: string;
+  note: string;
+  icon: "ready" | "lock" | "passkey" | "phrase" | "public";
 }
 
 /**
- * The five live steps of the loop. Results appear only in the Activity ledger
- * after a wallet action returns a transaction reference in this browser.
+ * The five actions in one Travel Safe. These are product mechanics, not sample
+ * transactions or claims about activity that has not happened in this browser.
  */
 const STATIONS: readonly Station[] = [
   {
-    name: "Registration",
-    line: "A fresh wallet registers its viewing key, submitted by a relay.",
+    name: "Ready stays your wallet",
+    line: "It holds your account keys and signs every STRK20 action.",
+    note: "No new wallet",
+    icon: "ready",
   },
   {
-    name: "Fund",
-    line: "The vault funds a refill ticket through the pool.",
+    name: "Parked means unavailable",
+    line: "The reserve cannot be spent from the Ready Wallet you carry.",
+    note: "Time locked",
+    icon: "lock",
   },
   {
-    name: "Claim",
-    line: "The spending wallet claims it as a private note.",
+    name: "Your passkey brings it home",
+    line: "Strictly after the return date, approve the return on this device.",
+    note: "After the date",
+    icon: "passkey",
   },
   {
-    name: "Unshield",
-    line: "A bounded allowance moves to the public balance.",
+    name: "Twelve words unlock early",
+    line: "Keep the phrase offline. It is the only early release path.",
+    note: "Shown once",
+    icon: "phrase",
   },
   {
-    name: "Payment",
-    line: "An ordinary payment lands at the recipient.",
+    name: "Public limits stay visible",
+    line: "The helper reveals the amount, return date and transaction timing.",
+    note: "No anonymity claim",
+    icon: "public",
   },
 ];
 
-function LiveActionLabel(): JSX.Element {
+const PHOSPHOR_STATION_ICONS = {
+  lock: LockSimpleIcon,
+  passkey: FingerprintIcon,
+  phrase: KeyIcon,
+  public: WarningCircleIcon,
+} satisfies Record<
+  Exclude<Station["icon"], "ready">,
+  ComponentType<{ "aria-hidden": true }>
+>;
+
+function StationIcon({ icon }: { icon: Station["icon"] }): JSX.Element {
+  if (icon === "ready") {
+    return <ReadyWalletMark className="station__brand-mark" />;
+  }
+  const Icon = PHOSPHOR_STATION_ICONS[icon];
+  return <Icon aria-hidden={true} />;
+}
+
+function MechanicLabel({ children }: { children: string }): JSX.Element {
   return (
     <div className="station__proof">
-      <span className="tag">Created during live use</span>
+      <span className="tag">{children}</span>
     </div>
   );
 }
@@ -76,7 +113,6 @@ export function Evidence(): JSX.Element {
   const scene = useRef<HTMLDivElement>(null);
   const track = useRef<HTMLOListElement>(null);
   const fill = useRef<HTMLSpanElement>(null);
-  useSectionReveal(root);
 
   useGSAP(
     () => {
@@ -154,34 +190,27 @@ export function Evidence(): JSX.Element {
       <div className="evidence__scene" ref={scene}>
         <div className="evidence__stage">
           <div className="grid">
-            <div className="bay bay--left evidence__head" data-reveal-group>
-              <h2 data-reveal>Run it on mainnet.</h2>
-              <p className="evidence__intro" data-reveal>
-                No sample transactions ship with Wrenchless. Your references
-                appear in Activity only after Ready Wallet returns them from a{" "}
-                <img
-                  className="evidence__mark"
-                  src="/logos/starknet-mark-light.svg"
-                  alt="Starknet"
-                  width={20}
-                  height={20}
-                  loading="lazy"
-                  decoding="async"
-                />{" "}
-                mainnet action you performed.
+            <div className="bay bay--left evidence__head">
+              <span className="evidence__token" aria-hidden="true">
+                <StrkTokenMark className="evidence__token-mark" />
+              </span>
+              <h2>A temporary boundary, not another wallet.</h2>
+              <p className="evidence__intro">
+                Wrenchless adds one time lock to the Ready Wallet you already
+                use. No second account. No second device.
               </p>
             </div>
           </div>
 
           <ol className="evidence__track" ref={track}>
-            {STATIONS.map((station, index) => (
+            {STATIONS.map((station) => (
               <li className="station" key={station.name}>
-                <span className="station__index">
-                  {String(index + 1).padStart(2, "0")}
+                <span className="station__icon" aria-hidden="true">
+                  <StationIcon icon={station.icon} />
                 </span>
                 <h3 className="station__name">{station.name}</h3>
                 <p className="station__line">{station.line}</p>
-                <LiveActionLabel />
+                <MechanicLabel>{station.note}</MechanicLabel>
               </li>
             ))}
           </ol>

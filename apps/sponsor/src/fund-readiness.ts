@@ -3,6 +3,13 @@ import { RpcProvider, constants } from "starknet";
 import type { SponsorConfig } from "./config.js";
 
 const U128_SHIFT = 128n;
+const RPC_TIMEOUT_MILLISECONDS = 30_000;
+
+const boundedRpcFetch: typeof fetch = (input, init = {}) =>
+  fetch(input, {
+    ...init,
+    signal: AbortSignal.timeout(RPC_TIMEOUT_MILLISECONDS),
+  });
 
 export type FundSponsorReadiness = {
   chainId: string;
@@ -31,7 +38,10 @@ function parseU256(result: readonly string[], label: string): bigint {
 export async function inspectFundSponsorReadiness(
   config: SponsorConfig,
 ): Promise<FundSponsorReadiness> {
-  const provider = new RpcProvider({ nodeUrl: config.rpcUrl });
+  const provider = new RpcProvider({
+    nodeUrl: config.rpcUrl,
+    baseFetch: boundedRpcFetch,
+  });
   const chainId = await provider.getChainId();
   if (chainId !== constants.StarknetChainId.SN_MAIN) {
     throw new Error(`sponsor RPC is not Starknet mainnet: ${chainId}`);

@@ -1,7 +1,7 @@
 /**
  * The device passkey, and what it is actually worth here.
  *
- * Opening the home vault and opening the carried wallet both start with a
+ * Opening a Travel Safe on this device starts with a
  * user-verifying authenticator: a device passkey, synced passkey, nearby phone
  * or security key. That is a real gate — the browser will not produce an
  * assertion without the person in front of the authenticator — and this module

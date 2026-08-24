@@ -12,11 +12,30 @@ const relayErrorSchema = z.object({
   reason: z.string().optional(),
 });
 
+const readinessSchema = z.object({ status: z.literal("ready") });
+
 export type RelayedRefillFundResult = z.infer<typeof relayResultSchema>;
+
+const FUND_REQUEST_TIMEOUT_MILLISECONDS = 60_000;
+
+export class RelayedRefillFundError extends Error {
+  constructor(
+    message: string,
+    readonly ambiguous: boolean,
+  ) {
+    super(message);
+    this.name = "RelayedRefillFundError";
+  }
+}
 
 function endpoint(sponsorUrl: string): string {
   const base = sponsorUrl.endsWith("/") ? sponsorUrl : `${sponsorUrl}/`;
   return new URL("v1/refill-funds", base).toString();
+}
+
+function readinessEndpoint(sponsorUrl: string): string {
+  const base = sponsorUrl.endsWith("/") ? sponsorUrl : `${sponsorUrl}/`;
+  return new URL("readyz", base).toString();
 }
 
 function publicMessage(code: string, reason?: string): string {
@@ -24,24 +43,28 @@ function publicMessage(code: string, reason?: string): string {
     code === "fund_broadcast_disabled" ||
     code === "fund_relay_balance_low" ||
     code === "sponsor_unavailable" ||
+    code === "helper_configuration_mismatch" ||
+    code === "fund_readiness_unavailable" ||
     reason === "fund_broadcast_disabled" ||
-    reason === "fund_relay_balance_low"
+    reason === "fund_relay_balance_low" ||
+    reason === "helper_configuration_mismatch" ||
+    reason === "fund_readiness_unavailable"
   ) {
-    return "Private restores are temporarily unavailable.";
+    return "Private parking is temporarily unavailable.";
   }
   if (code === "relay_busy") {
-    return "Another restore is being sent. Try again shortly.";
+    return "Another safe is being parked. Try again shortly.";
   }
   if (code === "rate_limited") {
-    return "Too many restore attempts. Try again later.";
+    return "Too many parking attempts. Try again later.";
   }
   if (code === "daily_fund_budget_exhausted") {
-    return "Private restores are paused until the daily relay budget resets.";
+    return "Private parking is paused until the daily relay budget resets.";
   }
   if (code === "fund_rejected" || code === "invalid_request") {
-    return "This restore could not be sent. Prepare it again.";
+    return "This safe could not be parked. Prepare it again.";
   }
-  return "The restore service could not be reached. Try again.";
+  return "The parking service could not be reached. Try again.";
 }
 
 export async function submitRelayedRefillFund(input: {
@@ -55,30 +78,65 @@ export async function submitRelayedRefillFund(input: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input.artifact),
+      signal: AbortSignal.timeout(FUND_REQUEST_TIMEOUT_MILLISECONDS),
     });
   } catch {
-    throw new Error("The restore service could not be reached. Try again.");
+    throw new RelayedRefillFundError(
+      "The parking service could not be reached. The safe may still land; check the chain before trying again.",
+      true,
+    );
   }
 
   let body: unknown;
   try {
     body = await response.json();
   } catch {
-    throw new Error("The restore service returned an unreadable response.");
+    throw new RelayedRefillFundError(
+      "The parking service returned an unreadable response. The safe may still land; check the chain before trying again.",
+      true,
+    );
   }
 
   if (!response.ok) {
     const parsed = relayErrorSchema.safeParse(body);
-    throw new Error(
+    throw new RelayedRefillFundError(
       parsed.success
         ? publicMessage(parsed.data.error, parsed.data.reason)
-        : "The restore service could not complete this request.",
+        : "The parking service could not complete this request.",
+      false,
     );
   }
 
   const parsed = relayResultSchema.safeParse(body);
   if (!parsed.success) {
-    throw new Error("The restore service returned an invalid transaction reference.");
+    throw new RelayedRefillFundError(
+      "The parking service returned an invalid transaction reference. The safe may still land; check the chain before trying again.",
+      true,
+    );
   }
   return parsed.data;
+}
+
+export async function inspectRefillSponsor(input: {
+  sponsorUrl: string;
+  fetcher?: typeof fetch;
+}): Promise<void> {
+  let response: Response;
+  try {
+    response = await (input.fetcher ?? fetch)(
+      readinessEndpoint(input.sponsorUrl),
+      {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(30_000),
+      },
+    );
+  } catch {
+    throw new Error("The Travel Safe sponsor could not be reached");
+  }
+  if (!response.ok) {
+    throw new Error("Private parking is temporarily unavailable");
+  }
+  if (!readinessSchema.safeParse(await response.json()).success) {
+    throw new Error("The Travel Safe sponsor returned an invalid readiness check");
+  }
 }

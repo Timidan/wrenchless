@@ -38,17 +38,17 @@ export function Footer(): JSX.Element {
       <div className="footer__inner grid">
         <div className="bay footer__bay">
           <h2 className="footer__statement">
-            It does not make anyone untraceable. It never claims to.
+            Carry your wallet. Leave part of the balance behind.
           </h2>
           <p className="footer__honest">
-            Wrenchless avoids a direct public vault-to-cover link and keeps the
-            distress signal encrypted for one guardian. Everything else about
-            the wallet is exactly as ordinary as it looks.
+            Ready keeps the keys. STRK20 makes the private move. Wrenchless
+            holds the reserve until you are home.
           </p>
           <div className="footer__meta">
             <nav className="footer__links" aria-label="Footer">
               <a href="/#story">How it works</a>
-              <a href="/#evidence">Proofs</a>
+              <a href="/#evidence">What it does</a>
+              <a href="/recover">Recover</a>
               <a href="/privacy.html">Privacy</a>
             </nav>
             <span className="footer__credit">

@@ -33,6 +33,12 @@ const sponsorEnvironmentSchema = z.object({
   WRENCHLESS_SPONSOR_MAX_DAILY_FUND_SPEND_FRI: positiveDecimalSchema.default(
     "21000000000000000000",
   ),
+  WRENCHLESS_SPONSOR_MIN_FUND_AMOUNT_FRI: positiveDecimalSchema.default(
+    "1000000000000000000",
+  ),
+  WRENCHLESS_SPONSOR_MIN_FUND_DURATION_SECONDS: positiveDecimalSchema.default(
+    "7200",
+  ),
   WRENCHLESS_SPONSOR_FUND_BUDGET_PATH: z.string().trim().min(1).default(
     fileURLToPath(new URL("../.data/fund-budget.json", import.meta.url)),
   ),
@@ -56,6 +62,8 @@ export type SponsorConfig = {
   maxPoolFeeFri: bigint;
   maxTransactionFeeFri: bigint;
   maxDailyFundSpendFri: bigint;
+  minFundAmountFri: bigint;
+  minFundDurationSeconds: bigint;
   fundBudgetPath: string;
   refillFundBroadcastEnabled: boolean;
   trustProxy: boolean;
@@ -82,6 +90,10 @@ export function readSponsorConfig(
     ),
     maxDailyFundSpendFri: BigInt(
       value.WRENCHLESS_SPONSOR_MAX_DAILY_FUND_SPEND_FRI,
+    ),
+    minFundAmountFri: BigInt(value.WRENCHLESS_SPONSOR_MIN_FUND_AMOUNT_FRI),
+    minFundDurationSeconds: BigInt(
+      value.WRENCHLESS_SPONSOR_MIN_FUND_DURATION_SECONDS,
     ),
     fundBudgetPath: value.WRENCHLESS_SPONSOR_FUND_BUDGET_PATH,
     refillFundBroadcastEnabled:

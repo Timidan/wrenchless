@@ -25,7 +25,7 @@ export type PrepareReadyRefillFundInput = {
   refundPublicKey: string;
   tokenAddress: string;
   amountFri: string;
-  expiry: string;
+  returnDateSeconds: string;
   now?: Date;
 };
 
@@ -36,7 +36,7 @@ export type SubmitReadyRefillRefundInput = {
   recipient: string;
   stateId: string;
   nonce: string;
-  expiry: string;
+  returnDateSeconds: string;
   tokenAddress: string;
   amountFri: string;
   refundPrivateKey: string;
@@ -50,7 +50,7 @@ export type SubmitReadyRefillClaimInput = {
   recipient: string;
   stateId: string;
   nonce: string;
-  expiry: string;
+  returnDateSeconds: string;
   tokenAddress: string;
   amountFri: string;
   claimPrivateKey: string;
@@ -102,7 +102,7 @@ export async function prepareReadyRefillFundArtifact(
     refundPublicKey: input.refundPublicKey,
     token: input.tokenAddress,
     amount: input.amountFri,
-    expiry: input.expiry,
+    expiry: input.returnDateSeconds,
   });
 
   return normalizeReadyRefillFundArtifact({
@@ -113,7 +113,7 @@ export async function prepareReadyRefillFundArtifact(
     refundPublicKey: input.refundPublicKey,
     tokenAddress: input.tokenAddress,
     amountFri: input.amountFri,
-    expiry: input.expiry,
+    expiry: input.returnDateSeconds,
     createdAt: (input.now ?? new Date()).toISOString(),
     prepared: result.prepared,
   });
@@ -151,7 +151,7 @@ export async function submitReadyRefillRefund(
     recipient: input.recipient,
     stateId: input.stateId,
     nonce: input.nonce,
-    expiry: input.expiry,
+    expiry: input.returnDateSeconds,
     token: input.tokenAddress,
     amount: input.amountFri,
     refundPrivateKey: input.refundPrivateKey,
@@ -191,7 +191,7 @@ export async function submitReadyRefillClaim(
     recipient: input.recipient,
     stateId: input.stateId,
     nonce: input.nonce,
-    expiry: input.expiry,
+    expiry: input.returnDateSeconds,
     token: input.tokenAddress,
     amount: input.amountFri,
     claimPrivateKey: input.claimPrivateKey,

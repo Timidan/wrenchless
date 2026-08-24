@@ -32,6 +32,7 @@ import type {
 } from "./inspect.js";
 
 const DRY_RUN_SIGNER = "0x1";
+const RPC_TIMEOUT_MILLISECONDS = 30_000;
 const U128_SHIFT = 128n;
 const VIEWING_KEY_SET_SELECTOR = hash.getSelectorFromName("ViewingKeySet");
 const REFILL_FUNDED_SELECTOR = hash.getSelectorFromName("Funded");
@@ -49,6 +50,12 @@ const EXPECTED_SERVER_ACTION_VARIANTS = [
   "Invoke",
   "InvokeWithComputation",
 ] as const;
+
+const boundedRpcFetch: typeof fetch = (input, init = {}) =>
+  fetch(input, {
+    ...init,
+    signal: AbortSignal.timeout(RPC_TIMEOUT_MILLISECONDS),
+  });
 
 type AbiRecord = JsonObject;
 
@@ -486,7 +493,8 @@ export class StarknetRegistrationCanaryClient
     private readonly relayAddress: string,
     provider?: RpcProvider,
   ) {
-    this.provider = provider ?? new RpcProvider({ nodeUrl: rpcUrl });
+    this.provider =
+      provider ?? new RpcProvider({ nodeUrl: rpcUrl, baseFetch: boundedRpcFetch });
   }
 
   async assertPoolInterface(poolAddress: string): Promise<{

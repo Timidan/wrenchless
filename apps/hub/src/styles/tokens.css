@@ -6,20 +6,13 @@
 
 /* ---- metric-matched fallbacks ----------------------------------------------
 
-   The two webfonts arrive over the network, so for the first stretch of every
-   load the page is set in whatever the machine already has. If that stand-in
-   is a different width the text re-wraps when the real font lands, and on a
-   bottom-anchored hero one extra line moves the whole headline: measured on
-   the built page at 1440, the swap was worth a 101px jump and 0.057 of layout
-   shift, arriving right after the headline had finished revealing.
-
-   Both faces below are the same local fonts the old stacks named, re-declared
-   with the real font's metrics written over them. Every figure was measured
+   Both faces below are local system fonts with the approved metrics written
+   over them. No font request leaves the page. Every figure was measured
    rather than looked up: rendered at 100px, one long line of the page's own
    copy is 5155.9 units wide in Hanken Grotesk and 5142.0 in Arial and its
    clones, and a "wrenchless 0123456789" is 1297.8 in Fragment Mono against
    1260.0 in every 0.6em monospace. The ascent and descent figures are those
-   fonts' own, so the baseline sits where it will sit once the swap happens.
+   fonts' own, so the baseline stays consistent across supported fallbacks.
 
    `Helvetica Neue` is deliberately not in either stack any more. It was first
    in the old sans list and it is 9% narrower than Hanken Grotesk, which is
@@ -82,11 +75,8 @@
      Two colours survive on an otherwise grayscale page, and each one is
      load-bearing.
 
-     --signal has exactly one use in the whole document: the word "Distress"
-     in the last frame of the story dive. That frame is a photograph, so the
-     hue is tuned for a dark ground rather than for paper: it reads 5.68:1
-     against --black. On the white storyboard the same word falls back to
-     plain ink, because this hue reaches only 3.4:1 on paper.
+     --signal marks actionable errors. The words still carry the meaning; the
+     colour only agrees with them.
 
      --chip-fill is the evidence tag fill: white on it reads 15.88:1. */
   --signal: oklch(66% 0.19 28);
@@ -104,20 +94,19 @@
   --gap: clamp(12px, 1.25vw, 24px);
   --measure: 62ch;
 
-  /* The product surfaces' one column. Every screen in the four devices — the
-     centred prompts and the labelled forms alike — is set to this, so a screen
+  /* The product surfaces' one column. Every screen — the centred prompts and
+     the labelled forms alike — is set to this, so a screen
      that holds both does not read as two layouts stacked. */
   --screen-measure: 25rem;
 
-  /* The four protocol glyphs. Large enough that a stroke drawing itself in
+  /* The protocol glyphs. Large enough that a stroke drawing itself in
      is legible from a normal reading distance rather than a guess. */
   --glyph: clamp(72px, 6.4vw, 96px);
 
   /* ---- the lockup ------------------------------------------------------
      One size for the mark and one for the word beside it, everywhere the
-     lockup appears: the landing bar, the footer, the working surfaces, the
-     wallet and first run. The mark had drifted to 18px in three of those and
-     20px in the fourth, which is small enough that the two strokes merge at a
+     lockup appears: the landing bar, the footer, and the working surfaces.
+     The mark had drifted below 20px, which is small enough that the two strokes merge at a
      normal viewing distance and the product reads as unbranded. 24px is the
      first size at which the second stroke is legibly its own line. */
   --mark-size: 24px;
@@ -125,8 +114,8 @@
 
   /* ---- type ------------------------------------------------------------
      Weights stop at 500. Hierarchy is carried by scale, never by weight. */
-  --font-sans: "Hanken Grotesk", "Hanken Fallback", Arial, sans-serif;
-  --font-mono: "Fragment Mono", "Fragment Fallback", monospace;
+  --font-sans: "Hanken Fallback", Arial, sans-serif;
+  --font-mono: "Fragment Fallback", monospace;
 
   --size-display: clamp(3rem, 2.1rem + 4.6vw, 6rem);
   --size-h2: clamp(2.4rem, 1.8rem + 2.6vw, 4.25rem);

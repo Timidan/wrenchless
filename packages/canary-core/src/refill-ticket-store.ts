@@ -1,8 +1,10 @@
 import { z } from "zod";
 
-const STORAGE_PREFIX = "wrenchless.refill-ticket.v1:";
-const ENCRYPTION_CONTEXT = "WRENCHLESS_REFILL_TICKET_V1";
+const STORAGE_PREFIX = "wrenchless.travel-safe-ticket.v1:";
+const ENCRYPTION_CONTEXT = "WRENCHLESS_TRAVEL_SAFE_TICKET_V1";
 const STARK_FIELD_PRIME = (1n << 251n) + 17n * (1n << 192n) + 1n;
+const U64_MAX = (1n << 64n) - 1n;
+const U128_MAX = (1n << 128n) - 1n;
 
 const canonicalFeltSchema = z
   .string()
@@ -14,74 +16,97 @@ const nonZeroFeltSchema = canonicalFeltSchema.refine(
   "expected a non-zero felt",
 );
 
-export const RefillTicketStatusSchema = z.enum([
-  "CREATED",
+function boundedDecimal(maximum: bigint, label: string) {
+  return z
+    .string()
+    .regex(/^(?:0|[1-9][0-9]*)$/, `expected a canonical decimal ${label}`)
+    .refine((value) => BigInt(value) <= maximum, `${label} is too large`);
+}
+
+export const TravelSafeTicketStatusSchema = z.enum([
+  "PHRASE_CONFIRMED",
+  "FUND_SUBMITTING",
   "FUNDED",
-  "CLAIMABLE",
-  "CLAIMING",
-  "CLAIMED",
-  "EXPIRED",
-  "REFUNDING",
-  "REFUNDED",
+  "RETURN_SUBMITTING",
+  "TERMINAL",
 ]);
 
-const commonTicketFields = {
-  schemaVersion: z.literal("wrenchless.refill-ticket.v1"),
-  stateId: nonZeroFeltSchema,
-  status: RefillTicketStatusSchema,
-  createdAt: z.iso.datetime(),
-  updatedAt: z.iso.datetime(),
-};
-
-const coverTicketSchema = z
+export const TravelSafeTicketSchema = z
   .object({
-    ...commonTicketFields,
-    role: z.literal("cover"),
-    claimPrivateKey: nonZeroFeltSchema,
-    claimPublicKey: nonZeroFeltSchema,
-  })
-  .strict();
-
-const vaultTicketSchema = z
-  .object({
-    ...commonTicketFields,
-    role: z.literal("vault"),
+    schemaVersion: z.literal("wrenchless.travel-safe-ticket.v1"),
+    role: z.literal("safe"),
+    stateId: nonZeroFeltSchema,
+    status: TravelSafeTicketStatusSchema,
     claimCommitment: nonZeroFeltSchema,
     refundPrivateKey: nonZeroFeltSchema,
     refundPublicKey: nonZeroFeltSchema,
+    tokenAddress: nonZeroFeltSchema,
+    amountFri: boundedDecimal(U128_MAX, "amount").refine(
+      (value) => BigInt(value) > 0n,
+      "amount must be positive",
+    ),
+    returnDateSeconds: boundedDecimal(U64_MAX, "return date").refine(
+      (value) => BigInt(value) > 0n,
+      "return date must be positive",
+    ),
+    fundProofExpiresAtBlock: boundedDecimal(
+      U64_MAX,
+      "FUND proof expiry block",
+    )
+      .nullable()
+      .default(null),
+    fundTransactionHash: nonZeroFeltSchema.nullable(),
+    returnSubmittedAtBlock: boundedDecimal(
+      U64_MAX,
+      "return submission block",
+    )
+      .nullable()
+      .default(null),
+    returnTransactionHash: nonZeroFeltSchema.nullable(),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
   })
   .strict();
 
-export const RefillTicketSchema = z.discriminatedUnion("role", [
-  coverTicketSchema,
-  vaultTicketSchema,
-]);
-
 const sealedTicketSchema = z
   .object({
-    schemaVersion: z.literal("wrenchless.sealed-refill-ticket.v1"),
+    schemaVersion: z.literal("wrenchless.sealed-travel-safe-ticket.v1"),
     algorithm: z.literal("AES-GCM-256"),
     iv: z.string().regex(/^[0-9a-f]{24}$/),
     ciphertext: z.string().regex(/^(?:[0-9a-f]{2})+$/),
   })
   .strict();
 
-export type RefillTicketStatus = z.infer<typeof RefillTicketStatusSchema>;
-export type RefillTicket = z.infer<typeof RefillTicketSchema>;
+export type TravelSafeTicketStatus = z.infer<
+  typeof TravelSafeTicketStatusSchema
+>;
+export type TravelSafeTicket = z.infer<typeof TravelSafeTicketSchema>;
+export type TravelSafeTicketTransitionPatch = Partial<
+  Pick<
+    TravelSafeTicket,
+    | "fundProofExpiresAtBlock"
+    | "fundTransactionHash"
+    | "returnSubmittedAtBlock"
+    | "returnTransactionHash"
+  >
+>;
 
-export type RefillTicketStorage = {
+export type TravelSafeTicketStorage = {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem(key: string): void;
 };
 
-export type RefillTicketStore = {
-  saveNew(ticket: RefillTicket): Promise<void>;
-  get(stateId: string | bigint): Promise<RefillTicket | null>;
+export type TravelSafeTicketStore = {
+  saveNew(ticket: TravelSafeTicket): Promise<void>;
+  get(stateId: string | bigint): Promise<TravelSafeTicket | null>;
   transition(
     stateId: string | bigint,
-    nextStatus: RefillTicketStatus,
+    nextStatus: TravelSafeTicketStatus,
+    patch?: TravelSafeTicketTransitionPatch,
     updatedAt?: string,
-  ): Promise<RefillTicket>;
+  ): Promise<TravelSafeTicket>;
+  remove(stateId: string | bigint): void;
 };
 
 function toCanonicalFelt(value: string | bigint): string {
@@ -89,13 +114,10 @@ function toCanonicalFelt(value: string | bigint): string {
   try {
     parsed = BigInt(value);
   } catch {
-    throw new Error("refill state ID is not a felt");
+    throw new Error("Travel Safe state ID is not a felt");
   }
-  if (parsed <= 0n) {
-    throw new Error("refill state ID must be non-zero");
-  }
-  if (parsed >= STARK_FIELD_PRIME) {
-    throw new Error("refill state ID is outside the Stark field");
+  if (parsed <= 0n || parsed >= STARK_FIELD_PRIME) {
+    throw new Error("Travel Safe state ID is outside the non-zero Stark field");
   }
   return `0x${parsed.toString(16)}`;
 }
@@ -104,10 +126,15 @@ function storageKey(stateId: string | bigint): string {
   return `${STORAGE_PREFIX}${toCanonicalFelt(stateId)}`;
 }
 
+export function removeTravelSafeTicket(
+  storage: TravelSafeTicketStorage,
+  stateId: string | bigint,
+): void {
+  storage.removeItem(storageKey(stateId));
+}
+
 function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join(
-    "",
-  );
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
 }
 
 function hexToBytes(value: string): Uint8Array<ArrayBuffer> {
@@ -127,55 +154,49 @@ function assertSealingKey(key: CryptoKey): void {
     !key.usages.includes("decrypt")
   ) {
     throw new Error(
-      "refill ticket storage requires a non-extractable AES-GCM encrypt/decrypt key",
+      "Travel Safe storage requires a non-extractable AES-GCM encrypt/decrypt key",
     );
   }
 }
 
 function canTransition(
-  current: RefillTicketStatus,
-  next: RefillTicketStatus,
+  current: TravelSafeTicketStatus,
+  next: TravelSafeTicketStatus,
 ): boolean {
   switch (current) {
-    case "CREATED":
-      return next === "FUNDED";
+    case "PHRASE_CONFIRMED":
+      return next === "FUND_SUBMITTING";
+    case "FUND_SUBMITTING":
+      return next === "PHRASE_CONFIRMED" || next === "FUNDED";
     case "FUNDED":
-      return next === "CLAIMABLE" || next === "EXPIRED";
-    case "CLAIMABLE":
-      return next === "CLAIMING" || next === "EXPIRED";
-    case "CLAIMING":
-      return next === "CLAIMED";
-    case "EXPIRED":
-      return next === "REFUNDING";
-    case "REFUNDING":
-      return next === "REFUNDED";
-    case "CLAIMED":
-    case "REFUNDED":
+      return next === "RETURN_SUBMITTING" || next === "TERMINAL";
+    case "RETURN_SUBMITTING":
+      return next === "FUNDED" || next === "TERMINAL";
+    case "TERMINAL":
       return false;
   }
 }
 
-export function transitionRefillTicket(
-  ticket: RefillTicket,
-  nextStatus: RefillTicketStatus,
+export function transitionTravelSafeTicket(
+  ticket: TravelSafeTicket,
+  nextStatus: TravelSafeTicketStatus,
+  patch: TravelSafeTicketTransitionPatch = {},
   updatedAt = new Date().toISOString(),
-): RefillTicket {
-  if (ticket.status === nextStatus) {
-    return ticket;
-  }
-  if (!canTransition(ticket.status, nextStatus)) {
+): TravelSafeTicket {
+  if (ticket.status !== nextStatus && !canTransition(ticket.status, nextStatus)) {
     throw new Error(
-      `invalid refill ticket transition ${ticket.status} -> ${nextStatus}`,
+      `invalid Travel Safe ticket transition ${ticket.status} -> ${nextStatus}`,
     );
   }
-  return RefillTicketSchema.parse({
+  return TravelSafeTicketSchema.parse({
     ...ticket,
+    ...patch,
     status: nextStatus,
     updatedAt,
   });
 }
 
-export async function generateRefillTicketSealingKey(): Promise<CryptoKey> {
+export async function generateTravelSafeTicketSealingKey(): Promise<CryptoKey> {
   return crypto.subtle.generateKey(
     { name: "AES-GCM", length: 256 },
     false,
@@ -184,21 +205,23 @@ export async function generateRefillTicketSealingKey(): Promise<CryptoKey> {
 }
 
 async function sealTicket(
-  ticket: RefillTicket,
+  ticket: TravelSafeTicket,
   key: CryptoKey,
   keyName: string,
 ): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const textEncoder = new TextEncoder();
-  const plaintext = textEncoder.encode(JSON.stringify(ticket));
-  const additionalData = textEncoder.encode(`${ENCRYPTION_CONTEXT}:${keyName}`);
+  const encoder = new TextEncoder();
   const ciphertext = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv, additionalData },
+    {
+      name: "AES-GCM",
+      iv,
+      additionalData: encoder.encode(`${ENCRYPTION_CONTEXT}:${keyName}`),
+    },
     key,
-    plaintext,
+    encoder.encode(JSON.stringify(ticket)),
   );
   return JSON.stringify({
-    schemaVersion: "wrenchless.sealed-refill-ticket.v1",
+    schemaVersion: "wrenchless.sealed-travel-safe-ticket.v1",
     algorithm: "AES-GCM-256",
     iv: bytesToHex(iv),
     ciphertext: bytesToHex(new Uint8Array(ciphertext)),
@@ -209,22 +232,20 @@ async function openTicket(
   sealedValue: string,
   key: CryptoKey,
   keyName: string,
-): Promise<RefillTicket> {
+): Promise<TravelSafeTicket> {
   let sealed: z.infer<typeof sealedTicketSchema>;
   try {
     sealed = sealedTicketSchema.parse(JSON.parse(sealedValue));
   } catch {
-    throw new Error("stored refill ticket envelope is invalid");
+    throw new Error("stored Travel Safe ticket envelope is invalid");
   }
-
   let plaintext: ArrayBuffer;
   try {
-    const textEncoder = new TextEncoder();
     plaintext = await crypto.subtle.decrypt(
       {
         name: "AES-GCM",
         iv: hexToBytes(sealed.iv),
-        additionalData: textEncoder.encode(
+        additionalData: new TextEncoder().encode(
           `${ENCRYPTION_CONTEXT}:${keyName}`,
         ),
       },
@@ -232,66 +253,63 @@ async function openTicket(
       hexToBytes(sealed.ciphertext),
     );
   } catch {
-    throw new Error("stored refill ticket could not be decrypted");
+    throw new Error("stored Travel Safe ticket could not be decrypted");
   }
-
   try {
-    return RefillTicketSchema.parse(
+    return TravelSafeTicketSchema.parse(
       JSON.parse(new TextDecoder().decode(plaintext)),
     );
   } catch {
-    throw new Error("stored refill ticket plaintext is invalid");
+    throw new Error("stored Travel Safe ticket plaintext is invalid");
   }
 }
 
-export function createRefillTicketStore(
-  storage: RefillTicketStorage,
+export function createTravelSafeTicketStore(
+  storage: TravelSafeTicketStorage,
   key: CryptoKey,
-): RefillTicketStore {
+): TravelSafeTicketStore {
   assertSealingKey(key);
-
   const get = async (
     stateId: string | bigint,
-  ): Promise<RefillTicket | null> => {
+  ): Promise<TravelSafeTicket | null> => {
     const keyName = storageKey(stateId);
     const sealedValue = storage.getItem(keyName);
-    if (sealedValue === null) {
-      return null;
-    }
+    if (sealedValue === null) return null;
     const ticket = await openTicket(sealedValue, key, keyName);
     if (BigInt(ticket.stateId) !== BigInt(toCanonicalFelt(stateId))) {
-      throw new Error("stored refill ticket does not match its storage key");
+      throw new Error("stored Travel Safe ticket does not match its storage key");
     }
     return ticket;
   };
 
   return {
     async saveNew(ticket) {
-      const parsed = RefillTicketSchema.parse(ticket);
-      if (parsed.status !== "CREATED") {
-        throw new Error("a new refill ticket must start in CREATED state");
+      const parsed = TravelSafeTicketSchema.parse(ticket);
+      if (parsed.status !== "PHRASE_CONFIRMED") {
+        throw new Error("a new Travel Safe ticket must start after phrase confirmation");
       }
       const keyName = storageKey(parsed.stateId);
       if (storage.getItem(keyName) !== null) {
-        throw new Error("refill ticket already exists");
+        throw new Error("Travel Safe ticket already exists");
       }
       storage.setItem(keyName, await sealTicket(parsed, key, keyName));
     },
-
     get,
-
-    async transition(stateId, nextStatus, updatedAt) {
+    async transition(stateId, nextStatus, patch = {}, updatedAt) {
       const ticket = await get(stateId);
-      if (ticket === null) {
-        throw new Error("refill ticket does not exist");
-      }
-      const nextTicket = transitionRefillTicket(ticket, nextStatus, updatedAt);
-      if (nextTicket === ticket) {
-        return ticket;
-      }
+      if (ticket === null) throw new Error("Travel Safe ticket does not exist");
+      const nextTicket = transitionTravelSafeTicket(
+        ticket,
+        nextStatus,
+        patch,
+        updatedAt,
+      );
       const keyName = storageKey(stateId);
       storage.setItem(keyName, await sealTicket(nextTicket, key, keyName));
       return nextTicket;
+    },
+    remove(stateId) {
+      removeTravelSafeTicket(storage, stateId);
     },
   };
 }

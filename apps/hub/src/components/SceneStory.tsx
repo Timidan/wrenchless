@@ -35,12 +35,12 @@ const SCENES: readonly Scene[] = [
   {
     id: "street",
     src: "/images/story/s1-street.webp",
-    alt: "A hand slipping a lit phone into a coat pocket on a night street, the lamps behind it thrown out of focus.",
+    alt: "A hand slipping a phone into a coat pocket on a night street.",
     portal: "36% 38%",
     width: 922,
     height: 1152,
-    title: "An ordinary night.",
-    line: "You pay with the wallet in your pocket, like anyone.",
+    title: "Choose what stays home.",
+    line: "Pick the private STRK amount and your return date.",
   },
   {
     id: "counter",
@@ -49,8 +49,8 @@ const SCENES: readonly Scene[] = [
     portal: "74% 48%",
     width: 1536,
     height: 1024,
-    title: "Inside, it is a modest wallet.",
-    line: "A small balance, real history. Nothing worth taking.",
+    title: "Ready prepares the move.",
+    line: "Ready signs a STRK20 proof. Your wallet keys never leave Ready.",
   },
   {
     id: "pool",
@@ -59,8 +59,8 @@ const SCENES: readonly Scene[] = [
     portal: "64% 70%",
     width: 1536,
     height: 1024,
-    title: "Refills pass through a pool.",
-    line: "Your vault tops it up through STRK20. No bridge, no public trail.",
+    title: "The reserve waits.",
+    line: "Wrenchless parks it in the Travel Safe, outside your spendable balance.",
   },
   {
     id: "vault",
@@ -69,8 +69,8 @@ const SCENES: readonly Scene[] = [
     portal: "58% 58%",
     width: 1280,
     height: 960,
-    title: "The vault stays behind the door.",
-    line: "Savings live on another device, out of reach and out of sight.",
+    title: "Write down twelve words.",
+    line: "Wrenchless shows them once and never stores them. They release the reserve early.",
   },
   {
     id: "hallway",
@@ -79,14 +79,8 @@ const SCENES: readonly Scene[] = [
     portal: "64% 57%",
     width: 922,
     height: 1152,
-    title: "And if you are ever forced to pay,",
-    line: (
-      <>
-        the same payment quietly mails a sealed note to one person you trust.
-        Their copy says <span className="story__signal">Distress</span>.
-        Everything else looks normal.
-      </>
-    ),
+    title: "Bring it back after the trip.",
+    line: "After the return date, your passkey returns the reserve to Ready as private STRK.",
   },
 ];
 
@@ -375,7 +369,7 @@ export function SceneStory(): JSX.Element {
   return (
     <section className="section section--story" id="story" ref={root}>
       <h2 className="visually-hidden">
-        What the wallet looks like from the outside, in five scenes.
+        How a Wrenchless Travel Safe works, in five scenes.
       </h2>
 
       <div className="story__stage" ref={stage}>

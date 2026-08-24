@@ -18,16 +18,10 @@ RUN pnpm install --frozen-lockfile --filter @wrenchless/hub...
 COPY apps/hub apps/hub
 COPY packages/canary-core packages/canary-core
 ARG VITE_SITE_URL
-ARG VITE_PAIRING_ORIGIN
-ARG VITE_MAILBOX_URL
 ARG VITE_SPONSOR_URL
 RUN test -n "$VITE_SITE_URL" \
-    && test -n "$VITE_PAIRING_ORIGIN" \
-    && test -n "$VITE_MAILBOX_URL" \
     && test -n "$VITE_SPONSOR_URL"
 ENV VITE_SITE_URL=$VITE_SITE_URL
-ENV VITE_PAIRING_ORIGIN=$VITE_PAIRING_ORIGIN
-ENV VITE_MAILBOX_URL=$VITE_MAILBOX_URL
 ENV VITE_SPONSOR_URL=$VITE_SPONSOR_URL
 RUN pnpm --filter @wrenchless/hub build
 
@@ -41,14 +35,11 @@ HEALTHCHECK --interval=15s --timeout=3s --retries=3 \
 FROM pnpm-base AS services
 ENV NODE_ENV=production
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
-COPY apps/mailbox/package.json apps/mailbox/package.json
 COPY apps/sponsor/package.json apps/sponsor/package.json
 COPY apps/relay-canary/package.json apps/relay-canary/package.json
 COPY packages/canary-core/package.json packages/canary-core/package.json
 RUN pnpm install --prod --frozen-lockfile \
-    --filter @wrenchless/mailbox... \
     --filter @wrenchless/sponsor...
-COPY apps/mailbox/src apps/mailbox/src
 COPY apps/sponsor/src apps/sponsor/src
 COPY apps/relay-canary/src apps/relay-canary/src
 COPY packages/canary-core/src packages/canary-core/src

@@ -102,6 +102,8 @@ export class RefillFundRelay {
         config: relayConfig,
         configuredHelperAddress: this.config.helperAddress,
         client,
+        minimumAmountFri: this.config.minFundAmountFri,
+        minimumRemainingDurationSeconds: this.config.minFundDurationSeconds,
         beforeBroadcast: (maximumSpendFri) =>
           this.budget.reserve(maximumSpendFri),
       });

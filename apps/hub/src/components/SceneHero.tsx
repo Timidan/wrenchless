@@ -122,7 +122,7 @@ export function SceneHero(): JSX.Element {
           src="/images/hero-wallet.webp"
           width={1600}
           height={900}
-          alt="A worn leather wallet resting on a cream envelope, on dark woven cloth under one warm lamp."
+          alt="A worn wallet left on a sealed envelope under one warm light."
           fetchPriority="high"
           decoding="async"
         />
@@ -133,26 +133,23 @@ export function SceneHero(): JSX.Element {
         <div className="bay hero__bay">
           <h1 className="hero__title">
             <span className="hero__line">
-              <span className="hero__line-in">Spend from one wallet.</span>
+              <span className="hero__line-in">Leave private STRK at home.</span>
             </span>
             <span className="hero__line">
-              <span className="hero__line-in">
-                Keep your savings out of sight.
-              </span>
+              <span className="hero__line-in">Take your wallet.</span>
             </span>
           </h1>
           <p className="hero__lede hero__step">
-            A Starknet wallet with a small spending balance. Your savings stay
-            in a separate vault, topped up through the STRK20 privacy pool with
-            no public link between the two.
+            Pick an amount and your return date. Wrenchless locks that reserve
+            away from the Ready Wallet on your phone.
           </p>
           <div className="hero__actions hero__step">
-            <a className="btn btn--primary hero__magnet" href="/start">
-              <span>Start Wrenchless</span>
+            <a className="btn btn--primary hero__magnet" href="/safe">
+              <span>Open Travel Safe</span>
               <ArrowRoll />
             </a>
-            <a className="btn btn--secondary" href="#story">
-              <span>See how it works</span>
+            <a className="btn btn--secondary" href="/recover">
+              <span>Recover with 12 words</span>
               <ArrowRoll />
             </a>
           </div>

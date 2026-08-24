@@ -1,10 +1,8 @@
-/* ================= the product: four devices, one shape =================
+/* ================= the product: one device, one shape =================
 
-   Three of these are a phone in someone's hand — the carried wallet, the home
-   vault, the trusted reader — and the fourth is the setup flow that equips
-   them. Everything else in this project reads top to bottom; these are held in
-   a viewport, thumb-first, and the difference is structural rather than
-   decorative.
+   The Travel Safe and phrase recovery share one compact, thumb-first frame.
+   Everything else in this project reads top to bottom; these two surfaces are
+   held in a viewport, and the difference is structural rather than decorative.
 
    They keep the project's type, its hairlines, its 4px corner and its single
    ink. What they drop is every device that makes a page look like a console:
@@ -24,8 +22,8 @@ html.app-page body {
    On a phone the device is the window and this is invisible. On anything
    larger it is the page the device sits on, which is the whole reason it is
    here: a phone-shaped column drawn from the top of the viewport to the
-   bottom has to fill a height it never has content for, and a step of the
-   setup flow ends up as 300px of type adrift in a white lake. Bounded, the
+   bottom has to fill a height it never has content for, and a short step can
+   end up as 300px of type adrift in a white lake. Bounded, the
    frame keeps the proportion it is designed at and the leftover height
    becomes page around it instead of emptiness inside it. */
 .product-stage {
@@ -42,18 +40,10 @@ html.app-page body {
   background: var(--white);
 }
 
-/* The carried wallet is a phone shape and stays one, on every screen.
-   Widening it on a desktop would turn a wallet into a dashboard. */
-.product[data-role="wallet"] {
-  max-width: 30rem;
-}
-
-/* Setup, the home vault and the reader carry QR codes, forms and two-column
-   fact rows. Four more rems is what those need to stay one row each; it is
-   still a column, not a dashboard. On a phone all four are the phone. */
-.product[data-role="setup"],
-.product[data-role="vault"],
-.product[data-role="guardian"] {
+/* Both product routes stay a compact device instead of widening into a
+   dashboard on desktop. */
+.product[data-role="safe"],
+.product[data-role="recover"] {
   max-width: 34rem;
 }
 
@@ -291,43 +281,6 @@ html.app-page body {
   from {
     opacity: 0;
     transform: translateY(5px);
-  }
-}
-
-/* ---------- the tab bar ---------- */
-
-.tabbar {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  margin-top: auto;
-  border-top: 1px solid var(--rule);
-  background: color-mix(in oklab, var(--white) 94%, transparent);
-  backdrop-filter: blur(12px);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-}
-
-.tabbar__tab {
-  display: grid;
-  justify-items: center;
-  align-content: center;
-  gap: 3px;
-  min-height: 56px;
-  color: var(--ink-secondary);
-  font-size: var(--size-micro);
-  -webkit-tap-highlight-color: transparent;
-  transition: color var(--dur-fast) var(--ease-settle);
-}
-
-.tabbar__tab[aria-current="page"] {
-  color: var(--ink);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .tabbar__tab:hover {
-    color: var(--ink);
   }
 }
 
@@ -590,7 +543,6 @@ html.app-page body {
 html.reduced-motion .screen,
 html.reduced-motion .wbtn,
 html.reduced-motion .iconbtn,
-html.reduced-motion .tabbar__tab,
 html.reduced-motion .waiting__pulse {
   animation: none;
   transition: none;
@@ -607,7 +559,6 @@ html.reduced-motion .iconbtn:active {
   .screen,
   .wbtn,
   .iconbtn,
-  .tabbar__tab,
   .waiting__pulse {
     animation: none;
     transition: none;
@@ -670,20 +621,13 @@ html.reduced-motion .iconbtn:active {
   font-variant-numeric: tabular-nums;
 }
 
-.winput--code {
-  font-family: var(--font-mono);
-  text-align: center;
-  letter-spacing: 0.4em;
-  text-indent: 0.4em;
-}
-
 .winput--paste {
   font-family: var(--font-mono);
   font-size: 13px;
   resize: vertical;
 }
 
-/* ---------- facts, lists, sections ---------- */
+/* ---------- facts ---------- */
 
 .wfacts {
   display: grid;
@@ -727,165 +671,7 @@ html.reduced-motion .iconbtn:active {
   font-weight: 500;
 }
 
-.sectionhead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-top: var(--space-2);
-}
-
-.eyebrow {
-  color: var(--ink-secondary);
-  font-size: var(--size-ui);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.wlist {
-  display: grid;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.wlist__row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding-block: var(--space-3);
-  border-bottom: 1px solid var(--rule);
-}
-
-.wlist__row:last-child {
-  border-bottom: 0;
-}
-
-.wlist__main {
-  min-width: 0;
-}
-
-.wlist__kind {
-  font-size: 0.9375rem;
-}
-
-.wlist__meta {
-  margin-top: 2px;
-  color: var(--ink-secondary);
-  font-size: 0.75rem;
-  overflow-wrap: anywhere;
-}
-
-.wlist__side {
-  flex: none;
-  text-align: right;
-}
-
-/* Status is a word, never a colour on its own. The tint only agrees with it. */
-.wlist__status {
-  margin-top: 2px;
-  color: var(--ink-secondary);
-  font-size: 0.75rem;
-}
-
-.wlist__status[data-status="reverted"] {
-  color: var(--signal);
-}
-
-.wrefs {
-  display: grid;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.wmenu {
-  display: grid;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.wmenu__item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  width: 100%;
-  min-height: 52px;
-  padding: var(--space-3) 0;
-  border-bottom: 1px solid var(--rule);
-  text-align: left;
-  -webkit-tap-highlight-color: transparent;
-  transition: color var(--dur-fast) var(--ease-settle);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .wmenu__item:hover {
-    color: var(--ink);
-  }
-}
-
-.wmenu__icon {
-  display: inline-flex;
-  flex: none;
-  color: var(--ink-body);
-}
-
-.wmenu__icon svg {
-  width: 20px;
-  height: 20px;
-}
-
-.wmenu__copy {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.wmenu__label {
-  font-size: 1rem;
-}
-
-.wmenu__hint {
-  color: var(--ink-secondary);
-  font-size: 0.8125rem;
-}
-
-.wchips {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.wchip {
-  min-width: 68px;
-  min-height: 44px;
-  padding: 0 var(--space-4);
-  border: 1px solid var(--rule-strong);
-  border-radius: var(--r-pill);
-  color: var(--ink-body);
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-  -webkit-tap-highlight-color: transparent;
-  transition:
-    border-color var(--dur-fast) var(--ease-settle),
-    background-color var(--dur-fast) var(--ease-settle),
-    color var(--dur-fast) var(--ease-settle);
-}
-
-.wchip[aria-pressed="true"] {
-  border-color: var(--ink);
-  background: var(--near-white);
-  color: var(--ink);
-}
-
-/* ---------- state lines, notes, empties ---------- */
+/* ---------- state lines and notes ---------- */
 
 .statusline {
   display: flex;
@@ -915,7 +701,7 @@ html.reduced-motion .iconbtn:active {
 }
 
 /* Processing icons rotate only while their state machine says work is
-   running. Settled and status icons (balance low, restore, refresh CTAs)
+   running. Settled and status icons (balance low, return, refresh CTAs)
    never opt in, so this never runs on them. */
 @keyframes processing-spin {
   to {
@@ -924,8 +710,7 @@ html.reduced-motion .iconbtn:active {
 }
 
 .statusline__icon[data-icon-motion="spin"],
-.wbtn__icon[data-icon-motion="spin"],
-.wmenu__icon[data-icon-motion="spin"] {
+.wbtn__icon[data-icon-motion="spin"] {
   animation: processing-spin var(--dur-spin) linear infinite;
   transform-origin: center;
 }
@@ -934,15 +719,13 @@ html.reduced-motion .iconbtn:active {
    above so an opted-in processing icon still stops rotating once reduced
    motion is requested, mid-animation or not. */
 html.reduced-motion .statusline__icon[data-icon-motion="spin"],
-html.reduced-motion .wbtn__icon[data-icon-motion="spin"],
-html.reduced-motion .wmenu__icon[data-icon-motion="spin"] {
+html.reduced-motion .wbtn__icon[data-icon-motion="spin"] {
   animation: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .statusline__icon[data-icon-motion="spin"],
-  .wbtn__icon[data-icon-motion="spin"],
-  .wmenu__icon[data-icon-motion="spin"] {
+  .wbtn__icon[data-icon-motion="spin"] {
     animation: none;
   }
 }
@@ -959,29 +742,6 @@ html.reduced-motion .wmenu__icon[data-icon-motion="spin"] {
   color: var(--ink);
 }
 
-.wempty {
-  display: grid;
-  gap: var(--space-2);
-  padding-block: var(--space-6);
-  text-align: center;
-}
-
-.wempty__title {
-  margin: 0 auto;
-  font-size: 0.9375rem;
-}
-
-.wempty__body {
-  margin: 0 auto;
-  max-width: 32ch;
-  color: var(--ink-secondary);
-  font-size: 0.875rem;
-  line-height: 1.5;
-}
-
-.wempty__action {
-  margin-top: var(--space-2);
-}
 
 .wlive {
   min-height: 1.1em;
@@ -1025,31 +785,6 @@ html.reduced-motion .wmenu__icon[data-icon-motion="spin"] {
   }
 }
 
-/* A failure's technical half. Closed by default and quiet when open: it is
-   evidence for somebody else, not instruction for the person reading it. */
-.detail {
-  color: var(--ink-secondary);
-  font-size: 0.8125rem;
-  line-height: 1.5;
-}
-
-.detail summary {
-  display: flex;
-  align-items: center;
-  min-height: 44px;
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 0.18em;
-}
-
-.detail p {
-  max-width: none;
-  padding-left: var(--space-3);
-  border-left: 1px solid var(--rule);
-  font-family: var(--font-mono);
-  font-size: var(--size-micro);
-  overflow-wrap: anywhere;
-}
 
 /* The circular glyph a full-screen prompt is built around: a passkey, a scan,
    a reassurance. One per screen, and never beside a second one. */
@@ -1069,250 +804,106 @@ html.reduced-motion .wmenu__icon[data-icon-motion="spin"] {
   height: 30px;
 }
 
-/* ---------- the access code ---------- */
-
-.codedots {
-  display: flex;
-  justify-content: center;
-  gap: var(--space-3);
-  min-height: 14px;
+.emblem__ready {
+  width: 34px;
+  height: 34px;
 }
 
-.codedots__dot {
-  width: 10px;
-  height: 10px;
-  border: 1px solid var(--rule-strong);
-  border-radius: 50%;
-  transition:
-    background-color var(--dur-press) var(--ease-settle),
-    border-color var(--dur-press) var(--ease-settle);
+.wbtn__ready {
+  width: 22px;
+  height: 22px;
 }
 
-.codedots__dot[data-filled] {
-  border-color: var(--ink);
-  background: var(--ink);
-}
+/* ---------- recovery words ---------- */
 
-html.reduced-motion .codedots__dot {
-  transition: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .codedots__dot {
-    transition: none;
-  }
-}
-
-.keypad {
+.phrase {
   display: grid;
-  grid-template-columns: repeat(3, minmax(64px, 84px));
-  justify-content: center;
-  gap: var(--space-3) var(--space-4);
-}
-
-.keypad__key {
-  display: grid;
-  place-items: center;
-  min-height: 52px;
-  border: 1px solid var(--rule);
-  border-radius: var(--r-pill);
-  color: var(--ink);
-  font-family: var(--font-mono);
-  font-size: 1.125rem;
-  -webkit-tap-highlight-color: transparent;
-  transition:
-    transform var(--dur-press) var(--ease-settle),
-    border-color var(--dur-fast) var(--ease-settle),
-    background-color var(--dur-fast) var(--ease-settle);
-}
-
-.keypad__key svg {
-  width: 20px;
-  height: 20px;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .keypad__key:not(:disabled):hover {
-    border-color: var(--rule-strong);
-    background: var(--near-white);
-    transform: translateY(-2px);
-  }
-}
-
-.keypad__key:not(:disabled):active {
-  transform: translateY(1px) scale(0.985);
-}
-
-.keypad__key:disabled {
-  cursor: default;
-  opacity: 0.42;
-}
-
-.keypad__gap {
-  visibility: hidden;
-}
-
-html.reduced-motion .keypad__key {
-  transition: none;
-}
-
-html.reduced-motion .keypad__key:hover,
-html.reduced-motion .keypad__key:active {
-  transform: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .keypad__key {
-    transition: none;
-  }
-
-  .keypad__key:hover,
-  .keypad__key:active {
-    transform: none;
-  }
-}
-
-/* ---------- invitations ----------
-
-   The QR is the invitation itself, drawn locally from the same value shown
-   underneath it. The white inset is the quiet zone scanners need; the layout
-   around it stays unboxed so it does not become the only card in the flow.    */
-
-.qr {
-  display: grid;
-  justify-items: center;
-  gap: var(--space-4);
-}
-
-.qr__code {
-  display: grid;
-  place-items: center;
-  padding: var(--space-3);
-  border: 1px solid var(--rule);
-  background: var(--white);
-}
-
-/* As large as the column allows. These payloads carry key material, so they
-   are dense; every module the code gains is a module a phone camera does not
-   have to resolve. */
-.qr__code svg {
-  display: block;
-  width: min(78vw, 304px);
-  height: auto;
-}
-
-/* A value read out loud, sized so nobody loses their place halfway through. */
-.fingerprint {
-  padding: var(--space-4);
-  border: 1px solid var(--rule);
-  border-radius: var(--r-card);
-  background: var(--near-white);
-  font-family: var(--font-mono);
-  font-size: clamp(1rem, 0.85rem + 1.2vw, 1.25rem);
-  letter-spacing: 0.08em;
-  text-align: center;
-  overflow-wrap: anywhere;
-}
-
-/* ---------- the response plan ---------- */
-
-.plan {
-  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin: 0;
   padding: 0;
+  border-top: 1px solid var(--rule);
   list-style: none;
-  counter-reset: plan;
 }
 
-.plan li {
+.phrase__word {
   display: grid;
-  grid-template-columns: 26px 1fr;
-  gap: var(--space-3);
-  padding-block: var(--space-3);
+  grid-template-columns: 2.1rem minmax(0, 1fr);
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3) var(--space-2);
   border-bottom: 1px solid var(--rule);
-  color: var(--ink-body);
-  font-size: 0.9375rem;
-  line-height: 1.45;
-  counter-increment: plan;
 }
 
-.plan li:last-child {
-  border-bottom: 0;
+.phrase__word:nth-child(odd) {
+  border-right: 1px solid var(--rule);
 }
 
-.plan li::before {
-  content: counter(plan, decimal-leading-zero);
-  padding-top: 3px;
+.phrase__index {
   color: var(--ink-secondary);
   font-family: var(--font-mono);
   font-size: var(--size-micro);
 }
 
-.alert-title {
-  color: var(--signal);
+.phrase__text {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
 }
 
-/* ---------- a value to copy ---------- */
+/* ---------- safe time and transaction evidence ---------- */
 
-.copyvalue {
+.countdown {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  min-height: 44px;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.countdown__tick {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+.countdown[data-live] .countdown__tick {
+  animation: waiting-pulse 1400ms var(--ease-settle) infinite;
+}
+
+.txrefs {
   display: grid;
   gap: var(--space-2);
-  width: 100%;
 }
 
-.copyvalue__head {
+.txref {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--space-3);
+  gap: var(--space-4);
+  padding-block: var(--space-2);
+  border-bottom: 1px solid var(--rule);
 }
 
-.copyvalue__label {
-  font-size: 0.875rem;
-  font-weight: 500;
-}
-
-.copyvalue__tools {
-  display: flex;
-  gap: var(--space-3);
-}
-
-.copyvalue__tool {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-height: 36px;
+.txref__label {
   color: var(--ink-body);
   font-size: 0.8125rem;
-  text-decoration: underline;
-  text-underline-offset: 0.18em;
 }
 
-.copyvalue__tool svg {
-  width: 16px;
-  height: 16px;
+html.reduced-motion .countdown__tick,
+html.reduced-motion .waiting__pulse {
+  animation: none;
 }
 
-.copyvalue__value {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
-  padding: var(--space-3);
-  border: 1px solid var(--rule);
-  border-radius: var(--r-card);
-  background: var(--near-white);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-  user-select: all;
-}
-
-.copyvalue__note {
-  color: var(--ink-secondary);
-  font-size: 0.8125rem;
-  line-height: 1.45;
+@media (prefers-reduced-motion: reduce) {
+  .countdown__tick,
+  .waiting__pulse {
+    animation: none;
+  }
 }
 
 /* ---------- not found ---------- */
@@ -1329,126 +920,4 @@ html.reduced-motion .keypad__key:active {
 .notfound__title {
   font-size: 1.25rem;
   font-weight: 400;
-}
-
-/* ================= access code =================
-
-   Four digits on four rules. The input is transparent and sits over them, so
-   the caret, selection, paste and the software keyboard behave the way the
-   platform means them to while the rules do the drawing.                   */
-
-.code {
-  position: relative;
-  display: block;
-  cursor: text;
-}
-
-.code__sr {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-/* 16px keeps iOS from zooming the viewport when the field takes focus, which
-   would move the frame in the middle of an entry. */
-.code__input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  border: 0;
-  opacity: 0;
-  font-size: 16px;
-}
-
-.code__row {
-  display: flex;
-  justify-content: center;
-  gap: clamp(var(--space-5), 7vw, var(--space-7));
-}
-
-.code__slot {
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  width: 44px;
-  height: 56px;
-  border-bottom: 2px solid var(--rule-strong);
-  transition: border-color var(--dur-fast) var(--ease-settle);
-}
-
-.code__slot[data-on] {
-  border-bottom-color: var(--ink);
-}
-
-/* Where the next digit lands. The rule thickens and, where motion is allowed,
-   breathes on its own fixed clock — never on typing speed, which would make a
-   slow entry look different from a quick one. */
-.code__slot[data-active] {
-  border-bottom-color: var(--ink);
-  border-bottom-width: 3px;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .code__slot[data-active] {
-    animation: code-caret 1.4s ease-in-out infinite;
-  }
-}
-
-@keyframes code-caret {
-  0%,
-  100% {
-    border-bottom-color: var(--ink);
-  }
-  50% {
-    border-bottom-color: var(--rule-strong);
-  }
-}
-
-.code__mark {
-  font-size: 1.75rem;
-  line-height: 1.6;
-}
-
-/* The slots carry 56px of their own air above the rules, waiting for digits
-   that are not there yet. Stacking a further 44px on top of that opened a
-   band between the lede and the entry wide enough to read as a fault. */
-.codestep {
-  margin-block: clamp(8px, 2vw, 16px) 0;
-}
-
-/* One shake on a mismatch, keyed to the retry so it fires once. */
-@media (prefers-reduced-motion: no-preference) {
-  .codestep {
-    animation: code-shake 320ms var(--ease-settle);
-  }
-}
-
-@keyframes code-shake {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  20% {
-    transform: translateX(-6px);
-  }
-  45% {
-    transform: translateX(5px);
-  }
-  70% {
-    transform: translateX(-3px);
-  }
-}
-
-.codestep__msg {
-  margin-top: var(--space-4);
-  min-height: 1.4em;
-  color: var(--ink);
-  font-size: 0.875rem;
-  line-height: 1.4;
 }

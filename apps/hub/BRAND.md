@@ -1,10 +1,10 @@
 # Wrenchless brand assets
 
-Wrenchless is a private Starknet spending wallet with a covert duress mode. Its identity stays quiet, ordinary-looking, and precise: the safety mechanism should never advertise itself.
+Wrenchless is a one-device Travel Safe for private STRK. Its identity stays quiet, ordinary-looking, and precise: the product should feel like a small place to leave a reserve, not a trading dashboard.
 
 ## The mark
 
-The W is built from two identical V strokes. The solid front V is the visible payment. The rear V is the sealed DISTRESS heartbeat behind it: the same shape and outcome, but at 55% presence and readable only by its intended guardian. The offset makes the W without adding a shield, lock, key, or other overt security signal.
+The W is built from two identical V strokes. The solid front V is what travels with you. The quieter rear V is the reserve parked until your return. The offset makes the W without adding a shield, lock, key, or other overt security symbol.
 
 The construction uses a 32 × 32 viewBox, 2.5-unit strokes, square caps, and miter joins. Keep the geometry and the front/rear order intact.
 
@@ -20,7 +20,7 @@ Keep clearspace of at least 8 units—one quarter of the mark width—on every s
 
 Use `*-dark.svg` on `#0f0e0d` or `#141414` grounds; it draws in paper white. Use `*-light.svg` on white or near-white grounds; it draws in `#141414`. Photography is acceptable only where the approved mark variant stays clearly legible.
 
-The exported lockups set lowercase “wrenchless” in Hanken Grotesk Medium (500). Hanken Grotesk is loaded by the hub but its font file is not stored in this repository, so the wordmark SVGs use a `<text>` element with the existing fallback stack rather than inaccurate hand-traced glyphs. For a fully outlined production export, convert that text with the official Hanken Grotesk Medium font. The live nav and footer deliberately retain Fragment Mono.
+The exported lockups set lowercase “wrenchless” with the approved fallback metrics. The hub does not request remote fonts. For a fully outlined production export, convert the wordmark text with the official Hanken Grotesk Medium font. The live nav and footer use the bundled Fragment-compatible fallback metrics.
 
 ## Do / don’t
 
@@ -47,10 +47,8 @@ files are derived, not originals: each one is downsampled from a master PNG four
 to eight times its linear size, and the masters are the only source that can
 produce a new crop, a new aspect ratio, or a retina export.
 
-The masters live in `apps/hub/art-src/` and are **not in this repository** —
-56 MB of PNG that no build step reads has no business in git history. They are
-kept outside it. Anyone re-deriving a scene needs that directory; git will not
-supply it.
+The generated masters are intentionally not kept in the workspace or the
+repository. The build and the live site use only the compressed WebP files.
 
-- `art-src/hero-wallet.png` (7680 x 4320) -> `public/images/hero-wallet.webp` (1600 x 900)
-- `art-src/story/*.png` (up to 7680 x 5760) -> `public/images/story/*.webp`
+- hero wallet master (7680 x 4320) -> `public/images/hero-wallet.webp` (1600 x 900)
+- story masters (up to 7680 x 5760) -> `public/images/story/*.webp`
