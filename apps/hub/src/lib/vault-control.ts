@@ -151,7 +151,10 @@ export async function getOrCreateVaultControlKey(): Promise<StoredVaultControlKe
 const controlContentsSchema = z
   .object({
     envelopes: z.array(HeartbeatEnvelopeSchema).max(100),
-    senderEncryptionPublicKey: z.string().regex(/^04[0-9a-f]{128}$/),
+    senderEncryptionPublicKey: z
+      .string()
+      .regex(/^04[0-9a-f]{128}$/)
+      .nullable(),
   })
   .strict();
 
@@ -190,6 +193,7 @@ export async function retrieveRestorePauseCommands(input: {
     throw new Error(`The control inbox returned HTTP ${response.status}`);
   }
   const contents = controlContentsSchema.parse(await response.json());
+  if (contents.senderEncryptionPublicKey === null) return [];
   if (contents.senderEncryptionPublicKey !== input.guardianPublicKey) {
     throw new Error("The control inbox is bound to a different guardian");
   }
@@ -231,6 +235,7 @@ export async function retrieveGuardianEnrollment(input: {
     throw new Error(`The control inbox returned HTTP ${response.status}`);
   }
   const contents = controlContentsSchema.parse(await response.json());
+  if (contents.senderEncryptionPublicKey === null) return null;
   for (const envelope of contents.envelopes) {
     try {
       const enrollment = await openGuardianEnrollmentResponse(

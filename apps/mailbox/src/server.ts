@@ -40,7 +40,10 @@ type MailboxResponse =
   | { status: string }
   | { error: string }
   | { messageId: string; status: string }
-  | { envelopes: HeartbeatEnvelope[]; senderEncryptionPublicKey: string };
+  | {
+      envelopes: HeartbeatEnvelope[];
+      senderEncryptionPublicKey: string | null;
+    };
 
 const senderBindingSchema = z
   .object({
@@ -326,10 +329,23 @@ export function createMailboxServer(
           sendJson(response, 429, { error: "rate_limited" });
           return;
         }
-        const senderKeys = store.senderKeys(path.mailboxId);
+        const envelopes = store.listEnvelopes(path.mailboxId, capability);
+        let senderEncryptionPublicKey: string | null = null;
+        try {
+          senderEncryptionPublicKey = store.senderKeys(
+            path.mailboxId,
+          ).encryptionPublicKey;
+        } catch (error) {
+          if (
+            !(error instanceof MailboxStoreError) ||
+            error.code !== "sender_not_bound"
+          ) {
+            throw error;
+          }
+        }
         sendJson(response, 200, {
-          envelopes: store.listEnvelopes(path.mailboxId, capability),
-          senderEncryptionPublicKey: senderKeys.encryptionPublicKey,
+          envelopes,
+          senderEncryptionPublicKey,
         });
         return;
       }

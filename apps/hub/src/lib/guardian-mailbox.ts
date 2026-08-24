@@ -16,7 +16,10 @@ const mailboxEnrollmentSchema = z
 const mailboxContentsSchema = z
   .object({
     envelopes: z.array(HeartbeatEnvelopeSchema).max(100),
-    senderEncryptionPublicKey: z.string().regex(/^04[0-9a-f]{128}$/),
+    senderEncryptionPublicKey: z
+      .string()
+      .regex(/^04[0-9a-f]{128}$/)
+      .nullable(),
   })
   .strict();
 
@@ -77,6 +80,9 @@ export async function retrieveGuardianHeartbeats(input: {
     },
   );
   const contents = await checkedJson(response, mailboxContentsSchema);
+  if (contents.senderEncryptionPublicKey === null) {
+    return { events: [], carriedSenderPublicKey: null };
+  }
   const opened: HeartbeatPlaintext[] = [];
   for (const envelope of contents.envelopes) {
     try {

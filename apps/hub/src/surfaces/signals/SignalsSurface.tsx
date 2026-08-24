@@ -569,6 +569,9 @@ export function SignalsSurface(): JSX.Element {
             />
           ) : null}
           <Button
+            disabled={
+              pairDelivery.name === "idle" || pairDelivery.name === "sending"
+            }
             label="Done"
             onClick={() => {
               writeSettings({ guardianResponseToken: null });
@@ -670,10 +673,15 @@ export function SignalsSurface(): JSX.Element {
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
   const instruction = settings.signalInstruction;
-  const quietCheckComplete = inbox.name === "read" && newest === undefined;
+  const waitingForCarried =
+    inbox.name === "read" && settings.carriedSenderPublicKey === null;
+  const quietCheckComplete =
+    inbox.name === "read" && newest === undefined && !waitingForCarried;
   const statusTitle =
     newest !== undefined
       ? `${alias} needs you`
+      : waitingForCarried
+        ? "Waiting for carried wallet"
       : quietCheckComplete
         ? "No alert received"
         : inbox.name === "failed" || keyState.name === "failed" || keyState.name === "absent"
@@ -682,6 +690,8 @@ export function SignalsSurface(): JSX.Element {
   const statusLede =
     newest !== undefined
       ? "Follow the plan you agreed on."
+      : waitingForCarried
+        ? "Finish pairing it from the home vault."
       : quietCheckComplete
         ? "The latest check found no alert."
         : inbox.name === "failed" || keyState.name === "failed" || keyState.name === "absent"
