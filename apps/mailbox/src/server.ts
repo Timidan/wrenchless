@@ -23,6 +23,10 @@ import {
 
 const MAX_BODY_BYTES = 4_096;
 const RATE_WINDOW_MILLISECONDS = 60 * 60 * 1_000;
+// Guardian enrollment polls every three seconds while its QR is open: 1,200
+// authenticated reads per hour. Keep a small margin above that so leaving the
+// screen open cannot make a later, valid response unreadable.
+const MAX_RECEIVES_PER_MAILBOX_HOUR = 1_440;
 
 type MailboxServerOptions = {
   allowedOrigin: string | undefined;
@@ -322,7 +326,7 @@ export function createMailboxServer(
         if (
           !rates.allow(
             `receive:${path.mailboxId}:${remoteAddress(request, trustProxy)}`,
-            480,
+            MAX_RECEIVES_PER_MAILBOX_HOUR,
           )
         ) {
           response.setHeader("Retry-After", "3600");

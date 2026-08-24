@@ -123,6 +123,7 @@ export function SignalsSurface(): JSX.Element {
     settings.guardianResponseToken,
   );
   const [pairDelivery, setPairDelivery] = useState<PairDelivery>({ name: "idle" });
+  const [pairDeliveryAttempt, setPairDeliveryAttempt] = useState(0);
   const [pairError, setPairError] = useState<string | null>(null);
   const [invitationText, setInvitationText] = useState("");
   const [asking, setAsking] = useState(false);
@@ -197,7 +198,7 @@ export function SignalsSurface(): JSX.Element {
   }, []);
 
   useEffect(() => {
-    if (pairingCode === null || pairDelivery.name !== "idle") return;
+    if (pairingCode === null) return;
     let current = true;
     setPairDelivery({ name: "sending" });
     setLive("Updating the other device");
@@ -218,7 +219,7 @@ export function SignalsSurface(): JSX.Element {
     return () => {
       current = false;
     };
-  }, [pairDelivery.name, pairingCode, sendPairingResponse]);
+  }, [pairDeliveryAttempt, pairingCode, sendPairingResponse]);
 
   /**
    * Accepts their invitation and answers it in one step.
@@ -564,7 +565,7 @@ export function SignalsSurface(): JSX.Element {
           {deliveryFailed ? (
             <Button
               label="Try again"
-              onClick={() => setPairDelivery({ name: "idle" })}
+              onClick={() => setPairDeliveryAttempt((attempt) => attempt + 1)}
               tone="quiet"
             />
           ) : null}
