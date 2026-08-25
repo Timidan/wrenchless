@@ -112,18 +112,18 @@ export function RecoverSurface(): JSX.Element {
           <Actions>
             <Button
               icon={<ReadyWalletMark className="wbtn__ready" />}
-              label="Continue in Ready"
+              label="Continue in wallet"
               onClick={() => void recovery.submit()}
             />
           </Actions>
-          <Note>Ready receives the STRK as a private note.</Note>
+          <Note>STRK returns as a private note.</Note>
         </Screen>
       ) : null}
 
       {state.name === "review" && state.release === "refund" ? (
         <Screen
           center
-          lede="Reconnect the same Ready account. The backup is no longer needed."
+          lede="Reconnect the same account. The backup is no longer needed."
           onBack={recovery.reset}
           title="The return date has passed"
         >
@@ -139,14 +139,14 @@ export function RecoverSurface(): JSX.Element {
       {state.name === "submitting" ? (
         <Screen
           center
-          lede="Approve the private note in Ready."
+          lede="Approve the private note."
           title="Returning early"
         >
           <Emblem>
             <LockKeyOpenIcon />
           </Emblem>
           <StatusLine icon={<ArrowsClockwiseIcon />} iconMotion="spin">
-            Waiting for Ready
+            Waiting for wallet
           </StatusLine>
         </Screen>
       ) : null}

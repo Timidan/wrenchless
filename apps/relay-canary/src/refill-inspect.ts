@@ -9,7 +9,6 @@ import type { ResourceBoundsBN } from "starknet";
 import type { RelayCanaryConfig } from "./config.js";
 import {
   assertRelayFeeWithinCap,
-  maximumAuthorizedFeeFri,
   type RelayFeeEstimate,
 } from "./inspect.js";
 
@@ -229,9 +228,7 @@ export async function inspectRefillFund(
       config.relayPrivateKey,
     );
     assertRelayFeeWithinCap(estimatedFee, config.maxTransactionFeeFri, "signed");
-    await input.beforeBroadcast?.(
-      plan.poolFeeFri + maximumAuthorizedFeeFri(estimatedFee.resourceBounds),
-    );
+    await input.beforeBroadcast?.(plan.maxSpendFri);
     transactionHash = await client.broadcast(
       plan,
       artifact,
@@ -274,9 +271,7 @@ export async function inspectRefillFund(
     poolFeeFri: plan.poolFeeFri.toString(),
     estimatedTransactionFeeFri: estimatedFee.overallFeeFri.toString(),
     maxTransactionFeeFri: config.maxTransactionFeeFri.toString(),
-    maxSpendFri: (
-      plan.poolFeeFri + maximumAuthorizedFeeFri(estimatedFee.resourceBounds)
-    ).toString(),
+    maxSpendFri: plan.maxSpendFri.toString(),
     proofBaseBlock: proofSummary.baseBlockNumber.toString(),
     proofExpiresAtBlock: proofSummary.expiresAtBlock.toString(),
     proofRemainingBlocks: proofSummary.remainingBlocks.toString(),

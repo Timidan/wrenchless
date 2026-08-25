@@ -38,15 +38,15 @@ export function assertSelectedWalletAccount(
 ): void {
   const selected = wallet.selectedAddress;
   if (selected === undefined) {
-    throw new Error("Ready Wallet has no selected account. Reconnect and try again.");
+    throw new Error("No account selected. Reconnect and try again.");
   }
   try {
     if (BigInt(selected) === BigInt(expectedAccount)) return;
   } catch {
-    throw new Error("Ready Wallet returned an invalid account. Reconnect and try again.");
+    throw new Error("The wallet returned an invalid account. Reconnect and try again.");
   }
   throw new Error(
-    "The selected Ready Wallet account changed. Switch back to this wallet's account and try again.",
+    "The selected account changed. Switch back and try again.",
   );
 }
 
@@ -61,7 +61,7 @@ export async function requestWalletAccount(): Promise<{
   const wallet = injectedWallet();
   if (wallet === null) {
     throw new Error(
-      "Ready Wallet was not found in this browser. Install or enable Ready Wallet, then reload this page.",
+      "Ready Wallet was not found. Install or enable it, then reload.",
     );
   }
   const accounts = await wallet.enable({ starknetVersion: "v5" });

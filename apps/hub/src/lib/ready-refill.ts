@@ -67,12 +67,10 @@ async function assertReadyRefillCapabilities(
     wallet.request<readonly string[]>({ type: "wallet_supportedWalletApi" }),
   ]);
   if (chainId !== MAINNET_CHAIN_ID) {
-    throw new Error("Ready X must be connected to Starknet mainnet");
+    throw new Error("Switch the wallet to Starknet mainnet");
   }
   if (!versions.includes(READY_WALLET_API_VERSION)) {
-    throw new Error(
-      `Ready X does not support Wallet API ${READY_WALLET_API_VERSION}`,
-    );
+    throw new Error("This wallet does not support private actions");
   }
   return chainId;
 }

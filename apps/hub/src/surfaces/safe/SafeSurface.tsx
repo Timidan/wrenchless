@@ -266,7 +266,7 @@ function Home(props: {
       return (
         <Screen
           center
-          lede="Recover with Ready after the return date, or use an optional backup before it."
+          lede="Return after the date, or use an optional backup sooner."
           title="No safe in this browser"
         >
           <Emblem>
@@ -276,7 +276,7 @@ function Home(props: {
           <Actions>
             <Button
               icon={<ReadyWalletMark className="wbtn__ready" />}
-              label="Recover with Ready"
+              label="Recover reserve"
               onClick={() => {
                 void actions.bringBack();
               }}
@@ -324,7 +324,7 @@ function Home(props: {
           <Actions>
             <Button
               icon={<ReadyWalletMark className="wbtn__ready" />}
-              label="Recover with Ready"
+              label="Recover reserve"
               onClick={() => {
                 void actions.bringBack();
               }}
@@ -410,7 +410,7 @@ function Home(props: {
             returnDateSeconds={home.ticket.returnDateSeconds}
           />
           <StatusLine icon={<HourglassIcon />}>
-            Ready can return it after that date.
+            Return opens after that date.
           </StatusLine>
           <Facts>
             <Fact
@@ -445,7 +445,7 @@ function Home(props: {
 
     case "return-ready":
       return (
-        <Screen lede="The return date has passed." title="Ready to return">
+        <Screen lede="The return date has passed." title="Return available">
           <SafeFigure caption="Waiting for you" ticket={home.ticket} />
           <Facts>
             <Fact
@@ -465,14 +465,14 @@ function Home(props: {
           </Actions>
           <Live message={props.live} />
           <Note>
-            Ready signs the return and receives it as a private note.
+            It returns as a private note.
           </Note>
         </Screen>
       );
 
     case "returning":
       return (
-        <Screen lede="Ready is building the private note." title="Returning">
+        <Screen lede="Building the private note." title="Returning">
           <SafeFigure caption="On its way back" ticket={home.ticket} />
           <StatusLine icon={<ArrowsClockwiseIcon />} iconMotion="spin">
             Waiting for the transaction to land
@@ -497,7 +497,7 @@ function Home(props: {
             <CheckCircleIcon />
           </Emblem>
           <SafeFigure caption="Back in your private balance" ticket={home.ticket} />
-          <Note>Open Ready to spend or unshield it.</Note>
+          <Note>Open your wallet to spend or unshield it.</Note>
           <Facts>
             <Fact label="Read at block" mono value={home.snapshot.blockNumber} />
           </Facts>
@@ -545,14 +545,14 @@ function Home(props: {
       return (
         <Screen
           center
-          lede="Ready will show it after Starknet confirms the return."
+          lede="It appears after Starknet confirms the return."
           title="Private return submitted"
         >
           <Emblem>
             <ArrowDownLeftIcon />
           </Emblem>
           <Balance
-            caption="Returning to Ready"
+            caption="Returning"
             value={formatStrkFigure(home.amountFri)}
           />
           <StatusLine icon={<ArrowsClockwiseIcon />} iconMotion="spin">
@@ -569,7 +569,7 @@ function Home(props: {
     case "local-unavailable":
       return (
         <Screen
-          lede="Recover with Ready after the return date, or use an optional backup before it."
+          lede="Return after the date, or use an optional backup sooner."
           title="This browser lost its safe"
           tone="alert"
         >
@@ -577,7 +577,7 @@ function Home(props: {
           <Actions>
             <Button
               icon={<ReadyWalletMark className="wbtn__ready" />}
-              label="Recover with Ready"
+              label="Recover reserve"
               onClick={() => {
                 void actions.bringBack();
               }}
@@ -637,9 +637,9 @@ function CreateFlow(props: {
       return (
         <Screen
           center
-          lede="Ready is the only wallet that signs, and the only place your reserve comes back to."
+          lede="Choose where the reserve returns."
           onBack={actions.closeCreate}
-          title="Connect Ready"
+          title="Connect wallet"
         >
           <Emblem>
             <ReadyWalletMark className="emblem__ready" />
@@ -649,23 +649,21 @@ function CreateFlow(props: {
             <Button
               icon={<ReadyWalletMark className="wbtn__ready" />}
               iconMotion={model.live === null ? undefined : "spin"}
-              label="Connect Ready"
+              label="Connect wallet"
               onClick={() => {
                 void actions.connect();
               }}
             />
           </Actions>
           <Live message={model.live} />
-          <Note>
-            Your passkey protects early return on this device.
-          </Note>
+          <Note>Your passkey protects early return.</Note>
         </Screen>
       );
 
     case "details":
       return (
         <Screen
-          lede="Everything else stays in Ready and travels with you."
+          lede="The rest stays available."
           onBack={actions.back}
           title="What stays home"
         >
@@ -724,7 +722,7 @@ function CreateFlow(props: {
       const returnDate = localReturnDate(model.returnDateLocal);
       return (
         <Screen
-          lede="Check it once. The return date cannot be changed afterwards."
+          lede="Check the amount and return date."
           onBack={actions.back}
           title="Review"
         >
@@ -740,7 +738,7 @@ function CreateFlow(props: {
             {model.walletAccount === null ? null : (
               <Fact
                 full={model.walletAccount}
-                label="Ready account"
+                label="Return account"
                 mono
                 value={shortHex(model.walletAccount)}
               />
@@ -770,10 +768,7 @@ function CreateFlow(props: {
               }}
             />
           </Actions>
-          <Note>
-            No recovery phrase is required. You can create an optional backup
-            after parking.
-          </Note>
+          <Note>No recovery phrase needed.</Note>
         </Screen>
       );
     }
@@ -784,14 +779,14 @@ function CreateFlow(props: {
         return (
           <Screen
             center
-            lede="No transaction will be sent yet."
+            lede="No transaction sent."
             title="Preparing the cost"
           >
             <Emblem>
               <ArrowsClockwiseIcon />
             </Emblem>
             <StatusLine icon={<ArrowsClockwiseIcon />} iconMotion="spin">
-              Ready is preparing the private proof
+              Preparing the private proof
             </StatusLine>
             <Live message={model.live} />
           </Screen>
@@ -803,7 +798,7 @@ function CreateFlow(props: {
       );
       return (
         <Screen
-          lede="Nothing has been sent. Confirming is the only step that broadcasts."
+          lede="No transaction sent."
           onBack={actions.back}
           title="Confirm the cost"
         >
@@ -824,12 +819,12 @@ function CreateFlow(props: {
               }
             />
             <Fact
-              label="Estimated relay cost"
+              label="Estimated total"
               strong
               value={<Amount value={formatStrk(estimatedTotalFri)} />}
             />
             <Fact
-              label="Maximum relay spend"
+              label="Spend limit"
               value={<Amount value={formatStrk(quote.maxSpendFri)} />}
             />
           </Facts>
@@ -842,7 +837,7 @@ function CreateFlow(props: {
               }}
             />
           </Actions>
-          <Note>If the cost changes, Wrenchless stops and asks you to prepare again.</Note>
+          <Note>Cost changes stop before broadcast.</Note>
         </Screen>
       );
     }
@@ -851,15 +846,15 @@ function CreateFlow(props: {
       return (
         <Screen
           center
-          lede="Ready is proving it privately. This takes as long as it takes."
-          title="Parking your reserve"
+          lede="Waiting for Starknet."
+          title="Parking reserve"
         >
           <Emblem>
             <LockSimpleIcon />
           </Emblem>
           <Waiting seconds={model.elapsedSeconds} />
           <Live message={model.live} />
-          <Note>Keep this screen open until it lands.</Note>
+          <Note>Keep this screen open.</Note>
         </Screen>
       );
 

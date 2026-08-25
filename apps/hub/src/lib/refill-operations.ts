@@ -39,7 +39,7 @@ type SelectedReadyWallet = ReadyRefillWallet & { selectedAddress?: string };
 
 function assertDestination(wallet: SelectedReadyWallet, account: string): void {
   if (wallet.selectedAddress === undefined || !sameFelt(wallet.selectedAddress, account)) {
-    throw new Error("The selected Ready account changed. Review the destination again");
+    throw new Error("The selected account changed. Review it again");
   }
 }
 
@@ -100,7 +100,7 @@ export async function prepareTravelSafeFund(input: {
 }): Promise<PreparedTravelSafeFund> {
   assertDestination(input.wallet, input.readiness.account);
   if (!sameFelt(input.ticket.recoveryAccount, input.readiness.account)) {
-    throw new Error("Use the Ready account chosen for this Travel Safe");
+    throw new Error("Use the account chosen for this Travel Safe");
   }
   const secrets = await deriveTravelSafeSecrets(input.ticket.recoveryPhrase);
   if (!sameFelt(secrets.stateId, input.ticket.stateId)) {
@@ -169,7 +169,7 @@ export async function submitPreparedTravelSafeFund(input: {
 }): Promise<{ transactionHash: string; final: boolean }> {
   assertDestination(input.wallet, input.readiness.account);
   if (!sameFelt(input.ticket.recoveryAccount, input.readiness.account)) {
-    throw new Error("Use the Ready account chosen for this Travel Safe");
+    throw new Error("Use the account chosen for this Travel Safe");
   }
   const artifact = input.prepared.artifact;
   if (
@@ -241,7 +241,7 @@ export async function returnTravelSafe(input: {
 }): Promise<{ transactionHash: string; noteId: string }> {
   assertDestination(input.wallet, input.recipient);
   if (!sameFelt(input.ticket.recoveryAccount, input.recipient)) {
-    throw new Error("Use the Ready account chosen for this Travel Safe");
+    throw new Error("Use the account chosen for this Travel Safe");
   }
   const secrets = await deriveTravelSafeSecrets(input.ticket.recoveryPhrase);
   if (!sameFelt(secrets.stateId, input.ticket.stateId)) {
@@ -334,7 +334,7 @@ export async function returnRecoveredTravelSafe(input: {
   });
   const state = current.state;
   if (state === null || !sameFelt(state.tokenAddress, input.tokenAddress)) {
-    throw new Error("No Travel Safe was found for this Ready account");
+    throw new Error("No Travel Safe was found for this account");
   }
   if (
     !sameFelt(
@@ -346,7 +346,7 @@ export async function returnRecoveredTravelSafe(input: {
       ),
     )
   ) {
-    throw new Error("This Ready account cannot recover that Travel Safe");
+    throw new Error("This account cannot recover that Travel Safe");
   }
   if (state.status !== "funded") {
     throw new Error("This Travel Safe has already returned");
@@ -357,7 +357,7 @@ export async function returnRecoveredTravelSafe(input: {
       current.chainTimeSeconds,
     ) !== "refund"
   ) {
-    throw new Error("This Travel Safe can be recovered with Ready after its return date");
+    throw new Error("This Travel Safe can return after its return date");
   }
   const result = await submitReadyRefillRefund({
     wallet: input.wallet,

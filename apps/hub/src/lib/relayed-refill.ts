@@ -74,13 +74,13 @@ function publicMessage(code: string, reason?: string): string {
     return "Another safe is being parked. Try again shortly.";
   }
   if (code === "active_safe_exists") {
-    return "This Ready account already has an active Travel Safe.";
+    return "This account already has an active Travel Safe.";
   }
   if (code === "fund_cost_changed") {
-    return "The relay cost changed. Prepare a new estimate.";
+    return "Not sent. The cost limit changed. Prepare it again.";
   }
   if (code === "recovery_not_approved") {
-    return "Ready did not approve this Travel Safe recovery path.";
+    return "The wallet did not approve recovery.";
   }
   if (code === "rate_limited") {
     return "Too many parking attempts. Try again later.";

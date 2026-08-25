@@ -415,7 +415,7 @@ export function useTravelSafe(): TravelSafeController {
 
   const connect = useCallback(async (): Promise<void> => {
     setError(null);
-    setLive("Waiting for Ready");
+    setLive("Connecting");
     try {
       const connected = await requestWalletAccount();
       const [ready] = await Promise.all([
@@ -428,10 +428,10 @@ export function useTravelSafe(): TravelSafeController {
         inspectRefillSponsor({ sponsorUrl: readSettings().sponsorUrl }),
       ]);
       if (!ready.registered) {
-        throw new Error("Set up Shielded Starknet in Ready, then check again");
+        throw new Error("Set up Shielded Starknet, then try again");
       }
       if (!ready.canPark) {
-        throw new Error("Add private STRK in Ready before creating a Travel Safe");
+        throw new Error("Add private STRK before creating a Travel Safe");
       }
       await createOrVerifyPasskey(ready.account);
       setWallet(connected.wallet);
@@ -497,34 +497,27 @@ export function useTravelSafe(): TravelSafeController {
   }, [amount, readiness, returnDateLocal]);
 
   const prepare = useCallback(async (): Promise<void> => {
-    if (wallet === null) {
+    if (wallet === null || readiness === null) {
       setCreateStep("connect");
       return;
     }
     setError(null);
     setPreparedFund(null);
     setCreateStep("quote");
-    setLive("Preparing privately in Ready");
+    setLive("Preparing private proof");
     try {
       const ticket = await readActiveTravelSafeTicket();
       if (ticket === null) throw new Error("Travel Safe setup was not saved");
-      const currentReadiness = await inspectTravelSafeReadiness({
-        wallet,
-        poolAddress: WRENCHLESS_MAINNET.poolAddress,
-        tokenAddress: WRENCHLESS_MAINNET.strkTokenAddress,
-        rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
-      });
       await inspectRefillSponsor({ sponsorUrl: readSettings().sponsorUrl });
       const prepared = await prepareTravelSafeFund({
         wallet,
-        readiness: currentReadiness,
+        readiness,
         ticket,
         poolAddress: WRENCHLESS_MAINNET.poolAddress,
         helperAddress: WRENCHLESS_MAINNET.helperAddress,
         sponsorUrl: readSettings().sponsorUrl,
         rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
       });
-      setReadiness(currentReadiness);
       setPreparedFund(prepared);
       setLive(null);
     } catch (caught) {
@@ -532,13 +525,13 @@ export function useTravelSafe(): TravelSafeController {
       setCreateStep("review");
       setLive(null);
     }
-  }, [wallet]);
+  }, [readiness, wallet]);
 
   const park = useCallback(async (): Promise<void> => {
-    if (wallet === null || preparedFund === null) {
+    if (wallet === null || readiness === null || preparedFund === null) {
       setPreparedFund(null);
       setError("Prepare a new cost before parking");
-      setCreateStep(wallet === null ? "connect" : "review");
+      setCreateStep(wallet === null || readiness === null ? "connect" : "review");
       return;
     }
     setError(null);
@@ -547,16 +540,9 @@ export function useTravelSafe(): TravelSafeController {
     try {
       const ticket = await readActiveTravelSafeTicket();
       if (ticket === null) throw new Error("Travel Safe setup was not saved");
-      const currentReadiness = await inspectTravelSafeReadiness({
-        wallet,
-        poolAddress: WRENCHLESS_MAINNET.poolAddress,
-        tokenAddress: WRENCHLESS_MAINNET.strkTokenAddress,
-        rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
-      });
-      await inspectRefillSponsor({ sponsorUrl: readSettings().sponsorUrl });
       await submitPreparedTravelSafeFund({
         wallet,
-        readiness: currentReadiness,
+        readiness,
         ticket,
         prepared: preparedFund,
         helperAddress: WRENCHLESS_MAINNET.helperAddress,
@@ -578,7 +564,7 @@ export function useTravelSafe(): TravelSafeController {
       }
       setLive(null);
     }
-  }, [loadHome, preparedFund, wallet]);
+  }, [loadHome, preparedFund, readiness, wallet]);
 
   const unlock = useCallback(async (): Promise<void> => {
     setError(null);
@@ -594,7 +580,7 @@ export function useTravelSafe(): TravelSafeController {
 
   const bringBack = useCallback(async (): Promise<void> => {
     setError(null);
-    setLive("Waiting for Ready");
+    setLive("Waiting for wallet");
     try {
       const connected = await requestWalletAccount();
       const ready = await inspectTravelSafeReadiness({
@@ -604,7 +590,7 @@ export function useTravelSafe(): TravelSafeController {
         rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
       });
       if (!ready.registered || BigInt(ready.shieldedBalanceFri) < BigInt(ready.returnReserveFri)) {
-        throw new Error("This Ready account needs its live private fee reserve");
+        throw new Error("This account needs its private return fee");
       }
       const stateId = readSettings().activeSafeStateId;
       if (
@@ -858,7 +844,7 @@ export function useTravelSafeRecovery(): TravelSafeRecoveryController {
         rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
       });
       if (!ready.registered || BigInt(ready.shieldedBalanceFri) < BigInt(ready.returnReserveFri)) {
-        throw new Error("This Ready account needs its live private fee reserve");
+        throw new Error("This account needs its private return fee");
       }
       const result = await recoverTravelSafe({
         phrase: saved,
@@ -902,7 +888,7 @@ export function useTravelSafeRecovery(): TravelSafeRecoveryController {
       });
       if (current.state.status === "funded") {
         if (receipt.name === "reverted") {
-          throw new Error("The Ready transaction reverted. Enter the words and try again");
+          throw new Error("The transaction reverted. Enter the words and try again");
         }
         setState({ name: "submitted", checking: false, result: submission });
         return;
