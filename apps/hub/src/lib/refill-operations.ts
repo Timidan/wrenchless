@@ -10,6 +10,7 @@ import {
   prepareReadyRefillFundArtifact,
   submitReadyRefillClaim,
   submitReadyRefillRefund,
+  type PrepareReadyRefillFundInput,
   type ReadyRefillWallet,
 } from "./ready-refill.js";
 import type { TravelSafeReadiness } from "./ready-private-setup.js";
@@ -97,6 +98,7 @@ export async function prepareTravelSafeFund(input: {
   sponsorUrl: string;
   rpcUrl?: string;
   fetcher?: typeof fetch;
+  onStage?: (stage: "proof" | "recovery" | "estimate") => void;
 }): Promise<PreparedTravelSafeFund> {
   assertDestination(input.wallet, input.readiness.account);
   if (!sameFelt(input.ticket.recoveryAccount, input.readiness.account)) {
@@ -121,7 +123,7 @@ export async function prepareTravelSafeFund(input: {
     throw new Error("This Travel Safe state already exists onchain");
   }
 
-  const artifact = await prepareReadyRefillFundArtifact({
+  const prepareInput: PrepareReadyRefillFundInput = {
     wallet: input.wallet,
     poolAddress: input.poolAddress,
     helperAddress: input.helperAddress,
@@ -137,7 +139,9 @@ export async function prepareTravelSafeFund(input: {
     tokenAddress: input.ticket.tokenAddress,
     amountFri: input.ticket.amountFri,
     returnDateSeconds: input.ticket.returnDateSeconds,
-  });
+  };
+  if (input.onStage !== undefined) prepareInput.onStage = input.onStage;
+  const artifact = await prepareReadyRefillFundArtifact(prepareInput);
   const proofExpiryRequest: Parameters<typeof readRefillProofExpiryBlock>[0] = {
     poolAddress: input.poolAddress,
     proofFacts: artifact.proofFacts,
@@ -148,6 +152,7 @@ export async function prepareTravelSafeFund(input: {
     proofExpiryRequest,
   );
 
+  input.onStage?.("estimate");
   const estimateRequest: Parameters<typeof estimateRelayedRefillFund>[0] = {
     sponsorUrl: input.sponsorUrl,
     artifact,

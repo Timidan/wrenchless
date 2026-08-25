@@ -162,9 +162,11 @@ export function RecoverSurface(): JSX.Element {
           </Emblem>
           <StatusLine
             icon={<ArrowsClockwiseIcon />}
-            iconMotion={state.checking ? "spin" : undefined}
+            iconMotion="spin"
           >
-            {state.checking ? "Reading Starknet" : "Waiting for confirmation"}
+            {state.checking
+              ? "Checking Starknet"
+              : (state.message ?? "Waiting for confirmation")}
           </StatusLine>
           <TransactionRef
             hash={shortHex(state.result.transactionHash)}

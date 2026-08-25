@@ -282,8 +282,10 @@ export function StatusLine(props: {
   return (
     <p
       aria-busy={spinning ? "true" : undefined}
+      aria-live={spinning ? "polite" : undefined}
       className="statusline"
       data-tone={props.tone ?? "plain"}
+      role={spinning ? "status" : undefined}
     >
       <span
         aria-hidden="true"

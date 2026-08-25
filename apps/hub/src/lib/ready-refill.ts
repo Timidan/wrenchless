@@ -30,6 +30,7 @@ export type PrepareReadyRefillFundInput = {
   amountFri: string;
   returnDateSeconds: string;
   now?: Date;
+  onStage?: (stage: "proof" | "recovery") => void;
 };
 
 export type SubmitReadyRefillRefundInput = {
@@ -79,6 +80,7 @@ export async function prepareReadyRefillFundArtifact(
   input: PrepareReadyRefillFundInput,
 ): Promise<RefillFundArtifact> {
   const chainId = await assertReadyRefillCapabilities(input.wallet);
+  input.onStage?.("proof");
   const result = await prepareRefillFund({
     wallet: {
       async strk20PrepareInvoke(
@@ -106,6 +108,7 @@ export async function prepareReadyRefillFundArtifact(
     amount: input.amountFri,
     expiry: input.returnDateSeconds,
   });
+  input.onStage?.("recovery");
   const recoveryAuthorization = await input.wallet.request<string[]>({
     type: "wallet_signTypedData",
     params: {

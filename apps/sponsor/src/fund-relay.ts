@@ -145,6 +145,30 @@ export class RefillFundRelay {
     return config;
   }
 
+  private releaseAfterFinality(
+    client: StarknetRegistrationCanaryClient,
+    artifact: RefillFundArtifact,
+    transactionHash: string,
+  ): void {
+    void client
+      .waitForRefillFundFinality({
+        transactionHash,
+        poolAddress: this.config.poolAddress,
+        helperAddress: this.config.helperAddress,
+        relayAddress: this.config.accountAddress,
+        stateId: artifact.stateId,
+        claimCommitment: artifact.claimCommitment,
+        recoveryCommitment: artifact.recoveryCommitment,
+        tokenAddress: artifact.tokenAddress,
+        amountFri: artifact.amountFri,
+        expiry: artifact.expiry,
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        this.busy = false;
+      });
+  }
+
   async estimate(value: JsonValue): Promise<RefillFundEstimate> {
     if (!this.config.refillFundBroadcastEnabled) {
       throw new RefillFundRelayError("fund_broadcast_disabled");
@@ -200,6 +224,7 @@ export class RefillFundRelay {
     }
 
     this.busy = true;
+    let finalityContinuesInBackground = false;
     try {
       const client = new StarknetRegistrationCanaryClient(
         this.config.rpcUrl,
@@ -214,6 +239,7 @@ export class RefillFundRelay {
         minimumAmountFri: this.config.minFundAmountFri,
         minimumRemainingDurationSeconds: this.config.minFundDurationSeconds,
         maximumRemainingDurationSeconds: this.config.maxFundDurationSeconds,
+        waitForFinality: false,
         beforeBroadcast: async (maximumSpendFri) => {
           assertAcceptedMaximumSpend(maximumSpendFri, acceptedMaxSpendFri);
           await this.recoveryIndex.put(artifact.recoveryAccount, {
@@ -227,6 +253,8 @@ export class RefillFundRelay {
         throw new Error("FUND relay returned no transaction hash");
       }
       if (result.receipt === undefined) {
+        finalityContinuesInBackground = true;
+        this.releaseAfterFinality(client, artifact, result.transactionHash);
         return {
           status: "submitted",
           summary: result.summary,
@@ -248,7 +276,7 @@ export class RefillFundRelay {
       }
       throw new RefillFundRelayError("fund_rejected", { cause });
     } finally {
-      this.busy = false;
+      if (!finalityContinuesInBackground) this.busy = false;
     }
   }
 }

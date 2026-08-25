@@ -188,4 +188,31 @@ describe("inspectRefillFund", () => {
     expect(result.transactionHash).toBe("0xtransaction");
     expect(result.summary.maxSpendFri).toBe(estimate.summary.maxSpendFri);
   });
+
+  it("returns the transaction hash without waiting for finality", async () => {
+    let finalityReads = 0;
+    const client: RefillFundClient = {
+      ...makeClient(),
+      waitForRefillFundFinality: async () => {
+        finalityReads += 1;
+        throw new Error("finality should continue outside the request");
+      },
+    };
+
+    const result = await inspectRefillFund({
+      artifact,
+      config: {
+        ...baseConfig,
+        broadcast: true,
+        relayPrivateKey: "0xabc",
+      },
+      configuredHelperAddress: HELPER,
+      client,
+      waitForFinality: false,
+    });
+
+    expect(result.transactionHash).toBe("0xtransaction");
+    expect(result.receipt).toBeUndefined();
+    expect(finalityReads).toBe(0);
+  });
 });

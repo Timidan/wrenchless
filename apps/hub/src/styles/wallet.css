@@ -883,7 +883,8 @@ html.reduced-motion .iconbtn:active {
 }
 
 .statusline__icon[data-icon-motion="spin"],
-.wbtn__icon[data-icon-motion="spin"] {
+.wbtn__icon[data-icon-motion="spin"],
+.iconbtn > span[data-icon-motion="spin"] {
   animation: processing-spin var(--dur-spin) linear infinite;
   transform-origin: center;
 }
@@ -892,13 +893,15 @@ html.reduced-motion .iconbtn:active {
    above so an opted-in processing icon still stops rotating once reduced
    motion is requested, mid-animation or not. */
 html.reduced-motion .statusline__icon[data-icon-motion="spin"],
-html.reduced-motion .wbtn__icon[data-icon-motion="spin"] {
+html.reduced-motion .wbtn__icon[data-icon-motion="spin"],
+html.reduced-motion .iconbtn > span[data-icon-motion="spin"] {
   animation: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .statusline__icon[data-icon-motion="spin"],
-  .wbtn__icon[data-icon-motion="spin"] {
+  .wbtn__icon[data-icon-motion="spin"],
+  .iconbtn > span[data-icon-motion="spin"] {
     animation: none;
   }
 }

@@ -76,6 +76,7 @@ export type SafeHomeState =
       name: "ready-recovery-submitted";
       transactionHash: string;
       amountFri: string;
+      status: "checking" | "confirmed" | "reverted";
     }
   | { name: "local-unavailable"; reason: string }
   | { name: "chain-unavailable"; reason: string };
@@ -389,35 +390,122 @@ export function useTravelSafe(): TravelSafeController {
     setHome({ name: "device-locked", reason: null });
   }, [settings.activeSafeStateId]);
 
-  const loadHome = useCallback(async (): Promise<void> => {
+  const loadHome = useCallback(async (quiet = false): Promise<boolean> => {
     let ticket: TravelSafeTicket | null;
     try {
       ticket = await readActiveTravelSafeTicket();
     } catch {
-      setHome({
-        name: "local-unavailable",
-        reason: "This browser can no longer open its saved Travel Safe",
-      });
-      return;
+      if (!quiet) {
+        setHome({
+          name: "local-unavailable",
+          reason: "This browser can no longer open its saved Travel Safe",
+        });
+      }
+      return false;
     }
     if (ticket === null) {
       setHome({ name: "no-local-safe" });
-      return;
+      return true;
     }
     try {
       const current = await readSafeSnapshot(ticket.stateId);
       const reconciled = await reconcileTicket(ticket, current);
       setHome(reconciled.home);
+      return true;
     } catch (caught) {
-      setHome({ name: "chain-unavailable", reason: reasonFrom(caught) });
+      if (!quiet) {
+        setHome({ name: "chain-unavailable", reason: reasonFrom(caught) });
+      }
+      return false;
     }
   }, []);
 
+  const trackingMode =
+    home.name === "parking"
+      ? "parking"
+      : home.name === "returning" &&
+          home.ticket.status === "RETURN_SUBMITTING" &&
+          home.ticket.returnTransactionHash !== null
+        ? "returning"
+        : home.name === "locked"
+          ? "locked"
+          : null;
+
+  useEffect(() => {
+    if (trackingMode === null) return;
+    let active = true;
+    let timer: number | undefined;
+    const delay = trackingMode === "locked" ? 30_000 : 3_000;
+
+    const check = async (): Promise<void> => {
+      if (trackingMode !== "locked") setLive("Checking Starknet");
+      const updated = await loadHome(true);
+      if (!active) return;
+      if (updated) {
+        setError(null);
+        setLive(null);
+      } else {
+        setLive("Could not update. Trying again");
+      }
+      timer = window.setTimeout(() => {
+        void check();
+      }, delay);
+    };
+
+    void check();
+    return () => {
+      active = false;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [loadHome, trackingMode]);
+
+  useEffect(() => {
+    if (
+      home.name !== "ready-recovery-submitted" ||
+      home.status !== "checking"
+    ) {
+      return;
+    }
+    let active = true;
+    let timer: number | undefined;
+    const check = async (): Promise<void> => {
+      try {
+        const receipt = await readTransactionReceiptStatus({
+          transactionHash: home.transactionHash,
+          rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
+        });
+        if (!active) return;
+        if (receipt.name === "accepted" || receipt.name === "reverted") {
+          setHome({
+            ...home,
+            status: receipt.name === "accepted" ? "confirmed" : "reverted",
+          });
+          setLive(null);
+          return;
+        }
+        setLive("Checking Starknet");
+      } catch {
+        if (!active) return;
+        setLive("Could not update. Trying again");
+      }
+      timer = window.setTimeout(() => {
+        void check();
+      }, 3_000);
+    };
+
+    void check();
+    return () => {
+      active = false;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [home]);
+
   const connect = useCallback(async (): Promise<void> => {
     setError(null);
-    setLive("Connecting");
+    setLive("Connect your wallet");
     try {
       const connected = await requestWalletAccount();
+      setLive("Reading private balance");
       const [ready] = await Promise.all([
         inspectTravelSafeReadiness({
           wallet: connected.wallet,
@@ -433,6 +521,7 @@ export function useTravelSafe(): TravelSafeController {
       if (!ready.canPark) {
         throw new Error("Add private STRK before creating a Travel Safe");
       }
+      setLive("Confirm your passkey");
       await createOrVerifyPasskey(ready.account);
       setWallet(connected.wallet);
       setWalletAccount(ready.account);
@@ -517,6 +606,15 @@ export function useTravelSafe(): TravelSafeController {
         helperAddress: WRENCHLESS_MAINNET.helperAddress,
         sponsorUrl: readSettings().sponsorUrl,
         rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
+        onStage(stage) {
+          setLive(
+            stage === "proof"
+              ? "Approve the private proof"
+              : stage === "recovery"
+                ? "Approve recovery"
+                : "Checking the cost",
+          );
+        },
       });
       setPreparedFund(prepared);
       setLive(null);
@@ -617,6 +715,7 @@ export function useTravelSafe(): TravelSafeController {
           name: "ready-recovery-submitted",
           transactionHash: result.transactionHash,
           amountFri: result.amountFri,
+          status: "checking",
         });
         setLive(null);
         return;
@@ -693,7 +792,11 @@ export function useTravelSafe(): TravelSafeController {
       prepare,
       park,
       unlock,
-      refresh: loadHome,
+      async refresh() {
+        setLive("Checking Starknet");
+        const updated = await loadHome();
+        setLive(updated ? null : "Could not update");
+      },
       bringBack,
       bringBackEarly: bringBack,
       async createEarlyRecoveryBackup() {
@@ -751,6 +854,7 @@ export type RecoveryViewState =
   | {
       name: "submitted";
       checking: boolean;
+      message: string | null;
       result: Extract<TravelSafeRecoveryResult, { kind: "submitted" }>;
     }
   | {
@@ -859,7 +963,7 @@ export function useTravelSafeRecovery(): TravelSafeRecoveryController {
       setWords("");
       setState(
         result.kind === "submitted"
-          ? { name: "submitted", checking: false, result }
+          ? { name: "submitted", checking: false, message: null, result }
           : { name: "complete", result },
       );
     } catch (caught) {
@@ -875,55 +979,90 @@ export function useTravelSafeRecovery(): TravelSafeRecoveryController {
       setState({ name: "failed", reason: "The submitted safe has no chain state" });
       return;
     }
-    setState({ name: "submitted", checking: true, result: submission });
+    setState({
+      name: "submitted",
+      checking: true,
+      message: null,
+      result: submission,
+    });
+    let current: RefillChainSnapshot;
+    let receipt: Awaited<ReturnType<typeof readTransactionReceiptStatus>>;
     try {
-      const current = await readSafeSnapshot(expected.stateId);
-      if (current.state === null) {
-        throw new Error("The Travel Safe is not visible on Starknet");
-      }
-      assertRecoveryStateMatches(expected, current.state);
-      const receipt = await readTransactionReceiptStatus({
-        transactionHash: submission.transactionHash,
-        rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
+      [current, receipt] = await Promise.all([
+        readSafeSnapshot(expected.stateId),
+        readTransactionReceiptStatus({
+          transactionHash: submission.transactionHash,
+          rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
+        }),
+      ]);
+    } catch {
+      setState({
+        name: "submitted",
+        checking: false,
+        message: "Could not update. Trying again",
+        result: submission,
       });
-      if (current.state.status === "funded") {
-        if (receipt.name === "reverted") {
-          throw new Error("The transaction reverted. Enter the words and try again");
-        }
-        setState({ name: "submitted", checking: false, result: submission });
-        return;
-      }
-      const submittedStatus =
-        submission.release === "claim" ? "claimed" : "refunded";
-      if (
-        receipt.name !== "accepted" ||
-        current.state.status !== submittedStatus
-      ) {
+      return;
+    }
+    if (current.state === null) {
+      setState({
+        name: "submitted",
+        checking: false,
+        message: "Not visible yet. Checking again",
+        result: submission,
+      });
+      return;
+    }
+    try {
+      assertRecoveryStateMatches(expected, current.state);
+    } catch (caught) {
+      setState({ name: "failed", reason: reasonFrom(caught) });
+      return;
+    }
+    if (current.state.status === "funded") {
+      if (receipt.name === "reverted") {
         setState({
-          name: "complete",
-          result: {
-            kind:
-              current.state.status === "claimed"
-                ? "already-claimed"
-                : "already-refunded",
-            snapshot: current,
-          },
+          name: "failed",
+          reason: "The transaction reverted. Enter the words and try again",
         });
         return;
       }
       setState({
-        name: "complete",
-        result: {
-          kind: current.state.status === "claimed" ? "claimed" : "refunded",
-          snapshot: current,
-          transactionHash: submission.transactionHash,
-          noteId: submission.noteId,
-        },
+        name: "submitted",
+        checking: false,
+        message: "Waiting for confirmation",
+        result: submission,
       });
-    } catch (caught) {
-      setState({ name: "failed", reason: reasonFrom(caught) });
+      return;
     }
+    const submittedStatus = submission.release === "claim" ? "claimed" : "refunded";
+    setState({
+      name: "complete",
+      result:
+        current.state.status === submittedStatus
+          ? {
+              kind: current.state.status,
+              snapshot: current,
+              transactionHash: submission.transactionHash,
+              noteId: submission.noteId,
+            }
+          : {
+              kind:
+                current.state.status === "claimed"
+                  ? "already-claimed"
+                  : "already-refunded",
+              snapshot: current,
+            },
+    });
   }, [state]);
+
+  useEffect(() => {
+    if (state.name !== "submitted" || state.checking) return;
+    const timer = window.setTimeout(() => {
+      void check();
+    }, 3_000);
+    return () => window.clearTimeout(timer);
+  }, [check, state]);
 
   return {
     state,

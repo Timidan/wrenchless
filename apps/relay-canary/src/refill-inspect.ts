@@ -121,6 +121,7 @@ type RefillFundInspectionInput = {
   minimumRemainingDurationSeconds?: bigint;
   maximumRemainingDurationSeconds?: bigint;
   beforeBroadcast?: (maximumSpendFri: bigint) => Promise<void>;
+  waitForFinality?: boolean;
 };
 
 export async function inspectRefillFund(
@@ -235,23 +236,25 @@ export async function inspectRefillFund(
       config.relayPrivateKey,
       estimatedFee.resourceBounds,
     );
-    try {
-      receipt = await client.waitForRefillFundFinality({
-        transactionHash,
-        poolAddress: config.poolAddress,
-        helperAddress: configuredHelperAddress,
-        relayAddress: config.relayAddress,
-        stateId: artifact.stateId,
-        claimCommitment: artifact.claimCommitment,
-        recoveryCommitment: artifact.recoveryCommitment,
-        tokenAddress: artifact.tokenAddress,
-        amountFri: artifact.amountFri,
-        expiry: artifact.expiry,
-      });
-    } catch {
-      // Submission already returned a transaction hash. Finality, RPC, and
-      // post-state reads are reconciled by hash; none is safe grounds to
-      // prepare and broadcast a second FUND transaction.
+    if (input.waitForFinality !== false) {
+      try {
+        receipt = await client.waitForRefillFundFinality({
+          transactionHash,
+          poolAddress: config.poolAddress,
+          helperAddress: configuredHelperAddress,
+          relayAddress: config.relayAddress,
+          stateId: artifact.stateId,
+          claimCommitment: artifact.claimCommitment,
+          recoveryCommitment: artifact.recoveryCommitment,
+          tokenAddress: artifact.tokenAddress,
+          amountFri: artifact.amountFri,
+          expiry: artifact.expiry,
+        });
+      } catch {
+        // Submission already returned a transaction hash. Finality, RPC, and
+        // post-state reads are reconciled by hash; none is safe grounds to
+        // prepare and broadcast a second FUND transaction.
+      }
     }
   }
 

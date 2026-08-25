@@ -115,14 +115,14 @@ function SafeEvidence(props: { ticket: TravelSafeTicket }): JSX.Element | null {
         <TransactionRef
           hash={shortHex(fundTransactionHash)}
           href={explorer(fundTransactionHash)}
-          label="Parked"
+          label={props.ticket.status === "FUND_SUBMITTING" ? "Submitted" : "Parked"}
         />
       )}
       {returnTransactionHash === null ? null : (
         <TransactionRef
           hash={shortHex(returnTransactionHash)}
           href={explorer(returnTransactionHash)}
-          label="Returned"
+          label={props.ticket.status === "RETURN_SUBMITTING" ? "Submitted" : "Returned"}
         />
       )}
     </div>
@@ -167,6 +167,7 @@ export function SafeSurface(): JSX.Element {
       action={
         canRefresh ? (
           <button
+            aria-busy={model.live === "Checking Starknet" ? "true" : undefined}
             aria-label="Check the chain again"
             className="iconbtn"
             onClick={() => {
@@ -174,7 +175,12 @@ export function SafeSurface(): JSX.Element {
             }}
             type="button"
           >
-            <span aria-hidden="true">
+            <span
+              aria-hidden="true"
+              data-icon-motion={
+                model.live === "Checking Starknet" ? "spin" : undefined
+              }
+            >
               <ArrowsClockwiseIcon />
             </span>
           </button>
@@ -380,24 +386,26 @@ function Home(props: {
     case "parking":
       return (
         <Screen
-          lede="The helper has not reported it funded yet."
-          title="Parking your reserve"
+          lede="Starknet is confirming it."
+          title="Transaction submitted"
         >
           <SafeFigure caption="On its way to the safe" ticket={home.ticket} />
+          <StatusLine icon={<CheckCircleIcon />}>Transaction submitted</StatusLine>
           <StatusLine icon={<ArrowsClockwiseIcon />} iconMotion="spin">
-            Waiting for the transaction to land
+            {props.live ?? "Checking Starknet"}
           </StatusLine>
           {props.error === null ? null : <Failure message={props.error} />}
           <SafeEvidence ticket={home.ticket} />
           <Actions>
             <Button
               icon={<ArrowsClockwiseIcon />}
-              label="Check again"
+              label="Check now"
               onClick={() => {
                 void actions.refresh();
               }}
             />
           </Actions>
+          <Note>You can close this screen. Checking resumes when you return.</Note>
         </Screen>
       );
 
@@ -409,6 +417,7 @@ function Home(props: {
             chainTimeSeconds={home.snapshot.chainTimeSeconds}
             returnDateSeconds={home.ticket.returnDateSeconds}
           />
+          <StatusLine icon={<CheckCircleIcon />}>Confirmed on Starknet</StatusLine>
           <StatusLine icon={<HourglassIcon />}>
             Return opens after that date.
           </StatusLine>
@@ -472,21 +481,23 @@ function Home(props: {
 
     case "returning":
       return (
-        <Screen lede="Building the private note." title="Returning">
+        <Screen lede="Starknet is confirming it." title="Return submitted">
           <SafeFigure caption="On its way back" ticket={home.ticket} />
+          <StatusLine icon={<CheckCircleIcon />}>Transaction submitted</StatusLine>
           <StatusLine icon={<ArrowsClockwiseIcon />} iconMotion="spin">
-            Waiting for the transaction to land
+            {props.live ?? "Checking Starknet"}
           </StatusLine>
           <SafeEvidence ticket={home.ticket} />
           <Actions>
             <Button
               icon={<ArrowsClockwiseIcon />}
-              label="Check again"
+              label="Check now"
               onClick={() => {
                 void actions.refresh();
               }}
             />
           </Actions>
+          <Note>You can close this screen. Checking resumes when you return.</Note>
         </Screen>
       );
 
@@ -545,24 +556,70 @@ function Home(props: {
       return (
         <Screen
           center
-          lede="It appears after Starknet confirms the return."
-          title="Private return submitted"
+          lede={
+            home.status === "checking"
+              ? "Starknet is confirming it."
+              : home.status === "confirmed"
+                ? "The reserve is back in your private balance."
+                : "The transaction did not complete."
+          }
+          title={
+            home.status === "checking"
+              ? "Return submitted"
+              : home.status === "confirmed"
+                ? "Return confirmed"
+                : "Return failed"
+          }
+          tone={home.status === "reverted" ? "alert" : undefined}
         >
           <Emblem>
-            <ArrowDownLeftIcon />
+            {home.status === "confirmed" ? (
+              <CheckCircleIcon />
+            ) : home.status === "reverted" ? (
+              <WarningCircleIcon />
+            ) : (
+              <ArrowDownLeftIcon />
+            )}
           </Emblem>
           <Balance
             caption="Returning"
             value={formatStrkFigure(home.amountFri)}
           />
-          <StatusLine icon={<ArrowsClockwiseIcon />} iconMotion="spin">
-            Waiting for confirmation
-          </StatusLine>
+          {home.status === "checking" ? (
+            <StatusLine icon={<ArrowsClockwiseIcon />} iconMotion="spin">
+              {props.live ?? "Checking Starknet"}
+            </StatusLine>
+          ) : (
+            <StatusLine
+              icon={
+                home.status === "confirmed" ? (
+                  <CheckCircleIcon />
+                ) : (
+                  <WarningCircleIcon />
+                )
+              }
+              tone={home.status === "reverted" ? "alert" : undefined}
+            >
+              {home.status === "confirmed"
+                ? "Confirmed on Starknet"
+                : "Reverted on Starknet"}
+            </StatusLine>
+          )}
           <TransactionRef
             hash={shortHex(home.transactionHash)}
             href={explorer(home.transactionHash)}
             label="Check on Starkscan"
           />
+          {home.status === "reverted" ? (
+            <Actions>
+              <Button
+                label="Try again"
+                onClick={() => {
+                  void actions.bringBack();
+                }}
+              />
+            </Actions>
+          ) : null}
         </Screen>
       );
 
@@ -786,9 +843,8 @@ function CreateFlow(props: {
               <ArrowsClockwiseIcon />
             </Emblem>
             <StatusLine icon={<ArrowsClockwiseIcon />} iconMotion="spin">
-              Preparing the private proof
+              {model.live ?? "Starting"}
             </StatusLine>
-            <Live message={model.live} />
           </Screen>
         );
       }
@@ -846,14 +902,18 @@ function CreateFlow(props: {
       return (
         <Screen
           center
-          lede="Waiting for Starknet."
-          title="Parking reserve"
+          lede="The private proof is ready."
+          title="Sending transaction"
         >
           <Emblem>
             <LockSimpleIcon />
           </Emblem>
+          <StatusLine icon={<CheckCircleIcon />}>Private proof approved</StatusLine>
+          <StatusLine icon={<ArrowsClockwiseIcon />} iconMotion="spin">
+            {model.live ?? "Sending to Starknet"}
+          </StatusLine>
+          <StatusLine icon={<HourglassIcon />}>Confirmation comes next</StatusLine>
           <Waiting seconds={model.elapsedSeconds} />
-          <Live message={model.live} />
           <Note>Keep this screen open.</Note>
         </Screen>
       );
