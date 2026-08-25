@@ -4,9 +4,10 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
+import { createHmac, randomBytes } from "node:crypto";
 
 import { jsonValueSchema, type JsonValue } from "@wrenchless/canary-core";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 
 import type {
   RefillFundUnavailableReason,
@@ -17,9 +18,24 @@ import {
   RefillFundRelayError,
   type RefillFundSubmission,
 } from "./fund-relay.js";
+import {
+  RecoveryLookupDeniedError,
+  type RecoveryChallenge,
+  type RecoveryLocator,
+  type RecoveryLookupService,
+} from "./recovery-index.js";
 
 const MAX_FUND_BODY_BYTES = 8 * 1_024 * 1_024;
+const MAX_RECOVERY_BODY_BYTES = 16 * 1_024;
 const RATE_WINDOW_MILLISECONDS = 60 * 60 * 1_000;
+const STARK_FIELD_PRIME = (1n << 251n) + 17n * (1n << 192n) + 1n;
+const recoveryFeltSchema = z
+  .string()
+  .regex(/^0x[0-9a-f]+$/i)
+  .refine((value) => BigInt(value) < STARK_FIELD_PRIME);
+const recoveryAccountSchema = recoveryFeltSchema.refine(
+  (value) => BigInt(value) !== 0n,
+);
 
 type SponsorServerOptions = {
   allowedOrigin: string;
@@ -64,6 +80,8 @@ class RateLimiter {
 
 type SponsorResponse =
   | RefillFundSubmission
+  | RecoveryChallenge
+  | RecoveryLocator
   | { error: string; reason?: SponsorUnavailableReason }
   | { status: "ok" | "ready" };
 
@@ -105,12 +123,15 @@ function applyCors(
   return true;
 }
 
-async function readJsonBody(request: IncomingMessage): Promise<JsonValue> {
+async function readJsonBody(
+  request: IncomingMessage,
+  maximumBytes = MAX_FUND_BODY_BYTES,
+): Promise<JsonValue> {
   if (request.headers["content-type"]?.split(";", 1)[0] !== "application/json") {
     throw new Error("unsupported_media_type");
   }
   const declaredLength = Number(request.headers["content-length"] ?? 0);
-  if (!Number.isSafeInteger(declaredLength) || declaredLength > MAX_FUND_BODY_BYTES) {
+  if (!Number.isSafeInteger(declaredLength) || declaredLength > maximumBytes) {
     throw new Error("body_too_large");
   }
   const chunks: Buffer[] = [];
@@ -118,7 +139,7 @@ async function readJsonBody(request: IncomingMessage): Promise<JsonValue> {
   for await (const chunk of request) {
     const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     received += bytes.length;
-    if (received > MAX_FUND_BODY_BYTES) throw new Error("body_too_large");
+    if (received > maximumBytes) throw new Error("body_too_large");
     chunks.push(bytes);
   }
   if (received === 0) throw new Error("empty_body");
@@ -126,8 +147,17 @@ async function readJsonBody(request: IncomingMessage): Promise<JsonValue> {
 }
 
 function publicError(error: Error): PublicError {
+  if (error instanceof RecoveryLookupDeniedError) {
+    return { status: 401, code: "recovery_not_approved" };
+  }
   if (error instanceof RefillFundRelayError) {
     if (error.code === "relay_busy") return { status: 409, code: error.code };
+    if (error.code === "active_safe_exists") {
+      return { status: 409, code: error.code };
+    }
+    if (error.code === "recovery_not_approved") {
+      return { status: 422, code: error.code };
+    }
     if (
       error.code === "fund_broadcast_disabled" ||
       error.code === "daily_fund_budget_exhausted"
@@ -155,9 +185,17 @@ function publicError(error: Error): PublicError {
 
 export function createSponsorServer(
   fundRelay: RefillFundRelay,
+  recoveryLookup: RecoveryLookupService,
   options: SponsorServerOptions,
 ): Server {
   const rates = new RateLimiter();
+  const rateKey = randomBytes(32);
+  const rateBucket = (scope: string, request: IncomingMessage): string =>
+    createHmac("sha256", rateKey)
+      .update(scope)
+      .update("\0")
+      .update(remoteAddress(request, options.trustProxy))
+      .digest("hex");
   return createServer(async (request, response) => {
     try {
       if (!applyCors(request, response, options.allowedOrigin)) return;
@@ -208,7 +246,7 @@ export function createSponsorServer(
         }
         if (
           !rates.allow(
-            `fund:${remoteAddress(request, options.trustProxy)}`,
+            rateBucket("fund", request),
             6,
           )
         ) {
@@ -218,6 +256,51 @@ export function createSponsorServer(
         }
         const submission = await fundRelay.submit(await readJsonBody(request));
         sendJson(response, submission.status === "finalized" ? 201 : 202, submission);
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/v1/recovery/challenge") {
+        if (
+          !rates.allow(
+            rateBucket("recovery-challenge", request),
+            12,
+          )
+        ) {
+          response.setHeader("Retry-After", "3600");
+          sendJson(response, 429, { error: "rate_limited" });
+          return;
+        }
+        const body = z
+          .object({ account: recoveryAccountSchema })
+          .strict()
+          .parse(await readJsonBody(request, MAX_RECOVERY_BODY_BYTES));
+        sendJson(response, 200, recoveryLookup.createChallenge(body.account));
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/v1/recovery/lookup") {
+        if (
+          !rates.allow(
+            rateBucket("recovery-lookup", request),
+            6,
+          )
+        ) {
+          response.setHeader("Retry-After", "3600");
+          sendJson(response, 429, { error: "rate_limited" });
+          return;
+        }
+        const body = z
+          .object({
+            account: recoveryAccountSchema,
+            token: z.string().min(1).max(4_096),
+            signature: z.array(recoveryFeltSchema).min(1).max(64),
+          })
+          .strict()
+          .parse(await readJsonBody(request, MAX_RECOVERY_BODY_BYTES));
+        const locator = await recoveryLookup.lookup(body);
+        if (locator === null) {
+          sendJson(response, 404, { error: "recovery_not_found" });
+          return;
+        }
+        sendJson(response, 200, locator);
         return;
       }
       sendJson(response, 404, { error: "not_found" });

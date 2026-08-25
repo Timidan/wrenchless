@@ -1,4 +1,5 @@
 import {
+  createRecoveryRegistrationTypedData,
   normalizeReadyRefillFundArtifact,
   prepareRefillFund,
   submitRefillClaim,
@@ -22,7 +23,9 @@ export type PrepareReadyRefillFundInput = {
   helperAddress: string;
   stateId: string;
   claimCommitment: string;
-  refundPublicKey: string;
+  recoveryCommitment: string;
+  recoveryAccount: string;
+  recoverySalt: string;
   tokenAddress: string;
   amountFri: string;
   returnDateSeconds: string;
@@ -35,12 +38,11 @@ export type SubmitReadyRefillRefundInput = {
   helperAddress: string;
   recipient: string;
   stateId: string;
-  nonce: string;
   returnDateSeconds: string;
   tokenAddress: string;
   amountFri: string;
-  refundPrivateKey: string;
-  refundPublicKey: string;
+  recoveryAccount: string;
+  recoverySalt: string;
 };
 
 export type SubmitReadyRefillClaimInput = {
@@ -78,7 +80,7 @@ async function assertReadyRefillCapabilities(
 export async function prepareReadyRefillFundArtifact(
   input: PrepareReadyRefillFundInput,
 ): Promise<RefillFundArtifact> {
-  await assertReadyRefillCapabilities(input.wallet);
+  const chainId = await assertReadyRefillCapabilities(input.wallet);
   const result = await prepareRefillFund({
     wallet: {
       async strk20PrepareInvoke(
@@ -99,10 +101,29 @@ export async function prepareReadyRefillFundArtifact(
     helperAddress: input.helperAddress,
     stateId: input.stateId,
     claimCommitment: input.claimCommitment,
-    refundPublicKey: input.refundPublicKey,
+    recoveryCommitment: input.recoveryCommitment,
+    recoveryAccount: input.recoveryAccount,
+    recoverySalt: input.recoverySalt,
     token: input.tokenAddress,
     amount: input.amountFri,
     expiry: input.returnDateSeconds,
+  });
+  const recoveryAuthorization = await input.wallet.request<string[]>({
+    type: "wallet_signTypedData",
+    params: {
+      ...createRecoveryRegistrationTypedData({
+        chainId,
+        recoveryAccount: input.recoveryAccount,
+        helperAddress: input.helperAddress,
+        stateId: input.stateId,
+        claimCommitment: input.claimCommitment,
+        recoveryCommitment: input.recoveryCommitment,
+        tokenAddress: input.tokenAddress,
+        amountFri: input.amountFri,
+        expiry: input.returnDateSeconds,
+      }),
+      api_version: READY_WALLET_API_VERSION,
+    },
   });
 
   return normalizeReadyRefillFundArtifact({
@@ -110,7 +131,10 @@ export async function prepareReadyRefillFundArtifact(
     helperAddress: input.helperAddress,
     stateId: input.stateId,
     claimCommitment: input.claimCommitment,
-    refundPublicKey: input.refundPublicKey,
+    recoveryCommitment: input.recoveryCommitment,
+    recoveryAccount: input.recoveryAccount,
+    recoverySalt: input.recoverySalt,
+    recoveryAuthorization,
     tokenAddress: input.tokenAddress,
     amountFri: input.amountFri,
     expiry: input.returnDateSeconds,
@@ -144,18 +168,26 @@ export async function submitReadyRefillRefund(
           },
         });
       },
+      async signTypedData(data) {
+        return input.wallet.request<string[]>({
+          type: "wallet_signTypedData",
+          params: {
+            ...data,
+            api_version: READY_WALLET_API_VERSION,
+          },
+        });
+      },
     },
     chainId,
     poolAddress: input.poolAddress,
     helperAddress: input.helperAddress,
     recipient: input.recipient,
     stateId: input.stateId,
-    nonce: input.nonce,
     expiry: input.returnDateSeconds,
     token: input.tokenAddress,
     amount: input.amountFri,
-    refundPrivateKey: input.refundPrivateKey,
-    refundPublicKey: input.refundPublicKey,
+    recoveryAccount: input.recoveryAccount,
+    recoverySalt: input.recoverySalt,
   });
 }
 

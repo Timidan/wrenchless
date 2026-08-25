@@ -17,8 +17,7 @@ export type TravelSafeSecrets = {
   claimPrivateKey: string;
   claimPublicKey: string;
   claimCommitment: string;
-  refundPrivateKey: string;
-  refundPublicKey: string;
+  recoverySalt: string;
 };
 
 function canonicalPhrase(phrase: string): string {
@@ -45,7 +44,7 @@ function canonicalHex(value: bigint): string {
 
 async function deriveNonZeroScalar(input: {
   material: CryptoKey;
-  purpose: "state-id" | "claim-private-key" | "refund-private-key";
+  purpose: "state-id" | "claim-private-key" | "recovery-salt";
   upperBound: bigint;
 }): Promise<string> {
   const encoder = new TextEncoder();
@@ -87,7 +86,7 @@ export async function deriveTravelSafeSecrets(
     false,
     ["deriveBits"],
   );
-  const [stateId, claimPrivateKey, refundPrivateKey] = await Promise.all([
+  const [stateId, claimPrivateKey, recoverySalt] = await Promise.all([
     deriveNonZeroScalar({
       material,
       purpose: "state-id",
@@ -100,19 +99,17 @@ export async function deriveTravelSafeSecrets(
     }),
     deriveNonZeroScalar({
       material,
-      purpose: "refund-private-key",
-      upperBound: ec.starkCurve.CURVE.n,
+      purpose: "recovery-salt",
+      upperBound: STARK_FIELD_PRIME,
     }),
   ]);
   const claimPublicKey = ec.starkCurve.getStarkKey(claimPrivateKey);
-  const refundPublicKey = ec.starkCurve.getStarkKey(refundPrivateKey);
   return {
     stateId,
     claimPrivateKey,
     claimPublicKey,
     claimCommitment: computeRefillClaimCommitment(stateId, claimPublicKey),
-    refundPrivateKey,
-    refundPublicKey,
+    recoverySalt,
   };
 }
 

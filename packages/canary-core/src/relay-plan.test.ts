@@ -8,6 +8,7 @@ import {
   buildRefillFundRelayPlan,
   buildRegistrationRelayPlan,
 } from "./relay-plan.js";
+import { computeRefillRecoveryCommitment } from "./refill-claim.js";
 
 const POOL = "0x456";
 const STRK = "0x4718";
@@ -16,6 +17,11 @@ const POOL_FEE = 6_000_000_000_000_000_000n;
 const MAX_TX_FEE = 5_000_000_000_000_000_000n;
 const MAX_POOL_FEE = 12_000_000_000_000_000_000n;
 const HELPER = "0xabc";
+const RECOVERY_COMMITMENT = computeRefillRecoveryCommitment(
+  "0x111",
+  "0x444",
+  "0x555",
+);
 
 const artifact: RegistrationCanaryArtifact = {
   schemaVersion: "wrenchless.registration-canary.v1",
@@ -127,13 +133,16 @@ describe("buildRegistrationRelayPlan", () => {
 });
 
 const fundArtifact: RefillFundArtifact = {
-  schemaVersion: "wrenchless.refill-fund.v1",
+  schemaVersion: "wrenchless.refill-fund.v2",
   chainId: "SN_MAIN",
   poolAddress: POOL,
   helperAddress: HELPER,
   stateId: "0x111",
   claimCommitment: "0x222",
-  refundPublicKey: "0x333",
+  recoveryCommitment: RECOVERY_COMMITMENT,
+  recoveryAccount: "0x444",
+  recoverySalt: "0x555",
+  recoveryAuthorization: ["0xaaa", "0x0"],
   tokenAddress: STRK,
   amountFri: "1000",
   expiry: "1800003600",
@@ -153,7 +162,7 @@ const fundArtifact: RefillFundArtifact = {
       "0x0",
       "0x111",
       "0x222",
-      "0x333",
+      RECOVERY_COMMITMENT,
       STRK,
       "0x3e8",
       "0x6b49e010",

@@ -1,7 +1,6 @@
 import {
   constants,
   ec,
-  encode,
   hash,
   shortString,
   typedData,
@@ -11,7 +10,6 @@ import {
 const CLAIM_OPERATION = "CLAIM";
 const FUND_OPERATION_DISCRIMINANT = 0n;
 const CLAIM_OPERATION_DISCRIMINANT = 1n;
-const REFUND_OPERATION = "REFUND";
 const REFUND_OPERATION_DISCRIMINANT = 2n;
 const INVOKE_SERVER_ACTION_DISCRIMINANT = 10n;
 const INVOKE_WITH_COMPUTATION_SERVER_ACTION_DISCRIMINANT = 11n;
@@ -39,9 +37,16 @@ const REFILL_RELEASE_TYPES: TypedData["types"] = {
   ],
 };
 
-export type RefillKeypair = {
-  privateKey: string;
-  publicKey: string;
+const SAFE_RETURN_TYPES: TypedData["types"] = {
+  StarknetDomain: REFILL_RELEASE_TYPES.StarknetDomain!,
+  SafeReturn: [
+    { name: "helper", type: "ContractAddress" },
+    { name: "stateId", type: "felt" },
+    { name: "expiry", type: "u128" },
+    { name: "token", type: "ContractAddress" },
+    { name: "amount", type: "u128" },
+    { name: "noteId", type: "felt" },
+  ],
 };
 
 export type RefillReleaseSignature = {
@@ -60,7 +65,12 @@ export type RefillClaimAuthorization = {
   noteId: string | bigint;
 };
 
-export type RefillRefundAuthorization = RefillClaimAuthorization;
+export type RefillRefundAuthorization = Omit<
+  RefillClaimAuthorization,
+  "nonce"
+> & {
+  recoveryAccount: string;
+};
 
 export type RefillTransferAction = {
   type: "transfer";
@@ -116,13 +126,19 @@ export type RefillInvokeWallet = {
   ): Promise<{ transaction_hash: string }>;
 };
 
+export type RefillTypedDataWallet = {
+  signTypedData(data: TypedData): Promise<readonly string[]>;
+};
+
 export type PrepareRefillFundInput = {
   wallet: RefillPrepareWallet;
   poolAddress: string;
   helperAddress: string;
   stateId: string | bigint;
   claimCommitment: string;
-  refundPublicKey: string;
+  recoveryCommitment: string;
+  recoveryAccount: string;
+  recoverySalt: string;
   token: string;
   amount: string | bigint;
   expiry: string | bigint;
@@ -147,15 +163,14 @@ export type PrepareRefillRefundInput = Omit<
   RefillRefundAuthorization,
   "noteId"
 > & {
-  wallet: RefillPrepareWallet;
+  wallet: RefillPrepareWallet & RefillTypedDataWallet;
   poolAddress: string;
   recipient: string;
-  refundPrivateKey: string;
-  refundPublicKey: string;
+  recoverySalt: string;
 };
 
 export type SubmitRefillRefundInput = Omit<PrepareRefillRefundInput, "wallet"> & {
-  wallet: RefillPrepareWallet & RefillInvokeWallet;
+  wallet: RefillPrepareWallet & RefillInvokeWallet & RefillTypedDataWallet;
 };
 
 export type PreparedRefillClaim = {
@@ -170,8 +185,16 @@ export type SubmittedRefillClaim = {
   transactionHash: string;
 };
 
-export type PreparedRefillRefund = PreparedRefillClaim;
-export type SubmittedRefillRefund = SubmittedRefillClaim;
+export type PreparedRefillRefund = {
+  noteId: string;
+  signature: string[];
+  prepared: PreparedStrk20Call;
+};
+export type SubmittedRefillRefund = {
+  noteId: string;
+  signature: string[];
+  transactionHash: string;
+};
 
 export type PreparedRefillFund = {
   prepared: PreparedStrk20Call;
@@ -375,6 +398,18 @@ function buildFundActions(
 
   const helperAddress = toFelt(input.helperAddress, "helper address");
   const token = toFelt(input.token, "token");
+  if (
+    BigInt(input.recoveryCommitment) !==
+    BigInt(
+      computeRefillRecoveryCommitment(
+        stateId,
+        input.recoveryAccount,
+        input.recoverySalt,
+      ),
+    )
+  ) {
+    throw new Error("recovery commitment does not match the Ready account");
+  }
   return [
     {
       type: "withdraw",
@@ -389,7 +424,7 @@ function buildFundActions(
         toFelt(FUND_OPERATION_DISCRIMINANT, "fund operation"),
         stateId,
         toFelt(input.claimCommitment, "claim commitment"),
-        toFelt(input.refundPublicKey, "refund public key"),
+        toFelt(input.recoveryCommitment, "recovery commitment"),
         token,
         amount,
         toBoundedInteger(input.expiry, U64_MAX, "expiry"),
@@ -429,7 +464,7 @@ function buildClaimActions(
 function buildRefundActions(
   input: Omit<PrepareRefillRefundInput, "wallet" | "poolAddress">,
   noteId: string,
-  signature: RefillReleaseSignature,
+  signature: readonly string[],
 ): RefillRefundAction[] {
   return [
     {
@@ -445,9 +480,10 @@ function buildRefundActions(
         toFelt(REFUND_OPERATION_DISCRIMINANT, "refund operation"),
         toFelt(input.stateId, "state id"),
         noteId,
-        toFelt(input.nonce, "nonce"),
-        toFelt(signature.r, "signature r"),
-        toFelt(signature.s, "signature s"),
+        toFelt(input.recoveryAccount, "recovery account"),
+        toFelt(input.recoverySalt, "recovery salt"),
+        toFelt(BigInt(signature.length), "signature length"),
+        ...signature.map((value) => toFelt(value, "signature felt")),
       ],
     },
   ];
@@ -499,6 +535,18 @@ function assertPreparedFund(
   const helper = toFelt(input.helperAddress, "helper address");
   const token = toFelt(input.token, "token");
   const amount = toBoundedInteger(input.amount, U128_MAX, "amount");
+  if (
+    BigInt(input.recoveryCommitment) !==
+    BigInt(
+      computeRefillRecoveryCommitment(
+        input.stateId,
+        input.recoveryAccount,
+        input.recoverySalt,
+      ),
+    )
+  ) {
+    throw new Error("recovery commitment does not match the Ready account");
+  }
   const { actionCount, invokes, screening, transfersTo } = readPreparedServerActions(
     prepared,
     input.poolAddress,
@@ -540,7 +588,7 @@ function assertPreparedFund(
     toFelt(FUND_OPERATION_DISCRIMINANT, "fund operation"),
     toFelt(input.stateId, "state id"),
     toFelt(input.claimCommitment, "claim commitment"),
-    toFelt(input.refundPublicKey, "refund public key"),
+    toFelt(input.recoveryCommitment, "recovery commitment"),
     token,
     amount,
     toBoundedInteger(input.expiry, U64_MAX, "expiry"),
@@ -609,8 +657,8 @@ function readClaimNoteId(
 
 function readRefundNoteId(
   prepared: PreparedStrk20Call,
-  input: Omit<PrepareRefillRefundInput, "wallet" | "refundPrivateKey">,
-  expectedSignature?: RefillReleaseSignature,
+  input: Omit<PrepareRefillRefundInput, "wallet">,
+  expectedSignature?: readonly string[],
 ): string {
   const refund = readPreparedHelperInvoke(
     prepared,
@@ -618,33 +666,41 @@ function readRefundNoteId(
     input.helperAddress,
   );
 
-  if (refund.length !== 6) {
+  if (refund.length < 6) {
     throw new Error("prepared helper invoke has an invalid refund shape");
   }
   assertSameFelt(refund[0]!, toFelt(2n, "refund operation"), "operation");
   assertSameFelt(refund[1]!, toFelt(input.stateId, "state id"), "state id");
-  assertSameFelt(refund[3]!, toFelt(input.nonce, "nonce"), "nonce");
+  assertSameFelt(
+    refund[3]!,
+    toFelt(input.recoveryAccount, "recovery account"),
+    "recovery account",
+  );
+  assertSameFelt(
+    refund[4]!,
+    toFelt(input.recoverySalt, "recovery salt"),
+    "recovery salt",
+  );
+  const signatureLength = refund[5]!;
+  if (
+    signatureLength > BigInt(Number.MAX_SAFE_INTEGER) ||
+    refund.length !== 6 + Number(signatureLength)
+  ) {
+    throw new Error("prepared helper invoke has an invalid refund signature");
+  }
   if (expectedSignature !== undefined) {
-    assertSameFelt(
-      refund[4]!,
-      toFelt(expectedSignature.r, "signature r"),
-      "signature r",
-    );
-    assertSameFelt(
-      refund[5]!,
-      toFelt(expectedSignature.s, "signature s"),
-      "signature s",
-    );
+    if (Number(signatureLength) !== expectedSignature.length) {
+      throw new Error("prepared helper invoke changed the refund signature length");
+    }
+    expectedSignature.forEach((value, index) => {
+      assertSameFelt(
+        refund[6 + index]!,
+        toFelt(value, "signature felt"),
+        `signature felt ${index}`,
+      );
+    });
   }
   return toFelt(refund[2]!, "OPEN note id");
-}
-
-export function createRefillKeypair(): RefillKeypair {
-  const privateKey = toFelt(
-    `0x${encode.buf2hex(ec.starkCurve.utils.randomPrivateKey())}`,
-    "private key",
-  );
-  return { privateKey, publicKey: ec.starkCurve.getStarkKey(privateKey) };
 }
 
 export function computeRefillClaimCommitment(
@@ -658,8 +714,21 @@ export function computeRefillClaimCommitment(
   ]);
 }
 
+export function computeRefillRecoveryCommitment(
+  stateId: string | bigint,
+  recoveryAccount: string,
+  recoverySalt: string,
+): string {
+  return hash.computePoseidonHashOnElements([
+    shortString.encodeShortString("WR_RECOVERY_ACCOUNT_V1"),
+    toFelt(stateId, "state id"),
+    toFelt(recoveryAccount, "recovery account"),
+    toFelt(recoverySalt, "recovery salt"),
+  ]);
+}
+
 function computeRefillReleaseHashForOperation(
-  operation: typeof CLAIM_OPERATION | typeof REFUND_OPERATION,
+  operation: typeof CLAIM_OPERATION,
   authorization: RefillClaimAuthorization,
 ): string {
   const expiry = toBoundedInteger(authorization.expiry, U64_MAX, "expiry");
@@ -698,7 +767,33 @@ export function computeRefillReleaseHash(
 export function computeRefillRefundHash(
   authorization: RefillRefundAuthorization,
 ): string {
-  return computeRefillReleaseHashForOperation(REFUND_OPERATION, authorization);
+  return typedData.getMessageHash(
+    createRefillRefundTypedData(authorization),
+    toFelt(authorization.recoveryAccount, "recovery account"),
+  );
+}
+
+export function createRefillRefundTypedData(
+  authorization: RefillRefundAuthorization,
+): TypedData {
+  return {
+    types: SAFE_RETURN_TYPES,
+    primaryType: "SafeReturn",
+    domain: {
+      name: "WrenchlessSafe",
+      version: "2",
+      chainId: authorization.chainId,
+      revision: "1",
+    },
+    message: {
+      helper: toFelt(authorization.helperAddress, "helper address"),
+      stateId: toFelt(authorization.stateId, "state id"),
+      expiry: toBoundedInteger(authorization.expiry, U64_MAX, "expiry"),
+      token: toFelt(authorization.token, "token"),
+      amount: toBoundedInteger(authorization.amount, U128_MAX, "amount"),
+      noteId: toFelt(authorization.noteId, "OPEN note id"),
+    },
+  };
 }
 
 export function signRefillClaim(
@@ -715,18 +810,15 @@ export function signRefillClaim(
   };
 }
 
-export function signRefillRefund(
-  refundPrivateKey: string,
+async function requestRefillRefundSignature(
+  wallet: RefillTypedDataWallet,
   authorization: RefillRefundAuthorization,
-): RefillReleaseSignature {
-  const signature = ec.starkCurve.sign(
-    computeRefillRefundHash(authorization),
-    refundPrivateKey,
-  );
-  return {
-    r: toFelt(signature.r, "signature r"),
-    s: toFelt(signature.s, "signature s"),
-  };
+): Promise<string[]> {
+  const signature = [
+    ...(await wallet.signTypedData(createRefillRefundTypedData(authorization))),
+  ];
+  if (signature.length === 0) throw new Error("Ready returned an empty signature");
+  return signature.map((value) => toFelt(value, "signature felt"));
 }
 
 export async function prepareRefillClaim(
@@ -806,27 +898,22 @@ export async function submitRefillClaim(
 export async function prepareRefillRefund(
   input: PrepareRefillRefundInput,
 ): Promise<PreparedRefillRefund> {
-  const derivedPublicKey = ec.starkCurve.getStarkKey(input.refundPrivateKey);
-  if (BigInt(derivedPublicKey) !== BigInt(input.refundPublicKey)) {
-    throw new Error("refund private key does not match the funded public key");
-  }
-
   const previewActions = buildRefundActions(
     input,
     OPEN_NOTE_PLACEHOLDER,
-    { r: "0x0", s: "0x0" },
+    [],
   );
   const preview = await input.wallet.strk20PrepareInvoke(previewActions, true);
   const candidateNoteId = readRefundNoteId(preview, input);
-  const signature = signRefillRefund(input.refundPrivateKey, {
+  const signature = await requestRefillRefundSignature(input.wallet, {
     chainId: input.chainId,
     helperAddress: input.helperAddress,
     stateId: input.stateId,
-    nonce: input.nonce,
     expiry: input.expiry,
     token: input.token,
     amount: input.amount,
     noteId: candidateNoteId,
+    recoveryAccount: input.recoveryAccount,
   });
 
   const prepared = await input.wallet.strk20PrepareInvoke(
@@ -847,25 +934,20 @@ export async function prepareRefillRefund(
 export async function submitRefillRefund(
   input: SubmitRefillRefundInput,
 ): Promise<SubmittedRefillRefund> {
-  const derivedPublicKey = ec.starkCurve.getStarkKey(input.refundPrivateKey);
-  if (BigInt(derivedPublicKey) !== BigInt(input.refundPublicKey)) {
-    throw new Error("refund private key does not match the funded public key");
-  }
-
   const preview = await input.wallet.strk20PrepareInvoke(
-    buildRefundActions(input, OPEN_NOTE_PLACEHOLDER, { r: "0x0", s: "0x0" }),
+    buildRefundActions(input, OPEN_NOTE_PLACEHOLDER, []),
     true,
   );
   const noteId = readRefundNoteId(preview, input);
-  const signature = signRefillRefund(input.refundPrivateKey, {
+  const signature = await requestRefillRefundSignature(input.wallet, {
     chainId: input.chainId,
     helperAddress: input.helperAddress,
     stateId: input.stateId,
-    nonce: input.nonce,
     expiry: input.expiry,
     token: input.token,
     amount: input.amount,
     noteId,
+    recoveryAccount: input.recoveryAccount,
   });
   const result = await input.wallet.strk20InvokeTransaction(
     buildRefundActions(input, OPEN_NOTE_PLACEHOLDER, signature),

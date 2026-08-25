@@ -29,28 +29,30 @@ export function PrivacyPage(): JSX.Element {
               <h2>On this device</h2>
               <p>
                 Wrenchless stores the passkey reference, the active Safe ID, and
-                one encrypted Travel Safe ticket. The ticket contains the refund
-                key, amount, return date, and known transaction hashes. A
-                non-extractable browser AES key encrypts it at rest.
+                one encrypted Travel Safe ticket. The ticket contains the amount,
+                return date, known transaction hashes, and early-recovery
+                material. A key derived from your passkey encrypts it at rest and
+                is kept only for the current unlocked session.
               </p>
               <p>
-                The passkey is a local user-verification gate. It does not
-                hardware-encrypt the refund key, and ordinary browser storage
-                does not resist malware or someone who controls the device.
+                The passkey unlocks the ticket, early return, and backup reveal.
+                Malware running after you unlock the app can still read what the
+                app can read.
               </p>
             </section>
 
             <section className="document__section">
-              <h2>Your recovery words</h2>
+              <h2>Optional early-recovery backup</h2>
               <p>
-                The twelve words and the claim private key are never stored by
-                Wrenchless. The words can release the Safe before its return
-                date. Keep them away from the device you travel with.
+                No recovery phrase is required. Early-recovery material stays in
+                the encrypted local ticket, so your passkey can reveal an
+                optional backup later. The backup can return the Safe early from
+                another device. It is not a seed for a new wallet.
               </p>
               <p>
-                Losing this browser does not destroy a funded Safe if you still
-                have the words. Losing both removes Wrenchless&apos;s recovery
-                path.
+                The backup is never sent to the sponsor. Before the return date,
+                another device needs it. After that date, a fresh browser can
+                recover by reconnecting the same Ready account.
               </p>
             </section>
 
@@ -59,14 +61,21 @@ export function PrivacyPage(): JSX.Element {
               <p>
                 Ready reads your selected account, private registration,
                 shielded STRK balance, and live pool fee. Ready prepares private
-                FUND, CLAIM, and REFUND actions and asks for your approval where
-                its Wallet API requires it.
+                FUND, early-return, and dated-return actions and asks for your
+                approval where its Wallet API requires it.
               </p>
               <p>
                 The sponsor receives a short-lived prepared FUND proof and may
-                broadcast it from an unrelated account. It can see the request
-                and your network address. Wrenchless does not send recovery
-                words or either release key to the sponsor.
+                broadcast it from an unrelated account. During setup it can see
+                the selected Ready account, Safe details, and your network
+                address. It never receives the recovery backup.
+              </p>
+              <p>
+                For dated recovery, the sponsor retains an HMAC account tag and
+                an encrypted locator containing only the Safe ID and recovery
+                salt. A new Travel Safe replaces the previous locator. It does
+                not retain the amount, return date, backup, balance, or wallet
+                history.
               </p>
             </section>
 
@@ -100,13 +109,12 @@ export function PrivacyPage(): JSX.Element {
               <p>
                 A return date cannot be extended on the deployed helper. The
                 destination Ready account must already support Shielded
-                Starknet and retain the live private fee reserve. A device kept
-                unlocked until after the return date may be able to request the
-                refund.
+                Starknet and retain the live private fee reserve. After the date,
+                the same Ready account can recover from a fresh browser.
               </p>
             </section>
 
-            <p className="document__meta">Last revised 24 August 2026.</p>
+            <p className="document__meta">Last revised 25 August 2026.</p>
           </div>
         </article>
       </main>

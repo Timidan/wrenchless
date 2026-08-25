@@ -19,6 +19,7 @@ import {
 } from "starknet";
 import { z } from "zod";
 
+import { MAINNET_REFILL_HELPER_CLASS_HASH } from "./config.js";
 import type {
   RefillFundFinalityEvidence,
   RefillFundFinalityRequest,
@@ -218,7 +219,7 @@ export function assertRegistrationFinality(
 
 export type RefillStateSnapshot = {
   claimCommitment: string;
-  refundPublicKey: string;
+  recoveryCommitment: string;
   tokenAddress: string;
   amountFri: bigint;
   expiry: bigint;
@@ -312,7 +313,7 @@ export function assertRefillFundFinality(
 
   if (
     BigInt(state.claimCommitment) !== BigInt(request.claimCommitment) ||
-    BigInt(state.refundPublicKey) !== BigInt(request.refundPublicKey) ||
+    BigInt(state.recoveryCommitment) !== BigInt(request.recoveryCommitment) ||
     BigInt(state.tokenAddress) !== BigInt(request.tokenAddress) ||
     state.amountFri !== BigInt(request.amountFri) ||
     state.expiry !== BigInt(request.expiry) ||
@@ -459,7 +460,7 @@ function parseRefillState(result: readonly string[]): RefillStateSnapshot {
   if (!parsed.success) {
     throw new Error("get_state returned an incompatible refill state");
   }
-  const [claimCommitment, refundPublicKey, tokenAddress, amount, expiry, status] =
+  const [claimCommitment, recoveryCommitment, tokenAddress, amount, expiry, status] =
     parsed.data;
   const statusValue = BigInt(status);
   const statusName =
@@ -475,7 +476,7 @@ function parseRefillState(result: readonly string[]): RefillStateSnapshot {
   }
   return {
     claimCommitment,
-    refundPublicKey,
+    recoveryCommitment,
     tokenAddress,
     amountFri: BigInt(amount),
     expiry: BigInt(expiry),
@@ -540,6 +541,9 @@ export class StarknetRegistrationCanaryClient
         "latest",
       ),
     ]);
+    if (BigInt(classHash) !== BigInt(MAINNET_REFILL_HELPER_CLASS_HASH)) {
+      throw new Error("refill helper class does not match this Wrenchless build");
+    }
     if (parseSingleFelt(configuredPool, "privacy_pool") !== BigInt(poolAddress)) {
       throw new Error("refill helper is configured for a different privacy pool");
     }
@@ -686,6 +690,23 @@ export class StarknetRegistrationCanaryClient
       throw new Error("state_exists returned a non-boolean value");
     }
     return value === 1n;
+  }
+
+  async readRefillState(
+    helperAddress: string,
+    stateId: string,
+  ): Promise<RefillStateSnapshot | null> {
+    if (!(await this.readRefillStateExists(helperAddress, stateId))) return null;
+    return parseRefillState(
+      await this.provider.callContract(
+        {
+          contractAddress: helperAddress,
+          entrypoint: "get_state",
+          calldata: [stateId],
+        },
+        "latest",
+      ),
+    );
   }
 
   private makeAccount(signer: string): Account {

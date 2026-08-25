@@ -12,13 +12,13 @@ const CREATED_AT = "2026-08-24T12:00:00.000Z";
 const UPDATED_AT = "2026-08-24T12:05:00.000Z";
 
 const TICKET: TravelSafeTicket = {
-  schemaVersion: "wrenchless.travel-safe-ticket.v1",
+  schemaVersion: "wrenchless.travel-safe-ticket.v2",
   role: "safe",
   stateId: "0x111",
-  status: "PHRASE_CONFIRMED",
-  claimCommitment: "0x222",
-  refundPrivateKey: "0x333",
-  refundPublicKey: "0x444",
+  status: "READY",
+  recoveryPhrase:
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+  recoveryAccount: "0x444",
   tokenAddress: "0x555",
   amountFri: "1000000000000000000",
   returnDateSeconds: "1800003600",
@@ -68,7 +68,7 @@ describe("encrypted Travel Safe ticket storage", () => {
     });
   });
 
-  it("seals the refund key and enforces the lifecycle", async () => {
+  it("seals the local recovery phrase and enforces the lifecycle", async () => {
     const memory = memoryStorage();
     const store = createTravelSafeTicketStore(
       memory.storage,
@@ -76,7 +76,7 @@ describe("encrypted Travel Safe ticket storage", () => {
     );
 
     await store.saveNew(TICKET);
-    expect(memory.readOnlyValue()).not.toContain(TICKET.refundPrivateKey);
+    expect(memory.readOnlyValue()).not.toContain(TICKET.recoveryPhrase);
     expect(await store.get(TICKET.stateId)).toEqual(TICKET);
     await store.transition(
       TICKET.stateId,

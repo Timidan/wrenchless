@@ -140,16 +140,16 @@ export function SceneHero(): JSX.Element {
             </span>
           </h1>
           <p className="hero__lede hero__step">
-            Pick an amount and your return date. Wrenchless locks that reserve
-            away from the Ready Wallet on your phone.
+            Pick an amount and your return date. Your passkey can bring it back
+            early on this device. Ready handles the dated return here.
           </p>
           <div className="hero__actions hero__step">
             <a className="btn btn--primary hero__magnet" href="/safe">
               <span>Open Travel Safe</span>
               <ArrowRoll />
             </a>
-            <a className="btn btn--secondary" href="/recover">
-              <span>Recover with 12 words</span>
+            <a className="btn btn--secondary" href="#story">
+              <span>See how it works</span>
               <ArrowRoll />
             </a>
           </div>

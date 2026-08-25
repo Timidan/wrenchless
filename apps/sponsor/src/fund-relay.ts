@@ -1,4 +1,5 @@
 import {
+  computeRecoveryRegistrationHash,
   parseRefillFundArtifact,
   type JsonValue,
   type RefillFundArtifact,
@@ -16,6 +17,10 @@ import {
   FundBudgetExceededError,
   FundSpendBudget,
 } from "./fund-budget.js";
+import type {
+  ReadyAccountSignatureVerifier,
+  RecoveryIndex,
+} from "./recovery-index.js";
 
 export type RefillFundSubmission = {
   summary: RefillFundInspectionSummary;
@@ -28,6 +33,8 @@ export type RefillFundSubmission = {
 export type RefillFundRelayErrorCode =
   | "fund_broadcast_disabled"
   | "daily_fund_budget_exhausted"
+  | "active_safe_exists"
+  | "recovery_not_approved"
   | "fund_rejected"
   | "relay_busy";
 
@@ -47,13 +54,18 @@ export class RefillFundRelayError extends Error {
  * A prepared artifact contains a short-lived proof, so it is validated and
  * submitted in one request. Only one request is admitted at a time: the
  * operator account has one nonce stream and parallel estimation would create
- * an ambiguous retry state. No artifact or proof is retained here.
+ * an ambiguous retry state. No artifact or proof is retained here; only its
+ * encrypted recovery locator is kept.
  */
 export class RefillFundRelay {
   private busy = false;
   private readonly budget: FundSpendBudget;
 
-  constructor(private readonly config: SponsorConfig) {
+  constructor(
+    private readonly config: SponsorConfig,
+    private readonly recoveryIndex: RecoveryIndex,
+    private readonly signatureVerifier: ReadyAccountSignatureVerifier,
+  ) {
     this.budget = new FundSpendBudget(
       config.fundBudgetPath,
       config.maxDailyFundSpendFri,
@@ -97,6 +109,34 @@ export class RefillFundRelay {
         this.config.rpcUrl,
         this.config.accountAddress,
       );
+      const recoveryApproved = await this.signatureVerifier.verify(
+        artifact.recoveryAccount,
+        computeRecoveryRegistrationHash({
+          chainId: artifact.chainId,
+          recoveryAccount: artifact.recoveryAccount,
+          helperAddress: artifact.helperAddress,
+          stateId: artifact.stateId,
+          claimCommitment: artifact.claimCommitment,
+          recoveryCommitment: artifact.recoveryCommitment,
+          tokenAddress: artifact.tokenAddress,
+          amountFri: artifact.amountFri,
+          expiry: artifact.expiry,
+        }),
+        artifact.recoveryAuthorization,
+      );
+      if (!recoveryApproved) {
+        throw new RefillFundRelayError("recovery_not_approved");
+      }
+      const previous = await this.recoveryIndex.get(artifact.recoveryAccount);
+      if (previous !== null && BigInt(previous.stateId) !== BigInt(artifact.stateId)) {
+        const previousState = await client.readRefillState(
+          this.config.helperAddress,
+          previous.stateId,
+        );
+        if (previousState?.status === "Funded") {
+          throw new RefillFundRelayError("active_safe_exists");
+        }
+      }
       const result = await inspectRefillFund({
         artifact,
         config: relayConfig,
@@ -104,8 +144,14 @@ export class RefillFundRelay {
         client,
         minimumAmountFri: this.config.minFundAmountFri,
         minimumRemainingDurationSeconds: this.config.minFundDurationSeconds,
-        beforeBroadcast: (maximumSpendFri) =>
-          this.budget.reserve(maximumSpendFri),
+        maximumRemainingDurationSeconds: this.config.maxFundDurationSeconds,
+        beforeBroadcast: async (maximumSpendFri) => {
+          await this.recoveryIndex.put(artifact.recoveryAccount, {
+            stateId: artifact.stateId,
+            recoverySalt: artifact.recoverySalt,
+          });
+          await this.budget.reserve(maximumSpendFri);
+        },
       });
       if (result.transactionHash === undefined) {
         throw new Error("FUND relay returned no transaction hash");

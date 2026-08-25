@@ -27,14 +27,14 @@ export {
 export {
   assertPreparedRefillFund,
   computeRefillClaimCommitment,
+  computeRefillRecoveryCommitment,
   computeRefillRefundHash,
+  createRefillRefundTypedData,
   computeRefillReleaseHash,
-  createRefillKeypair,
   prepareRefillClaim,
   prepareRefillFund,
   prepareRefillRefund,
   signRefillClaim,
-  signRefillRefund,
   submitRefillClaim,
   submitRefillRefund,
 } from "./refill-claim.js";
@@ -52,7 +52,6 @@ export type {
   RefillFundAction,
   RefillInvokeAction,
   RefillInvokeWallet,
-  RefillKeypair,
   RefillPrepareWallet,
   RefillRefundAction,
   RefillRefundAuthorization,
@@ -79,6 +78,16 @@ export type {
   TravelSafeTicketStore,
   TravelSafeTicketTransitionPatch,
 } from "./refill-ticket-store.js";
+export {
+  computeRecoveryLookupHash,
+  computeRecoveryRegistrationHash,
+  createRecoveryLookupTypedData,
+  createRecoveryRegistrationTypedData,
+} from "./recovery-lookup.js";
+export type {
+  RecoveryLookupAuthorization,
+  RecoveryRegistrationAuthorization,
+} from "./recovery-lookup.js";
 export {
   chooseTravelSafeRelease,
   deriveTravelSafeSecrets,

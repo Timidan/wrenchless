@@ -4,6 +4,12 @@ import { loadSponsorEnvironment } from "./environment.js";
 import { createSponsorServer } from "./server.js";
 import { RefillFundRelay } from "./fund-relay.js";
 import { inspectFundSponsorReadiness } from "./fund-readiness.js";
+import {
+  readOrCreateRecoveryIndexKey,
+  ReadyAccountSignatureVerifier,
+  RecoveryIndex,
+  RecoveryLookupService,
+} from "./recovery-index.js";
 
 assertSponsorNodeVersion();
 loadSponsorEnvironment();
@@ -19,8 +25,27 @@ async function liveFundUnavailableReason() {
   }
 }
 const initialFundUnavailableReason = await liveFundUnavailableReason();
-const fundRelay = new RefillFundRelay(config);
-const server = createSponsorServer(fundRelay, {
+const recoveryIndexKey = await readOrCreateRecoveryIndexKey({
+  configuredKey: config.recoveryIndexKey,
+  keyPath: config.recoveryIndexKeyPath,
+  production: config.production,
+});
+const recoveryIndex = new RecoveryIndex(
+  config.recoveryIndexPath,
+  recoveryIndexKey,
+);
+const signatureVerifier = new ReadyAccountSignatureVerifier(config.rpcUrl);
+const recoveryLookup = new RecoveryLookupService(
+  recoveryIndex,
+  recoveryIndexKey,
+  signatureVerifier,
+);
+const fundRelay = new RefillFundRelay(
+  config,
+  recoveryIndex,
+  signatureVerifier,
+);
+const server = createSponsorServer(fundRelay, recoveryLookup, {
   allowedOrigin: config.allowedOrigin,
   fundUnavailableReason: liveFundUnavailableReason,
   requireHttps: config.production,

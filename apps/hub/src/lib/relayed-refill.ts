@@ -55,6 +55,12 @@ function publicMessage(code: string, reason?: string): string {
   if (code === "relay_busy") {
     return "Another safe is being parked. Try again shortly.";
   }
+  if (code === "active_safe_exists") {
+    return "This Ready account already has an active Travel Safe.";
+  }
+  if (code === "recovery_not_approved") {
+    return "Ready did not approve this Travel Safe recovery path.";
+  }
   if (code === "rate_limited") {
     return "Too many parking attempts. Try again later.";
   }

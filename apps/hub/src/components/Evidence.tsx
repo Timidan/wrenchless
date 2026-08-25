@@ -37,14 +37,14 @@ const STATIONS: readonly Station[] = [
   },
   {
     name: "Your passkey brings it home",
-    line: "Strictly after the return date, approve the return on this device.",
-    note: "After the date",
+    line: "Return it early from this device without exposing another secret.",
+    note: "Early return",
     icon: "passkey",
   },
   {
-    name: "Twelve words unlock early",
-    line: "Keep the phrase offline. It is the only early release path.",
-    note: "Shown once",
+    name: "Backup is optional",
+    line: "Create one only if you want early recovery from another device.",
+    note: "Not required",
     icon: "phrase",
   },
   {
@@ -197,7 +197,7 @@ export function Evidence(): JSX.Element {
               <h2>A temporary boundary, not another wallet.</h2>
               <p className="evidence__intro">
                 Wrenchless adds one time lock to the Ready Wallet you already
-                use. No second account. No second device.
+                use. No second account, device or recovery phrase is required.
               </p>
             </div>
           </div>

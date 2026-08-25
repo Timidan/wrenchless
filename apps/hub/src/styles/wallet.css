@@ -515,6 +515,179 @@ html.app-page body {
   opacity: 0.42;
 }
 
+/* ---------- what a glyph does when you reach for it ----------
+
+   Every mark in `icons.tsx` carries its own name, and each name is answered
+   here exactly once. The rule is that the glyph moves the way the object it
+   draws would move: a key turns clockwise, an hourglass flips, an arrow
+   travels the way it is pointing, a case tilts as it is pulled. A thing with
+   no motion of its own — a fingerprint, a shield, a warning — leans in and
+   does nothing else, which is the honest answer for it.
+
+   The name is the whole interface. A screen never chooses a glyph's motion,
+   because the answer belongs to the object rather than to the button it is
+   sitting in: the same key turns the same way on every surface, and a screen
+   that wants a different answer is telling you it wanted a different glyph.
+
+   The motion belongs to the control. It fires on hover and on keyboard focus
+   of the button the glyph is in, and nowhere else — an emblem and a status
+   line have nothing to answer, so their glyphs hold still. */
+
+[data-glyph] {
+  --glyph-move: none;
+
+  transform-origin: center;
+  transition: transform var(--dur-mid) var(--ease-settle);
+}
+
+/* Things that turn. */
+[data-glyph="key"] {
+  --glyph-move: rotate(20deg);
+}
+[data-glyph="vault"] {
+  --glyph-move: rotate(20deg);
+}
+[data-glyph="gear-six"] {
+  --glyph-move: rotate(30deg);
+}
+[data-glyph="arrows-clockwise"] {
+  --glyph-move: rotate(45deg);
+}
+[data-glyph="clock-counter-clockwise"] {
+  --glyph-move: rotate(-45deg);
+}
+/* A whole half-turn, because that is the only gesture an hourglass has. */
+[data-glyph="hourglass"] {
+  --glyph-move: rotate(180deg);
+}
+
+/* Things that tilt: the case as it is pulled, the lock as it gives, the
+   closed lock only resisting. The angles differ so that two of them next to
+   each other do not read as one gesture repeated. */
+[data-glyph="suitcase-rolling"] {
+  --glyph-move: rotate(-8deg);
+}
+[data-glyph="lock-key-open"] {
+  --glyph-move: rotate(-10deg);
+}
+[data-glyph="lock-simple"] {
+  --glyph-move: rotate(-5deg);
+}
+[data-glyph="wallet"] {
+  --glyph-move: rotate(-6deg);
+}
+
+/* Things that travel, each the way it points. Turning an arrow would say the
+   direction was up for discussion. */
+[data-glyph="arrow-right"],
+[data-glyph="caret-right"] {
+  --glyph-move: translateX(2px);
+}
+[data-glyph="caret-left"] {
+  --glyph-move: translateX(-2px);
+}
+[data-glyph="arrow-down-left"] {
+  --glyph-move: translate(-1.5px, 1.5px);
+}
+[data-glyph="paper-plane-tilt"] {
+  --glyph-move: translate(2px, -2px);
+}
+[data-glyph="copy"] {
+  --glyph-move: translate(1.5px, -1.5px);
+}
+
+/* Things with no motion of their own. They lean in and that is all. */
+[data-glyph="fingerprint"],
+[data-glyph="scan"],
+[data-glyph="check"] {
+  --glyph-move: scale(1.08);
+}
+[data-glyph="check-circle"],
+[data-glyph="warning-circle"],
+[data-glyph="shield-check"],
+[data-glyph="user-circle"],
+[data-glyph="qr-code"],
+[data-glyph="pause"] {
+  --glyph-move: scale(1.06);
+}
+
+/* The rolling arrow on the public page already answers hover by rolling one
+   window up. A second answer on top of it would be two things happening to
+   one glyph. */
+.btn__roll [data-glyph] {
+  --glyph-move: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .wbtn:not(:disabled):hover [data-glyph],
+  .iconbtn:not(:disabled):hover [data-glyph] {
+    transform: var(--glyph-move);
+  }
+}
+
+.wbtn:not(:disabled):focus-visible [data-glyph],
+.iconbtn:not(:disabled):focus-visible [data-glyph] {
+  transform: var(--glyph-move);
+}
+
+/* Ready's mark is never turned or re-weighted with the rest: it is a brand
+   mark, not an interface glyph. What it does instead is the one thing its own
+   construction offers — the spark is a separate path, so it turns while the
+   chevron holds still. 45 degrees and not 90, because the spark is
+   four-pointed and a quarter turn lands it back on itself. */
+.readymark {
+  color: var(--ready-orange);
+}
+
+/* Built the same way round as the glyphs above, and for the same reason: the
+   value lives on the low-specificity selector and the hover rule only decides
+   whether to apply it. Written the other way — hover setting the value — the
+   reduced-motion switch would have to out-specify `.wbtn:hover .spark`, and
+   the switch would quietly stop working the next time either selector grew. */
+.readymark__spark {
+  --spark-move: rotate(45deg) scale(1.25);
+
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform var(--dur-mid) var(--ease-settle);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .wbtn:not(:disabled):hover .readymark__spark {
+    transform: var(--spark-move);
+  }
+}
+
+.wbtn:not(:disabled):focus-visible .readymark__spark {
+  transform: var(--spark-move);
+}
+
+/* One switch for all of it. Setting the move to nothing is enough: every rule
+   above resolves through this property, so there is no second list to keep in
+   step with the first. */
+/* One switch for all of it. Setting the moves to nothing is enough: every
+   rule above resolves through these two properties, so there is no second list
+   to keep in step with the first — and no specificity race with the hover
+   rules, which set the property rather than the transform. */
+html.reduced-motion [data-glyph],
+html.reduced-motion .readymark__spark {
+  --glyph-move: none;
+  --spark-move: none;
+
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-glyph],
+  .readymark__spark {
+    --glyph-move: none;
+    --spark-move: none;
+
+    transition: none;
+  }
+}
+
+
 .wlink {
   min-height: 36px;
   color: var(--ink-secondary);

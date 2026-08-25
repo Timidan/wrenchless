@@ -69,8 +69,8 @@ const SCENES: readonly Scene[] = [
     portal: "58% 58%",
     width: 1280,
     height: 960,
-    title: "Write down twelve words.",
-    line: "Wrenchless shows them once and never stores them. They release the reserve early.",
+    title: "Come home early.",
+    line: "Your passkey can bring the reserve back early on this device.",
   },
   {
     id: "hallway",
@@ -79,8 +79,8 @@ const SCENES: readonly Scene[] = [
     portal: "64% 57%",
     width: 922,
     height: 1152,
-    title: "Bring it back after the trip.",
-    line: "After the return date, your passkey returns the reserve to Ready as private STRK.",
+    title: "Ready handles the dated return.",
+    line: "After the return date, reopen this Safe and return it to Ready. No backup is required.",
   },
 ];
 

@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -49,6 +50,10 @@ const content = [
   "WRENCHLESS_SPONSOR_MAX_POOL_FEE_FRI=6000000000000000000",
   "WRENCHLESS_SPONSOR_MAX_TRANSACTION_FEE_FRI=1000000000000000000",
   "WRENCHLESS_SPONSOR_MAX_DAILY_FUND_SPEND_FRI=21000000000000000000",
+  "WRENCHLESS_SPONSOR_MAX_FUND_DURATION_SECONDS=7776000",
+  `WRENCHLESS_RECOVERY_INDEX_KEY=${randomBytes(32).toString("hex")}`,
+  "WRENCHLESS_RECOVERY_INDEX_PATH=./.data/recovery-index.json",
+  "WRENCHLESS_RECOVERY_INDEX_KEY_PATH=./.data/recovery-index.key",
   "WRENCHLESS_ALLOW_REFILL_FUND_BROADCAST=false",
   "WRENCHLESS_TRUST_PROXY=false",
   "",

@@ -1,8 +1,8 @@
 import {
   chooseTravelSafeRelease,
+  computeRefillRecoveryCommitment,
   deriveTravelSafeSecrets,
   generateTravelSafePhrase,
-  type TravelSafeSecrets,
   type TravelSafeTicket,
 } from "@wrenchless/canary-core";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createDevicePasskey,
   devicePasskeysAvailable,
+  PasskeyPrfUnavailableError,
   verifyDevicePasskey,
 } from "../../adapters/device-passkey";
 import {
@@ -23,6 +24,7 @@ import { WRENCHLESS_MAINNET } from "../../lib/product-config";
 import {
   fundTravelSafe,
   recoverTravelSafe,
+  returnRecoveredTravelSafe,
   returnTravelSafe,
   type TravelSafeRecoveryResult,
 } from "../../lib/refill-operations";
@@ -30,6 +32,7 @@ import {
   inspectTravelSafeReadiness,
   type TravelSafeReadiness,
 } from "../../lib/ready-private-setup";
+import { requestReadyRecoveryLocator } from "../../lib/ready-recovery";
 import {
   readRefillChainSnapshot,
   readTransactionReceiptStatus,
@@ -42,6 +45,7 @@ import {
   readActiveTravelSafeTicket,
   readTravelSafeTicket,
   transitionStoredTravelSafeTicket,
+  unlockTravelSafeTicketStorage,
 } from "../../lib/refill-ticket";
 import {
   inspectRefillSponsor,
@@ -66,6 +70,11 @@ export type SafeHomeState =
   | { name: "returning"; ticket: TravelSafeTicket }
   | { name: "returned"; ticket: TravelSafeTicket; snapshot: RefillChainSnapshot }
   | { name: "released-early"; ticket: TravelSafeTicket; snapshot: RefillChainSnapshot }
+  | {
+      name: "ready-recovery-submitted";
+      transactionHash: string;
+      amountFri: string;
+    }
   | { name: "local-unavailable"; reason: string }
   | { name: "chain-unavailable"; reason: string };
 
@@ -73,8 +82,6 @@ export type CreateStep =
   | "closed"
   | "connect"
   | "details"
-  | "words"
-  | "confirm-words"
   | "review"
   | "parking";
 
@@ -85,8 +92,7 @@ export type TravelSafeViewModel = {
   readiness: TravelSafeReadiness | null;
   amount: string;
   returnDateLocal: string;
-  recoveryPhrase: string | null;
-  confirmation: string;
+  earlyRecoveryBackup: string | null;
   error: string | null;
   live: string | null;
   elapsedSeconds: number;
@@ -99,14 +105,14 @@ export type TravelSafeActions = {
   setAmount(value: string): void;
   setReturnDateLocal(value: string): void;
   continueFromDetails(): Promise<void>;
-  showPhraseConfirmation(): void;
-  setConfirmation(value: string): void;
-  confirmPhrase(): Promise<void>;
   back(): void;
   park(): Promise<void>;
   unlock(): Promise<void>;
   refresh(): Promise<void>;
   bringBack(): Promise<void>;
+  bringBackEarly(): Promise<void>;
+  createEarlyRecoveryBackup(): Promise<void>;
+  dismissEarlyRecoveryBackup(): void;
   clearTerminal(): Promise<void>;
   forgetLocal(): Promise<void>;
 };
@@ -133,14 +139,26 @@ function passkeyFromSettings(): { credentialId: string; publicKey: string } | nu
 async function createOrVerifyPasskey(account: string): Promise<void> {
   const existing = passkeyFromSettings();
   if (existing !== null) {
-    await verifyDevicePasskey(existing);
-    return;
+    try {
+      await unlockTravelSafeTicketStorage(await verifyDevicePasskey(existing));
+      return;
+    } catch (error) {
+      if (!(error instanceof PasskeyPrfUnavailableError)) throw error;
+      if (readSettings().activeSafeStateId !== null) {
+        throw new Error(
+          "This saved passkey predates secure Travel Safe storage. Recover or clear the existing Safe before creating another.",
+        );
+      }
+      writeSettings({ devicePasskeyId: null, devicePasskeyPublicKey: null });
+    }
   }
   const created = await createDevicePasskey(`Travel Safe ${account.slice(0, 8)}`);
+  const passkeySecret = await verifyDevicePasskey(created);
   writeSettings({
     devicePasskeyId: created.credentialId,
     devicePasskeyPublicKey: created.publicKey,
   });
+  await unlockTravelSafeTicketStorage(passkeySecret);
 }
 
 async function readSafeSnapshot(stateId: string): Promise<RefillChainSnapshot> {
@@ -151,14 +169,22 @@ async function readSafeSnapshot(stateId: string): Promise<RefillChainSnapshot> {
   });
 }
 
-function assertTicketMatchesChainState(
+async function assertTicketMatchesChainState(
   ticket: TravelSafeTicket,
   state: RefillChainState,
-): void {
+): Promise<void> {
+  const secrets = await deriveTravelSafeSecrets(ticket.recoveryPhrase);
   if (
     !sameFelt(ticket.stateId, state.stateId) ||
-    !sameFelt(ticket.claimCommitment, state.claimCommitment) ||
-    !sameFelt(ticket.refundPublicKey, state.refundPublicKey) ||
+    !sameFelt(secrets.claimCommitment, state.claimCommitment) ||
+    !sameFelt(
+      computeRefillRecoveryCommitment(
+        ticket.stateId,
+        ticket.recoveryAccount,
+        secrets.recoverySalt,
+      ),
+      state.recoveryCommitment,
+    ) ||
     !sameFelt(ticket.tokenAddress, state.tokenAddress) ||
     BigInt(ticket.amountFri) !== BigInt(state.amountFri) ||
     BigInt(ticket.returnDateSeconds) !== BigInt(state.returnDateSeconds)
@@ -170,7 +196,7 @@ function assertTicketMatchesChainState(
 async function resetFundSubmission(
   ticket: TravelSafeTicket,
 ): Promise<TravelSafeTicket> {
-  return transitionStoredTravelSafeTicket(ticket.stateId, "PHRASE_CONFIRMED", {
+  return transitionStoredTravelSafeTicket(ticket.stateId, "READY", {
     fundProofExpiresAtBlock: null,
     fundTransactionHash: null,
   });
@@ -234,13 +260,13 @@ async function reconcileTicket(
           : { name: "setup-incomplete", ticket },
     };
   }
-  assertTicketMatchesChainState(ticket, state);
+  await assertTicketMatchesChainState(ticket, state);
   let current = ticket;
   if (
-    current.status === "PHRASE_CONFIRMED" ||
+    current.status === "READY" ||
     current.status === "FUND_SUBMITTING"
   ) {
-    if (current.status === "PHRASE_CONFIRMED") {
+    if (current.status === "READY") {
       current = await transitionStoredTravelSafeTicket(
         current.stateId,
         "FUND_SUBMITTING",
@@ -323,12 +349,10 @@ export function useTravelSafe(): TravelSafeController {
   const [readiness, setReadiness] = useState<TravelSafeReadiness | null>(null);
   const [amount, setAmount] = useState("");
   const [returnDateLocal, setReturnDateLocal] = useState("");
-  const [recoveryPhrase, setRecoveryPhrase] = useState<string | null>(null);
-  const [confirmation, setConfirmation] = useState("");
+  const [earlyRecoveryBackup, setEarlyRecoveryBackup] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const pendingSecrets = useRef<TravelSafeSecrets | null>(null);
 
   useEffect(() => {
     if (createStep !== "parking") return;
@@ -443,9 +467,15 @@ export function useTravelSafe(): TravelSafeController {
           current.chainTimeSeconds,
         );
         if (current.state !== null) continue;
-        pendingSecrets.current = secrets;
-        setRecoveryPhrase(phrase);
-        setCreateStep("words");
+        await createTravelSafeTicket({
+          secrets,
+          recoveryPhrase: phrase,
+          recoveryAccount: readiness.account,
+          tokenAddress: WRENCHLESS_MAINNET.strkTokenAddress,
+          amountFri: parsed.fri,
+          returnDateSeconds,
+        });
+        setCreateStep("review");
         return;
       }
       throw new Error("Could not create a unique Travel Safe. Try again");
@@ -453,36 +483,6 @@ export function useTravelSafe(): TravelSafeController {
       setError(reasonFrom(caught));
     }
   }, [amount, readiness, returnDateLocal]);
-
-  const confirmPhrase = useCallback(async (): Promise<void> => {
-    const phrase = recoveryPhrase;
-    const secrets = pendingSecrets.current;
-    const parsed = parseStrkAmount(amount);
-    if (phrase === null || secrets === null || !parsed.ok) return;
-    const normalized = confirmation.trim().toLowerCase().split(/\s+/u).join(" ");
-    if (normalized !== phrase) {
-      setError("Those words do not match. Check the order and try again");
-      return;
-    }
-    try {
-      const returnDateSeconds = Math.floor(
-        Date.parse(returnDateLocal) / 1_000,
-      ).toString();
-      await createTravelSafeTicket({
-        secrets,
-        tokenAddress: WRENCHLESS_MAINNET.strkTokenAddress,
-        amountFri: parsed.fri,
-        returnDateSeconds,
-      });
-      pendingSecrets.current = null;
-      setRecoveryPhrase(null);
-      setConfirmation("");
-      setCreateStep("review");
-      setError(null);
-    } catch (caught) {
-      setError(reasonFrom(caught));
-    }
-  }, [amount, confirmation, recoveryPhrase, returnDateLocal]);
 
   const park = useCallback(async (): Promise<void> => {
     if (wallet === null) {
@@ -531,7 +531,7 @@ export function useTravelSafe(): TravelSafeController {
     try {
       const passkey = passkeyFromSettings();
       if (passkey === null) throw new Error("This device has no Wrenchless passkey");
-      await verifyDevicePasskey(passkey);
+      await unlockTravelSafeTicketStorage(await verifyDevicePasskey(passkey));
       await loadHome();
     } catch (caught) {
       setHome({ name: "device-locked", reason: reasonFrom(caught) });
@@ -542,9 +542,6 @@ export function useTravelSafe(): TravelSafeController {
     setError(null);
     setLive("Waiting for Ready");
     try {
-      const passkey = passkeyFromSettings();
-      if (passkey === null) throw new Error("This device has no Wrenchless passkey");
-      await verifyDevicePasskey(passkey);
       const connected = await requestWalletAccount();
       const ready = await inspectTravelSafeReadiness({
         wallet: connected.wallet,
@@ -556,7 +553,37 @@ export function useTravelSafe(): TravelSafeController {
         throw new Error("This Ready account needs its live private fee reserve");
       }
       const stateId = readSettings().activeSafeStateId;
-      if (stateId === null) throw new Error("No Travel Safe is active on this device");
+      if (
+        stateId === null ||
+        home.name === "local-unavailable" ||
+        home.name === "device-locked"
+      ) {
+        const locator = await requestReadyRecoveryLocator({
+          wallet: connected.wallet,
+          account: ready.account,
+          sponsorUrl: readSettings().sponsorUrl,
+        });
+        const result = await returnRecoveredTravelSafe({
+          wallet: connected.wallet,
+          recipient: ready.account,
+          stateId: locator.stateId,
+          recoverySalt: locator.recoverySalt,
+          poolAddress: WRENCHLESS_MAINNET.poolAddress,
+          helperAddress: WRENCHLESS_MAINNET.helperAddress,
+          tokenAddress: WRENCHLESS_MAINNET.strkTokenAddress,
+          rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
+        });
+        setHome({
+          name: "ready-recovery-submitted",
+          transactionHash: result.transactionHash,
+          amountFri: result.amountFri,
+        });
+        setLive(null);
+        return;
+      }
+      const passkey = passkeyFromSettings();
+      if (passkey === null) throw new Error("This device has no Wrenchless passkey");
+      await unlockTravelSafeTicketStorage(await verifyDevicePasskey(passkey));
       const ticket = await readTravelSafeTicket(stateId);
       setHome({ name: "returning", ticket });
       await returnTravelSafe({
@@ -570,22 +597,21 @@ export function useTravelSafe(): TravelSafeController {
       setLive("Return submitted");
       await loadHome();
     } catch (caught) {
-      setError(reasonFrom(caught));
+      const reason = reasonFrom(caught);
+      setError(reason);
       setLive(null);
-      await loadHome();
+      if (home.name === "device-locked") {
+        setHome({ name: "device-locked", reason });
+      } else {
+        await loadHome();
+      }
     }
-  }, [loadHome]);
+  }, [home.name, loadHome]);
 
   const back = useCallback((): void => {
     setError(null);
     setCreateStep((current) => {
       if (current === "details") return "connect";
-      if (current === "words") {
-        pendingSecrets.current = null;
-        setRecoveryPhrase(null);
-        return "details";
-      }
-      if (current === "confirm-words") return "words";
       if (current === "review") return "closed";
       return current;
     });
@@ -599,8 +625,7 @@ export function useTravelSafe(): TravelSafeController {
       readiness,
       amount,
       returnDateLocal,
-      recoveryPhrase,
-      confirmation,
+      earlyRecoveryBackup,
       error,
       live,
       elapsedSeconds,
@@ -611,9 +636,7 @@ export function useTravelSafe(): TravelSafeController {
         setCreateStep("connect");
       },
       closeCreate() {
-        pendingSecrets.current = null;
-        setRecoveryPhrase(null);
-        setConfirmation("");
+        setEarlyRecoveryBackup(null);
         setCreateStep("closed");
         setError(null);
       },
@@ -621,17 +644,30 @@ export function useTravelSafe(): TravelSafeController {
       setAmount,
       setReturnDateLocal,
       continueFromDetails,
-      showPhraseConfirmation() {
-        setError(null);
-        setCreateStep("confirm-words");
-      },
-      setConfirmation,
-      confirmPhrase,
       back,
       park,
       unlock,
       refresh: loadHome,
       bringBack,
+      bringBackEarly: bringBack,
+      async createEarlyRecoveryBackup() {
+        setError(null);
+        try {
+          const passkey = passkeyFromSettings();
+          if (passkey === null) {
+            throw new Error("This device has no Wrenchless passkey");
+          }
+          await unlockTravelSafeTicketStorage(await verifyDevicePasskey(passkey));
+          const ticket = await readActiveTravelSafeTicket();
+          if (ticket === null) throw new Error("No Travel Safe is active here");
+          setEarlyRecoveryBackup(ticket.recoveryPhrase);
+        } catch (caught) {
+          setError(reasonFrom(caught));
+        }
+      },
+      dismissEarlyRecoveryBackup() {
+        setEarlyRecoveryBackup(null);
+      },
       async clearTerminal() {
         const stateId = readSettings().activeSafeStateId;
         if (stateId === null) return;
@@ -641,8 +677,16 @@ export function useTravelSafe(): TravelSafeController {
       async forgetLocal() {
         const stateId = readSettings().activeSafeStateId;
         if (stateId === null) return;
-        await clearTravelSafeTicket(stateId);
-        setHome({ name: "no-local-safe" });
+        try {
+          await clearTravelSafeTicket(stateId);
+          setHome({ name: "no-local-safe" });
+        } catch (caught) {
+          const reason = reasonFrom(caught);
+          setError(reason);
+          if (home.name === "device-locked") {
+            setHome({ name: "device-locked", reason });
+          }
+        }
       },
     },
   };
@@ -686,7 +730,7 @@ function assertRecoveryStateMatches(
   if (
     !sameFelt(expected.stateId, actual.stateId) ||
     !sameFelt(expected.claimCommitment, actual.claimCommitment) ||
-    !sameFelt(expected.refundPublicKey, actual.refundPublicKey) ||
+    !sameFelt(expected.recoveryCommitment, actual.recoveryCommitment) ||
     !sameFelt(expected.tokenAddress, actual.tokenAddress) ||
     BigInt(expected.amountFri) !== BigInt(actual.amountFri) ||
     BigInt(expected.returnDateSeconds) !== BigInt(actual.returnDateSeconds)
@@ -709,7 +753,6 @@ export function useTravelSafeRecovery(): TravelSafeRecoveryController {
       if (
         safe === null ||
         !sameFelt(safe.claimCommitment, secrets.claimCommitment) ||
-        !sameFelt(safe.refundPublicKey, secrets.refundPublicKey) ||
         !sameFelt(safe.tokenAddress, WRENCHLESS_MAINNET.strkTokenAddress)
       ) {
         throw new Error("No funded Travel Safe matches those words");

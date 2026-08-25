@@ -1,6 +1,8 @@
 import {
   chooseTravelSafeRelease,
+  computeRefillRecoveryCommitment,
   deriveTravelSafeSecrets,
+  type TravelSafeSecrets,
   type TravelSafeTicket,
 } from "@wrenchless/canary-core";
 
@@ -41,12 +43,20 @@ function assertDestination(wallet: SelectedReadyWallet, account: string): void {
 
 function assertTicketMatchesState(
   ticket: TravelSafeTicket,
+  secrets: TravelSafeSecrets,
   state: RefillChainState,
 ): void {
   if (
     !sameFelt(ticket.stateId, state.stateId) ||
-    !sameFelt(ticket.claimCommitment, state.claimCommitment) ||
-    !sameFelt(ticket.refundPublicKey, state.refundPublicKey) ||
+    !sameFelt(secrets.claimCommitment, state.claimCommitment) ||
+    !sameFelt(
+      computeRefillRecoveryCommitment(
+        ticket.stateId,
+        ticket.recoveryAccount,
+        secrets.recoverySalt,
+      ),
+      state.recoveryCommitment,
+    ) ||
     !sameFelt(ticket.tokenAddress, state.tokenAddress) ||
     BigInt(ticket.amountFri) !== BigInt(state.amountFri) ||
     BigInt(ticket.returnDateSeconds) !== BigInt(state.returnDateSeconds)
@@ -81,6 +91,13 @@ export async function fundTravelSafe(input: {
   fetcher?: typeof fetch;
 }): Promise<{ transactionHash: string; final: boolean }> {
   assertDestination(input.wallet, input.readiness.account);
+  if (!sameFelt(input.ticket.recoveryAccount, input.readiness.account)) {
+    throw new Error("Use the Ready account chosen for this Travel Safe");
+  }
+  const secrets = await deriveTravelSafeSecrets(input.ticket.recoveryPhrase);
+  if (!sameFelt(secrets.stateId, input.ticket.stateId)) {
+    throw new Error("This device's Travel Safe secret does not match its ticket");
+  }
   validateTravelSafeAmount(input.ticket.amountFri, input.readiness);
   const current = await snapshot({
     helperAddress: input.helperAddress,
@@ -101,8 +118,14 @@ export async function fundTravelSafe(input: {
     poolAddress: input.poolAddress,
     helperAddress: input.helperAddress,
     stateId: input.ticket.stateId,
-    claimCommitment: input.ticket.claimCommitment,
-    refundPublicKey: input.ticket.refundPublicKey,
+    claimCommitment: secrets.claimCommitment,
+    recoveryCommitment: computeRefillRecoveryCommitment(
+      input.ticket.stateId,
+      input.ticket.recoveryAccount,
+      secrets.recoverySalt,
+    ),
+    recoveryAccount: input.ticket.recoveryAccount,
+    recoverySalt: secrets.recoverySalt,
     tokenAddress: input.ticket.tokenAddress,
     amountFri: input.ticket.amountFri,
     returnDateSeconds: input.ticket.returnDateSeconds,
@@ -135,7 +158,7 @@ export async function fundTravelSafe(input: {
     if (error instanceof RelayedRefillFundError && !error.ambiguous) {
       await transitionStoredTravelSafeTicket(
         input.ticket.stateId,
-        "PHRASE_CONFIRMED",
+        "READY",
         {
           fundProofExpiresAtBlock: null,
           fundTransactionHash: null,
@@ -165,6 +188,13 @@ export async function returnTravelSafe(input: {
   fetcher?: typeof fetch;
 }): Promise<{ transactionHash: string; noteId: string }> {
   assertDestination(input.wallet, input.recipient);
+  if (!sameFelt(input.ticket.recoveryAccount, input.recipient)) {
+    throw new Error("Use the Ready account chosen for this Travel Safe");
+  }
+  const secrets = await deriveTravelSafeSecrets(input.ticket.recoveryPhrase);
+  if (!sameFelt(secrets.stateId, input.ticket.stateId)) {
+    throw new Error("This device's Travel Safe secret does not match its ticket");
+  }
   const current = await snapshot({
     helperAddress: input.helperAddress,
     stateId: input.ticket.stateId,
@@ -172,37 +202,47 @@ export async function returnTravelSafe(input: {
     fetcher: input.fetcher,
   });
   if (current.state === null) throw new Error("This Travel Safe was not funded");
-  assertTicketMatchesState(input.ticket, current.state);
+  assertTicketMatchesState(input.ticket, secrets, current.state);
   if (current.state.status !== "funded") {
     await transitionStoredTravelSafeTicket(input.ticket.stateId, "TERMINAL");
     throw new Error(`This Travel Safe is already ${current.state.status}`);
   }
-  if (
-    chooseTravelSafeRelease(
-      current.state.returnDateSeconds,
-      current.chainTimeSeconds,
-    ) !== "refund"
-  ) {
-    throw new Error("This Travel Safe cannot return before its return date");
-  }
+  const release = chooseTravelSafeRelease(
+    current.state.returnDateSeconds,
+    current.chainTimeSeconds,
+  );
 
   await transitionStoredTravelSafeTicket(
     input.ticket.stateId,
     "RETURN_SUBMITTING",
   );
-  const result = await submitReadyRefillRefund({
-    wallet: input.wallet,
-    poolAddress: input.poolAddress,
-    helperAddress: input.helperAddress,
-    recipient: input.recipient,
-    stateId: current.state.stateId,
-    nonce: createTravelSafeReleaseNonce(),
-    returnDateSeconds: current.state.returnDateSeconds,
-    tokenAddress: current.state.tokenAddress,
-    amountFri: current.state.amountFri,
-    refundPrivateKey: input.ticket.refundPrivateKey,
-    refundPublicKey: input.ticket.refundPublicKey,
-  });
+  const result =
+    release === "claim"
+      ? await submitReadyRefillClaim({
+          wallet: input.wallet,
+          poolAddress: input.poolAddress,
+          helperAddress: input.helperAddress,
+          recipient: input.recipient,
+          stateId: current.state.stateId,
+          nonce: createTravelSafeReleaseNonce(),
+          returnDateSeconds: current.state.returnDateSeconds,
+          tokenAddress: current.state.tokenAddress,
+          amountFri: current.state.amountFri,
+          claimPrivateKey: secrets.claimPrivateKey,
+          claimPublicKey: secrets.claimPublicKey,
+        })
+      : await submitReadyRefillRefund({
+          wallet: input.wallet,
+          poolAddress: input.poolAddress,
+          helperAddress: input.helperAddress,
+          recipient: input.recipient,
+          stateId: current.state.stateId,
+          returnDateSeconds: current.state.returnDateSeconds,
+          tokenAddress: current.state.tokenAddress,
+          amountFri: current.state.amountFri,
+          recoveryAccount: input.ticket.recoveryAccount,
+          recoverySalt: secrets.recoverySalt,
+        });
   await transitionStoredTravelSafeTicket(
     input.ticket.stateId,
     "RETURN_SUBMITTING",
@@ -220,6 +260,70 @@ export async function returnTravelSafe(input: {
     { returnSubmittedAtBlock: submittedAt.blockNumber },
   );
   return { transactionHash: result.transactionHash, noteId: result.noteId };
+}
+
+export async function returnRecoveredTravelSafe(input: {
+  wallet: SelectedReadyWallet;
+  recipient: string;
+  stateId: string;
+  recoverySalt: string;
+  poolAddress: string;
+  helperAddress: string;
+  tokenAddress: string;
+  rpcUrl?: string;
+  fetcher?: typeof fetch;
+}): Promise<{ transactionHash: string; noteId: string; amountFri: string }> {
+  assertDestination(input.wallet, input.recipient);
+  const current = await snapshot({
+    helperAddress: input.helperAddress,
+    stateId: input.stateId,
+    rpcUrl: input.rpcUrl,
+    fetcher: input.fetcher,
+  });
+  const state = current.state;
+  if (state === null || !sameFelt(state.tokenAddress, input.tokenAddress)) {
+    throw new Error("No Travel Safe was found for this Ready account");
+  }
+  if (
+    !sameFelt(
+      state.recoveryCommitment,
+      computeRefillRecoveryCommitment(
+        state.stateId,
+        input.recipient,
+        input.recoverySalt,
+      ),
+    )
+  ) {
+    throw new Error("This Ready account cannot recover that Travel Safe");
+  }
+  if (state.status !== "funded") {
+    throw new Error("This Travel Safe has already returned");
+  }
+  if (
+    chooseTravelSafeRelease(
+      state.returnDateSeconds,
+      current.chainTimeSeconds,
+    ) !== "refund"
+  ) {
+    throw new Error("This Travel Safe can be recovered with Ready after its return date");
+  }
+  const result = await submitReadyRefillRefund({
+    wallet: input.wallet,
+    poolAddress: input.poolAddress,
+    helperAddress: input.helperAddress,
+    recipient: input.recipient,
+    stateId: state.stateId,
+    returnDateSeconds: state.returnDateSeconds,
+    tokenAddress: state.tokenAddress,
+    amountFri: state.amountFri,
+    recoveryAccount: input.recipient,
+    recoverySalt: input.recoverySalt,
+  });
+  return {
+    transactionHash: result.transactionHash,
+    noteId: result.noteId,
+    amountFri: state.amountFri,
+  };
 }
 
 export type TravelSafeRecoveryResult =
@@ -262,7 +366,14 @@ export async function recoverTravelSafe(input: {
   }
   if (
     !sameFelt(state.claimCommitment, secrets.claimCommitment) ||
-    !sameFelt(state.refundPublicKey, secrets.refundPublicKey) ||
+    !sameFelt(
+      state.recoveryCommitment,
+      computeRefillRecoveryCommitment(
+        secrets.stateId,
+        input.recipient,
+        secrets.recoverySalt,
+      ),
+    ) ||
     !sameFelt(state.tokenAddress, input.tokenAddress)
   ) {
     throw new Error("No funded Travel Safe matches those words");
@@ -303,12 +414,11 @@ export async function recoverTravelSafe(input: {
     helperAddress: input.helperAddress,
     recipient: input.recipient,
     stateId: state.stateId,
-    nonce,
     returnDateSeconds: state.returnDateSeconds,
     tokenAddress: state.tokenAddress,
     amountFri: state.amountFri,
-    refundPrivateKey: secrets.refundPrivateKey,
-    refundPublicKey: secrets.refundPublicKey,
+    recoveryAccount: input.recipient,
+    recoverySalt: secrets.recoverySalt,
   });
   return {
     kind: "submitted",

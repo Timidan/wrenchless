@@ -26,6 +26,7 @@ import { z } from "zod";
 const ES256 = -7;
 const RELYING_PARTY_NAME = "Wrenchless";
 const TIMEOUT_MILLISECONDS = 60_000;
+const PRF_CONTEXT = "WRENCHLESS_TRAVEL_SAFE_TICKET_PRF_V1";
 
 export type DevicePasskey = {
   /** base64url of the credential's raw ID. */
@@ -33,6 +34,13 @@ export type DevicePasskey = {
   /** base64url of the credential's SubjectPublicKeyInfo. */
   publicKey: string;
 };
+
+export class PasskeyPrfUnavailableError extends Error {
+  constructor() {
+    super("This passkey cannot protect Travel Safe secrets on this device.");
+    this.name = "PasskeyPrfUnavailableError";
+  }
+}
 
 function toBase64Url(bytes: ArrayBuffer): string {
   let binary = "";
@@ -114,6 +122,17 @@ const clientDataSchema = z
   })
   .loose();
 
+const prfResultSchema = z
+  .object({
+    prf: z.object({
+      results: z.object({ first: z.instanceof(ArrayBuffer) }),
+    }),
+  })
+  .loose();
+const prfCreationSchema = z
+  .object({ prf: z.object({ enabled: z.literal(true) }) })
+  .loose();
+
 function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
   if (left.length !== right.length) return false;
   let difference = 0;
@@ -181,6 +200,7 @@ export async function createDevicePasskey(
       },
       attestation: "none",
       timeout: TIMEOUT_MILLISECONDS,
+      extensions: { prf: {} },
     },
     });
   } catch (caught) {
@@ -195,6 +215,11 @@ export async function createDevicePasskey(
   }
   if (response.getPublicKeyAlgorithm() !== ES256) {
     throw new Error("This device offered a passkey type Wrenchless cannot check.");
+  }
+  if (
+    !prfCreationSchema.safeParse(credential.getClientExtensionResults()).success
+  ) {
+    throw new PasskeyPrfUnavailableError();
   }
   const publicKey = response.getPublicKey();
   if (publicKey === null) {
@@ -216,9 +241,17 @@ export async function createDevicePasskey(
  * signed. Any of those failing is one message, because a person's next action
  * is the same in every case.
  */
-export async function verifyDevicePasskey(passkey: DevicePasskey): Promise<void> {
+export async function verifyDevicePasskey(
+  passkey: DevicePasskey,
+): Promise<Uint8Array<ArrayBuffer>> {
   assertAvailable();
   const challenge = randomChallenge();
+  const prfSalt = new Uint8Array(
+    await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(PRF_CONTEXT),
+    ),
+  );
   let assertion: Credential | null;
   try {
     assertion = await navigator.credentials.get({
@@ -229,6 +262,9 @@ export async function verifyDevicePasskey(passkey: DevicePasskey): Promise<void>
         ],
         userVerification: "required",
         timeout: TIMEOUT_MILLISECONDS,
+        extensions: {
+          prf: { eval: { first: prfSalt } },
+        },
       },
     });
   } catch (caught) {
@@ -243,6 +279,12 @@ export async function verifyDevicePasskey(passkey: DevicePasskey): Promise<void>
   const response = assertion.response;
   if (!(response instanceof AuthenticatorAssertionResponse)) {
     throw new Error("The passkey was not accepted.");
+  }
+  const prfResult = prfResultSchema.safeParse(
+    assertion.getClientExtensionResults(),
+  );
+  if (!prfResult.success || prfResult.data.prf.results.first.byteLength !== 32) {
+    throw new PasskeyPrfUnavailableError();
   }
 
   // The authenticator's own account of what it was asked. It is parsed rather
@@ -309,4 +351,5 @@ export async function verifyDevicePasskey(passkey: DevicePasskey): Promise<void>
     signed,
   );
   if (!valid) throw new Error("The passkey was not accepted.");
+  return new Uint8Array(prfResult.data.prf.results.first.slice(0));
 }

@@ -4,10 +4,15 @@ use starknet::ContractAddress;
 
 pub const REFILL_SNIP12_NAME: felt252 = 'WrenchlessRefill';
 pub const REFILL_SNIP12_VERSION: felt252 = 1;
+pub const SAFE_SNIP12_NAME: felt252 = 'WrenchlessSafe';
+pub const SAFE_SNIP12_VERSION: felt252 = 2;
 const STARKNET_DOMAIN_TYPE_HASH: felt252 =
     0x1ff2f602e42168014d405a94f75e8a93d640751d71d16311266e140d8b0a210;
 const RELEASE_AUTHORIZATION_TYPE_HASH: felt252 = selector!(
     "\"RefillRelease\"(\"operation\":\"shortstring\",\"stateId\":\"felt\",\"nonce\":\"felt\",\"expiry\":\"u128\",\"token\":\"ContractAddress\",\"amount\":\"u128\",\"noteId\":\"felt\")",
+);
+const SAFE_RETURN_AUTHORIZATION_TYPE_HASH: felt252 = selector!(
+    "\"SafeReturn\"(\"helper\":\"ContractAddress\",\"stateId\":\"felt\",\"expiry\":\"u128\",\"token\":\"ContractAddress\",\"amount\":\"u128\",\"noteId\":\"felt\")",
 );
 
 #[derive(Copy, Drop, Hash)]
@@ -29,6 +34,16 @@ struct ReleaseAuthorization {
     note_id: felt252,
 }
 
+#[derive(Copy, Drop, Hash)]
+struct SafeReturnAuthorization {
+    helper: ContractAddress,
+    state_id: felt252,
+    expiry: u64,
+    token: ContractAddress,
+    amount: u128,
+    note_id: felt252,
+}
+
 #[derive(Copy, Drop, Serde, PartialEq, Debug)]
 pub struct OpenNoteDeposit {
     pub note_id: felt252,
@@ -40,7 +55,7 @@ pub struct OpenNoteDeposit {
 pub struct FundRequest {
     pub state_id: felt252,
     pub claim_commitment: felt252,
-    pub refund_public_key: felt252,
+    pub recovery_commitment: felt252,
     pub token: ContractAddress,
     pub amount: u128,
     pub expiry: u64,
@@ -56,16 +71,16 @@ pub struct ClaimRequest {
     pub signature_s: felt252,
 }
 
-#[derive(Copy, Drop, Serde, PartialEq, Debug)]
+#[derive(Drop, Serde, PartialEq, Debug)]
 pub struct RefundRequest {
     pub state_id: felt252,
     pub note_id: felt252,
-    pub nonce: felt252,
-    pub signature_r: felt252,
-    pub signature_s: felt252,
+    pub recovery_account: ContractAddress,
+    pub recovery_salt: felt252,
+    pub signature: Array<felt252>,
 }
 
-#[derive(Copy, Drop, Serde, PartialEq, Debug)]
+#[derive(Drop, Serde, PartialEq, Debug)]
 pub enum RefillOperation {
     Fund: FundRequest,
     Claim: ClaimRequest,
@@ -84,7 +99,7 @@ pub enum RefillStatus {
 #[derive(Copy, Drop, Serde, PartialEq, Debug, starknet::Store)]
 pub struct RefillState {
     pub claim_commitment: felt252,
-    pub refund_public_key: felt252,
+    pub recovery_commitment: felt252,
     pub token: ContractAddress,
     pub amount: u128,
     pub expiry: u64,
@@ -104,8 +119,11 @@ pub trait IRefillHelper<TContractState> {
     fn claim_message_hash(
         self: @TContractState, state_id: felt252, note_id: felt252, nonce: felt252,
     ) -> felt252;
-    fn refund_message_hash(
-        self: @TContractState, state_id: felt252, note_id: felt252, nonce: felt252,
+    fn safe_return_message_hash(
+        self: @TContractState,
+        state_id: felt252,
+        note_id: felt252,
+        recovery_account: ContractAddress,
     ) -> felt252;
 }
 
@@ -116,8 +134,26 @@ trait IERC20<TContractState> {
     fn approve(ref self: TContractState, spender: ContractAddress, amount: u256) -> bool;
 }
 
+#[starknet::interface]
+trait IAccountSignature<TContractState> {
+    fn is_valid_signature(
+        self: @TContractState, hash: felt252, signature: Span<felt252>,
+    ) -> felt252;
+}
+
 pub fn compute_claim_commitment(state_id: felt252, claim_public_key: felt252) -> felt252 {
     core::poseidon::poseidon_hash_span(array!['WR_CLAIM_KEY_V1', state_id, claim_public_key].span())
+}
+
+pub fn compute_recovery_commitment(
+    state_id: felt252, recovery_account: ContractAddress, recovery_salt: felt252,
+) -> felt252 {
+    core::poseidon::poseidon_hash_span(
+        array![
+            'WR_RECOVERY_ACCOUNT_V1', state_id, recovery_account.into(), recovery_salt,
+        ]
+            .span(),
+    )
 }
 
 pub fn compute_release_message_hash(
@@ -153,9 +189,40 @@ pub fn compute_release_message_hash(
         .finalize()
 }
 
+pub fn compute_safe_return_message_hash(
+    chain_id: felt252,
+    recovery_account: ContractAddress,
+    helper: ContractAddress,
+    state_id: felt252,
+    expiry: u64,
+    token: ContractAddress,
+    amount: u128,
+    note_id: felt252,
+) -> felt252 {
+    let domain = StarknetDomain {
+        name: SAFE_SNIP12_NAME, version: SAFE_SNIP12_VERSION, chain_id, revision: 1,
+    };
+    let authorization = SafeReturnAuthorization {
+        helper, state_id, expiry, token, amount, note_id,
+    };
+    let domain_hash = PoseidonTrait::new()
+        .update_with(STARKNET_DOMAIN_TYPE_HASH)
+        .update_with(domain)
+        .finalize();
+    let authorization_hash = PoseidonTrait::new()
+        .update_with(SAFE_RETURN_AUTHORIZATION_TYPE_HASH)
+        .update_with(authorization)
+        .finalize();
+    PoseidonTrait::new()
+        .update_with('StarkNet Message')
+        .update_with(domain_hash)
+        .update_with(recovery_account)
+        .update_with(authorization_hash)
+        .finalize()
+}
+
 #[starknet::contract]
 pub mod RefillHelper {
-    use core::ec::EcPointTrait;
     use core::num::traits::Zero;
     use starknet::storage::{
         Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
@@ -163,9 +230,11 @@ pub mod RefillHelper {
     };
     use starknet::{ContractAddress, get_block_timestamp, get_caller_address, get_contract_address};
     use super::{
-        ClaimRequest, FundRequest, IERC20Dispatcher, IERC20DispatcherTrait, IRefillHelper,
+        ClaimRequest, FundRequest, IAccountSignatureDispatcher,
+        IAccountSignatureDispatcherTrait, IERC20Dispatcher, IERC20DispatcherTrait, IRefillHelper,
         OpenNoteDeposit, RefillOperation, RefillState, RefillStatus, RefundRequest,
-        compute_claim_commitment, compute_release_message_hash,
+        compute_claim_commitment, compute_recovery_commitment, compute_release_message_hash,
+        compute_safe_return_message_hash,
     };
 
     #[storage]
@@ -281,17 +350,19 @@ pub mod RefillHelper {
             )
         }
 
-        fn refund_message_hash(
-            self: @ContractState, state_id: felt252, note_id: felt252, nonce: felt252,
+        fn safe_return_message_hash(
+            self: @ContractState,
+            state_id: felt252,
+            note_id: felt252,
+            recovery_account: ContractAddress,
         ) -> felt252 {
             assert(self.state_exists.read(state_id), 'STATE_NOT_FOUND');
             let state = self.states.read(state_id);
-            compute_release_message_hash(
-                operation: 'REFUND',
+            compute_safe_return_message_hash(
                 chain_id: starknet::get_tx_info().unbox().chain_id,
+                recovery_account: recovery_account,
                 helper: get_contract_address(),
                 state_id: state_id,
-                nonce: nonce,
                 expiry: state.expiry,
                 token: state.token,
                 amount: state.amount,
@@ -306,10 +377,7 @@ pub mod RefillHelper {
             assert(get_caller_address() == self.privacy_pool.read(), 'ONLY_PRIVACY_POOL');
             assert(request.state_id != 0, 'ZERO_STATE_ID');
             assert(request.claim_commitment != 0, 'ZERO_CLAIM');
-            assert(
-                EcPointTrait::new_nz_from_x(request.refund_public_key).is_some(),
-                'INVALID_REFUND_KEY',
-            );
+            assert(request.recovery_commitment != 0, 'ZERO_RECOVERY');
             assert(request.token == self.allowed_token.read(), 'WRONG_TOKEN');
             assert(request.amount > 0, 'ZERO_AMOUNT');
             assert(request.expiry > get_block_timestamp(), 'EXPIRED');
@@ -327,7 +395,7 @@ pub mod RefillHelper {
                     request.state_id,
                     RefillState {
                         claim_commitment: request.claim_commitment,
-                        refund_public_key: request.refund_public_key,
+                        recovery_commitment: request.recovery_commitment,
                         token: request.token,
                         amount: request.amount,
                         expiry: request.expiry,
@@ -398,23 +466,40 @@ pub mod RefillHelper {
             let state = self.states.read(request.state_id);
             assert(state.status == RefillStatus::Funded, 'STATE_NOT_FUNDED');
             assert(get_block_timestamp() > state.expiry, 'NOT_EXPIRED');
-            let message_hash = compute_release_message_hash(
-                operation: 'REFUND',
+            assert(!request.recovery_account.is_zero(), 'ZERO_RECOVERY_ACCOUNT');
+            assert(request.recovery_salt != 0, 'ZERO_RECOVERY_SALT');
+            assert(
+                compute_recovery_commitment(
+                    request.state_id, request.recovery_account, request.recovery_salt,
+                ) == state.recovery_commitment,
+                'WRONG_RECOVERY_ACCOUNT',
+            );
+            let message_hash = compute_safe_return_message_hash(
                 chain_id: starknet::get_tx_info().unbox().chain_id,
+                recovery_account: request.recovery_account,
                 helper: get_contract_address(),
                 state_id: request.state_id,
-                nonce: request.nonce,
                 expiry: state.expiry,
                 token: state.token,
                 amount: state.amount,
                 note_id: request.note_id,
             );
-            assert_valid_signature(
-                state.refund_public_key, message_hash, request.signature_r, request.signature_s,
+            let mut authorized_state = state;
+            authorized_state.status = RefillStatus::Refunded;
+            self.states.write(request.state_id, authorized_state);
+            assert(
+                IAccountSignatureDispatcher { contract_address: request.recovery_account }
+                    .is_valid_signature(message_hash, request.signature.span()) == 'VALID',
+                'INVALID_RECOVERY_SIGNATURE',
             );
 
             let deposit = self
-                .release(request.state_id, request.note_id, state, RefillStatus::Refunded);
+                .release(
+                    request.state_id,
+                    request.note_id,
+                    authorized_state,
+                    RefillStatus::Refunded,
+                );
             self
                 .emit(
                     Refunded {

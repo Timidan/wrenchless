@@ -9,7 +9,7 @@ const PHRASE =
   "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
 describe("Travel Safe recovery authority", () => {
-  it("derives stable state and release keys from twelve words", async () => {
+  it("derives stable local recovery authority from twelve words", async () => {
     await expect(deriveTravelSafeSecrets(PHRASE)).resolves.toEqual({
       stateId:
         "0x32ef0f64a7ead9b0fb9f3ccd6e7098b98b71aaaf6df4df0ccf5b2253b550a16",
@@ -19,10 +19,8 @@ describe("Travel Safe recovery authority", () => {
         "0x56cd39dbbeb912cd52a5dd41516ebd84e0e6c7826139caae1408b8672081dd7",
       claimCommitment:
         "0xb1d4e061176740b93444ad5c6be3ca7f00d5cad3228f6cb26c2ca67844b084",
-      refundPrivateKey:
-        "0x5e1843311a3b03dfe3c64677a6c332f7b42ee4574b84870fa1c6f6489d19328",
-      refundPublicKey:
-        "0x695d544e8ee026ee26fddfc7b65fdeb1da8622da07be97dc28f27b4a94bbe31",
+      recoverySalt:
+        "0x6679ef0440b68eb1fd5b372f2525586d623de00fd4b6f2eeaccc0c9da14659d",
     });
   });
 

@@ -10,7 +10,7 @@ use crate::mock_privacy_pool::{IMockPrivacyPoolDispatcher, IMockPrivacyPoolDispa
 use crate::refill_helper::{
     ClaimRequest, FundRequest, IRefillHelperDispatcher, IRefillHelperDispatcherTrait,
     OpenNoteDeposit, RefillOperation, RefillStatus, RefundRequest, compute_claim_commitment,
-    compute_release_message_hash,
+    compute_recovery_commitment, compute_safe_return_message_hash,
 };
 use crate::test_token::{ITestTokenDispatcher, ITestTokenDispatcherTrait};
 
@@ -19,23 +19,23 @@ const NOW: u64 = 1_800_000_000;
 const AMOUNT: u128 = 1_000;
 
 #[test]
-fn refund_release_hash_matches_sdk_vector() {
+fn safe_return_hash_matches_sdk_vector() {
     let helper: ContractAddress = 0x1234.try_into().unwrap();
     let token: ContractAddress = 0x333.try_into().unwrap();
+    let recovery_account: ContractAddress = 0x5678.try_into().unwrap();
 
     assert(
-        compute_release_message_hash(
-            operation: 'REFUND',
+        compute_safe_return_message_hash(
             chain_id: 'SN_SEPOLIA',
+            recovery_account: recovery_account,
             helper: helper,
             state_id: 0x111,
-            nonce: 0x222,
             expiry: 1_800_003_600,
             token: token,
             amount: 1_000,
             note_id: 0x444,
-        ) == 0x5e6e9fb889a751e1ed2413ad8c6d9245f873bbd88b0634711b5cbe59f3cb408,
-        'REFUND_HASH_MISMATCH',
+        ) == 0x3c38077faa10fc1942347c9cd014fa9c89b58aa93c5922b7e773c4d3a4edefc,
+        'SAFE_RETURN_HASH_MISMATCH',
     );
 }
 
@@ -44,6 +44,8 @@ struct Setup {
     helper: ContractAddress,
     pool: ContractAddress,
     token: ContractAddress,
+    recovery_account: ContractAddress,
+    recovery_salt: felt252,
     claim_key: StarkCurveKeyPair,
 }
 
@@ -56,16 +58,26 @@ fn deploy_contract(name: ByteArray, constructor_calldata: Array<felt252>) -> Con
 fn setup() -> Setup {
     let token = deploy_contract("TestToken", array![]);
     let pool = deploy_contract("MockPrivacyPool", array![]);
+    let recovery_account = deploy_contract("TestAccount", array![]);
     let helper = deploy_contract("RefillHelper", array![pool.into(), token.into()]);
     start_cheat_block_timestamp(helper, NOW);
-    Setup { helper, pool, token, claim_key: StarkCurveKeyPairImpl::from_secret_key(0x12345) }
+    Setup {
+        helper,
+        pool,
+        token,
+        recovery_account,
+        recovery_salt: 0x987,
+        claim_key: StarkCurveKeyPairImpl::from_secret_key(0x12345),
+    }
 }
 
 fn fund_request(setup: Setup, state_id: felt252) -> FundRequest {
     FundRequest {
         state_id,
         claim_commitment: compute_claim_commitment(state_id, setup.claim_key.public_key),
-        refund_public_key: setup.claim_key.public_key,
+        recovery_commitment: compute_recovery_commitment(
+            state_id, setup.recovery_account, setup.recovery_salt,
+        ),
         token: setup.token,
         amount: AMOUNT,
         expiry: NOW + 3600,
@@ -105,12 +117,13 @@ fn claim(setup: Setup, request: ClaimRequest) -> Span<OpenNoteDeposit> {
 }
 
 fn refund_request(setup: Setup, state_id: felt252, note_id: felt252) -> RefundRequest {
-    let helper = IRefillHelperDispatcher { contract_address: setup.helper };
-    let nonce = 0xdef;
-    let message_hash = helper.refund_message_hash(state_id, note_id, nonce);
-    let (signature_r, signature_s) = StarkCurveSignerImpl::sign(setup.claim_key, message_hash)
-        .unwrap();
-    RefundRequest { state_id, note_id, nonce, signature_r, signature_s }
+    RefundRequest {
+        state_id,
+        note_id,
+        recovery_account: setup.recovery_account,
+        recovery_salt: setup.recovery_salt,
+        signature: array![0x123],
+    }
 }
 
 fn refund(setup: Setup, request: RefundRequest) -> Span<OpenNoteDeposit> {

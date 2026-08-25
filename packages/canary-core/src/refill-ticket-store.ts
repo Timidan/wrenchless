@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-const STORAGE_PREFIX = "wrenchless.travel-safe-ticket.v1:";
-const ENCRYPTION_CONTEXT = "WRENCHLESS_TRAVEL_SAFE_TICKET_V1";
+const STORAGE_PREFIX = "wrenchless.travel-safe-ticket.v2:";
+const ENCRYPTION_CONTEXT = "WRENCHLESS_TRAVEL_SAFE_TICKET_V2";
 const STARK_FIELD_PRIME = (1n << 251n) + 17n * (1n << 192n) + 1n;
 const U64_MAX = (1n << 64n) - 1n;
 const U128_MAX = (1n << 128n) - 1n;
@@ -24,7 +24,7 @@ function boundedDecimal(maximum: bigint, label: string) {
 }
 
 export const TravelSafeTicketStatusSchema = z.enum([
-  "PHRASE_CONFIRMED",
+  "READY",
   "FUND_SUBMITTING",
   "FUNDED",
   "RETURN_SUBMITTING",
@@ -33,13 +33,12 @@ export const TravelSafeTicketStatusSchema = z.enum([
 
 export const TravelSafeTicketSchema = z
   .object({
-    schemaVersion: z.literal("wrenchless.travel-safe-ticket.v1"),
+    schemaVersion: z.literal("wrenchless.travel-safe-ticket.v2"),
     role: z.literal("safe"),
     stateId: nonZeroFeltSchema,
     status: TravelSafeTicketStatusSchema,
-    claimCommitment: nonZeroFeltSchema,
-    refundPrivateKey: nonZeroFeltSchema,
-    refundPublicKey: nonZeroFeltSchema,
+    recoveryPhrase: z.string().trim().min(1),
+    recoveryAccount: nonZeroFeltSchema,
     tokenAddress: nonZeroFeltSchema,
     amountFri: boundedDecimal(U128_MAX, "amount").refine(
       (value) => BigInt(value) > 0n,
@@ -70,7 +69,7 @@ export const TravelSafeTicketSchema = z
 
 const sealedTicketSchema = z
   .object({
-    schemaVersion: z.literal("wrenchless.sealed-travel-safe-ticket.v1"),
+    schemaVersion: z.literal("wrenchless.sealed-travel-safe-ticket.v2"),
     algorithm: z.literal("AES-GCM-256"),
     iv: z.string().regex(/^[0-9a-f]{24}$/),
     ciphertext: z.string().regex(/^(?:[0-9a-f]{2})+$/),
@@ -164,10 +163,10 @@ function canTransition(
   next: TravelSafeTicketStatus,
 ): boolean {
   switch (current) {
-    case "PHRASE_CONFIRMED":
+    case "READY":
       return next === "FUND_SUBMITTING";
     case "FUND_SUBMITTING":
-      return next === "PHRASE_CONFIRMED" || next === "FUNDED";
+      return next === "READY" || next === "FUNDED";
     case "FUNDED":
       return next === "RETURN_SUBMITTING" || next === "TERMINAL";
     case "RETURN_SUBMITTING":
@@ -221,7 +220,7 @@ async function sealTicket(
     encoder.encode(JSON.stringify(ticket)),
   );
   return JSON.stringify({
-    schemaVersion: "wrenchless.sealed-travel-safe-ticket.v1",
+    schemaVersion: "wrenchless.sealed-travel-safe-ticket.v2",
     algorithm: "AES-GCM-256",
     iv: bytesToHex(iv),
     ciphertext: bytesToHex(new Uint8Array(ciphertext)),
@@ -285,8 +284,8 @@ export function createTravelSafeTicketStore(
   return {
     async saveNew(ticket) {
       const parsed = TravelSafeTicketSchema.parse(ticket);
-      if (parsed.status !== "PHRASE_CONFIRMED") {
-        throw new Error("a new Travel Safe ticket must start after phrase confirmation");
+      if (parsed.status !== "READY") {
+        throw new Error("a new Travel Safe ticket must start ready to fund");
       }
       const keyName = storageKey(parsed.stateId);
       if (storage.getItem(keyName) !== null) {

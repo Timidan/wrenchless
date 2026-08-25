@@ -15,6 +15,10 @@ const positiveDecimalSchema = z
   .string()
   .regex(/^[1-9][0-9]*$/, "expected a positive canonical decimal integer");
 
+const secretKeySchema = z
+  .string()
+  .regex(/^[0-9a-f]{64}$/, "expected 32 bytes of lowercase hexadecimal");
+
 const sponsorEnvironmentSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   WRENCHLESS_SPONSOR_BIND_HOST: z.string().trim().min(1).default("127.0.0.1"),
@@ -39,8 +43,20 @@ const sponsorEnvironmentSchema = z.object({
   WRENCHLESS_SPONSOR_MIN_FUND_DURATION_SECONDS: positiveDecimalSchema.default(
     "7200",
   ),
+  WRENCHLESS_SPONSOR_MAX_FUND_DURATION_SECONDS: positiveDecimalSchema.default(
+    "7776000",
+  ),
   WRENCHLESS_SPONSOR_FUND_BUDGET_PATH: z.string().trim().min(1).default(
     fileURLToPath(new URL("../.data/fund-budget.json", import.meta.url)),
+  ),
+  WRENCHLESS_RECOVERY_INDEX_KEY: z
+    .union([secretKeySchema, z.literal("").transform(() => undefined)])
+    .optional(),
+  WRENCHLESS_RECOVERY_INDEX_PATH: z.string().trim().min(1).default(
+    fileURLToPath(new URL("../.data/recovery-index.json", import.meta.url)),
+  ),
+  WRENCHLESS_RECOVERY_INDEX_KEY_PATH: z.string().trim().min(1).default(
+    fileURLToPath(new URL("../.data/recovery-index.key", import.meta.url)),
   ),
   WRENCHLESS_ALLOW_REFILL_FUND_BROADCAST: z
     .enum(["true", "false"])
@@ -64,7 +80,11 @@ export type SponsorConfig = {
   maxDailyFundSpendFri: bigint;
   minFundAmountFri: bigint;
   minFundDurationSeconds: bigint;
+  maxFundDurationSeconds: bigint;
   fundBudgetPath: string;
+  recoveryIndexKey: string | undefined;
+  recoveryIndexPath: string;
+  recoveryIndexKeyPath: string;
   refillFundBroadcastEnabled: boolean;
   trustProxy: boolean;
 };
@@ -95,7 +115,13 @@ export function readSponsorConfig(
     minFundDurationSeconds: BigInt(
       value.WRENCHLESS_SPONSOR_MIN_FUND_DURATION_SECONDS,
     ),
+    maxFundDurationSeconds: BigInt(
+      value.WRENCHLESS_SPONSOR_MAX_FUND_DURATION_SECONDS,
+    ),
     fundBudgetPath: value.WRENCHLESS_SPONSOR_FUND_BUDGET_PATH,
+    recoveryIndexKey: value.WRENCHLESS_RECOVERY_INDEX_KEY,
+    recoveryIndexPath: value.WRENCHLESS_RECOVERY_INDEX_PATH,
+    recoveryIndexKeyPath: value.WRENCHLESS_RECOVERY_INDEX_KEY_PATH,
     refillFundBroadcastEnabled:
       value.WRENCHLESS_ALLOW_REFILL_FUND_BROADCAST === "true",
     trustProxy: value.WRENCHLESS_TRUST_PROXY === "true",

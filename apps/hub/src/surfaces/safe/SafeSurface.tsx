@@ -67,8 +67,6 @@ import { useTravelSafe } from "./useTravelSafe";
 const CREATE_STEPS: readonly CreateStep[] = [
   "connect",
   "details",
-  "words",
-  "confirm-words",
   "review",
   "parking",
 ];
@@ -143,6 +141,8 @@ export function SafeSurface(): JSX.Element {
   const { model, actions } = useTravelSafe();
   const { home, createStep } = model;
   const creating = createStep !== "closed";
+  const earlyRecoveryBackup = model.earlyRecoveryBackup ?? null;
+  const backingUp = earlyRecoveryBackup !== null;
   const stepIndex = CREATE_STEPS.indexOf(createStep);
 
   const detail =
@@ -152,6 +152,7 @@ export function SafeSurface(): JSX.Element {
 
   const canRefresh =
     !creating &&
+    !backingUp &&
     home.name !== "loading" &&
     home.name !== "no-local-safe" &&
     home.name !== "device-locked";
@@ -175,7 +176,13 @@ export function SafeSurface(): JSX.Element {
         ) : undefined
       }
       detail={detail}
-      label={creating ? "New Travel Safe" : "Travel Safe"}
+      label={
+        creating
+          ? "New Travel Safe"
+          : backingUp
+            ? "Early recovery backup"
+            : "Travel Safe"
+      }
       role="safe"
       step={
         creating && stepIndex >= 0
@@ -186,7 +193,12 @@ export function SafeSurface(): JSX.Element {
           : undefined
       }
     >
-      {creating ? (
+      {backingUp ? (
+        <EarlyRecoveryBackup
+          onDone={actions.dismissEarlyRecoveryBackup}
+          words={earlyRecoveryBackup}
+        />
+      ) : creating ? (
         <CreateFlow actions={actions} model={model} />
       ) : (
         <Home
@@ -197,6 +209,30 @@ export function SafeSurface(): JSX.Element {
         />
       )}
     </ProductFrame>
+  );
+}
+
+function EarlyRecoveryBackup(props: {
+  words: string;
+  onDone: () => void;
+}): JSX.Element {
+  return (
+    <Screen
+      lede="Use this only to return early from another device."
+      title="Save your early-recovery backup"
+    >
+      <Phrase words={props.words.split(" ")} />
+      <Note tone="caution">
+        Anyone with these words can return the reserve before your return date.
+      </Note>
+      <Note>
+        This is not a wallet seed. It stays encrypted on this device and is
+        never sent to the sponsor.
+      </Note>
+      <Actions>
+        <Button label="I saved it" onClick={props.onDone} />
+      </Actions>
+    </Screen>
   );
 }
 
@@ -225,24 +261,35 @@ function Home(props: {
       return (
         <Screen
           center
-          lede="Park private STRK until the day you are home."
-          title="No safe on this device"
+          lede="Recover with Ready after the return date, or use an optional backup before it."
+          title="No safe in this browser"
         >
           <Emblem>
-            <SuitcaseRollingIcon />
+            <ReadyWalletMark className="emblem__ready" />
           </Emblem>
-          <Note>Create one here, or recover one with its twelve words.</Note>
+          {props.error === null ? null : <Failure message={props.error} />}
           <Actions>
             <Button
-              icon={<LockSimpleIcon />}
-              label="Create a safe"
-              onClick={actions.startCreate}
+              icon={<ReadyWalletMark className="wbtn__ready" />}
+              label="Recover with Ready"
+              onClick={() => {
+                void actions.bringBack();
+              }}
             />
           </Actions>
           <Actions>
             <Button
-              label="Recover with your words"
+              icon={<KeyIcon />}
+              label="Use recovery backup"
               onClick={() => navigate("/recover")}
+              tone="quiet"
+            />
+          </Actions>
+          <Actions>
+            <Button
+              icon={<SuitcaseRollingIcon />}
+              label="Create a new safe"
+              onClick={actions.startCreate}
               tone="quiet"
             />
           </Actions>
@@ -271,8 +318,28 @@ function Home(props: {
           </Actions>
           <Actions>
             <Button
-              label="Recover with your words"
+              icon={<ReadyWalletMark className="wbtn__ready" />}
+              label="Recover with Ready"
+              onClick={() => {
+                void actions.bringBack();
+              }}
+              tone="quiet"
+            />
+          </Actions>
+          <Actions>
+            <Button
+              icon={<KeyIcon />}
+              label="Use recovery backup"
               onClick={() => navigate("/recover")}
+              tone="quiet"
+            />
+          </Actions>
+          <Actions>
+            <Button
+              label="Forget this browser"
+              onClick={() => {
+                void actions.forgetLocal();
+              }}
               tone="quiet"
             />
           </Actions>
@@ -282,7 +349,7 @@ function Home(props: {
     case "setup-incomplete":
       return (
         <Screen
-          lede="Your words are confirmed. The reserve has not been parked yet."
+          lede="The reserve has not been parked yet."
           title="Setup incomplete"
         >
           <SafeFigure caption="Chosen to park" ticket={home.ticket} />
@@ -338,7 +405,7 @@ function Home(props: {
             returnDateSeconds={home.ticket.returnDateSeconds}
           />
           <StatusLine icon={<HourglassIcon />}>
-            This device cannot bring it back before that date.
+            Ready can return it after that date.
           </StatusLine>
           <Facts>
             <Fact
@@ -350,12 +417,24 @@ function Home(props: {
           <SafeEvidence ticket={home.ticket} />
           <Actions>
             <Button
-              label="Recover with your words"
-              onClick={() => navigate("/recover")}
+              icon={<FingerprintIcon />}
+              label="Bring it back early"
+              onClick={() => {
+                void actions.bringBackEarly();
+              }}
+            />
+          </Actions>
+          <Actions>
+            <Button
+              icon={<KeyIcon />}
+              label="Create recovery backup"
+              onClick={() => {
+                void actions.createEarlyRecoveryBackup();
+              }}
               tone="quiet"
             />
           </Actions>
-          <Note>Only the twelve words can release it early.</Note>
+          <Note>The backup is optional and only works before the return date.</Note>
         </Screen>
       );
 
@@ -433,8 +512,8 @@ function Home(props: {
     case "released-early":
       return (
         <Screen
-          lede="Someone used the twelve words before the return date."
-          title="Released early"
+          lede="The reserve returned before the chosen date."
+          title="Returned early"
           tone="alert"
         >
           <Emblem>
@@ -457,24 +536,66 @@ function Home(props: {
         </Screen>
       );
 
+    case "ready-recovery-submitted":
+      return (
+        <Screen
+          center
+          lede="Ready will show it after Starknet confirms the return."
+          title="Private return submitted"
+        >
+          <Emblem>
+            <ArrowDownLeftIcon />
+          </Emblem>
+          <Balance
+            caption="Returning to Ready"
+            value={formatStrkFigure(home.amountFri)}
+          />
+          <StatusLine icon={<ArrowsClockwiseIcon />} iconMotion="spin">
+            Waiting for confirmation
+          </StatusLine>
+          <TransactionRef
+            hash={shortHex(home.transactionHash)}
+            href={explorer(home.transactionHash)}
+            label="Check on Starkscan"
+          />
+        </Screen>
+      );
+
     case "local-unavailable":
       return (
         <Screen
-          lede="The saved key is missing or unreadable. Your twelve words still work."
+          lede="Recover with Ready after the return date, or use an optional backup before it."
           title="This browser lost its safe"
           tone="alert"
         >
           <Failure message={home.reason} />
           <Actions>
             <Button
-              label="Forget this device's safe"
+              icon={<ReadyWalletMark className="wbtn__ready" />}
+              label="Recover with Ready"
+              onClick={() => {
+                void actions.bringBack();
+              }}
+            />
+          </Actions>
+          <Actions>
+            <Button
+              icon={<KeyIcon />}
+              label="Use recovery backup"
+              onClick={() => navigate("/recover")}
+              tone="quiet"
+            />
+          </Actions>
+          <Actions>
+            <Button
+              label="Forget this browser's safe"
               onClick={() => {
                 void actions.forgetLocal();
               }}
               tone="quiet"
             />
           </Actions>
-          <Note>This clears only this browser. It does not move any STRK.</Note>
+          <Note>Forgetting this browser does not move any STRK.</Note>
         </Screen>
       );
 
@@ -531,8 +652,7 @@ function CreateFlow(props: {
           </Actions>
           <Live message={model.live} />
           <Note>
-            Wrenchless also asks for a passkey on this device, so only you can
-            open the safe here.
+            Your passkey protects early return on this device.
           </Note>
         </Screen>
       );
@@ -595,64 +715,6 @@ function CreateFlow(props: {
         </Screen>
       );
 
-    case "words":
-      return (
-        <Screen
-          lede="Write them down and leave them at home."
-          onBack={actions.back}
-          title="Your recovery words"
-        >
-          {model.recoveryPhrase === null ? null : (
-            <Phrase words={model.recoveryPhrase.split(" ")} />
-          )}
-          <Note tone="caution">
-            These words release the safe early. Anyone who has them can bring
-            the reserve back before your return date.
-          </Note>
-          <Note>Wrenchless never stores them. They are shown once.</Note>
-          <Actions>
-            <Button
-              label="I have written them down"
-              onClick={actions.showPhraseConfirmation}
-            />
-          </Actions>
-        </Screen>
-      );
-
-    case "confirm-words":
-      return (
-        <Screen
-          lede="Type all twelve, in order, to prove the copy is good."
-          onBack={actions.back}
-          title="Confirm your words"
-        >
-          <WalletField error={model.error} label="Recovery words">
-            {({ inputId, describedBy }) => (
-              <textarea
-                aria-describedby={describedBy}
-                autoCapitalize="none"
-                autoCorrect="off"
-                className="winput winput--paste"
-                id={inputId}
-                onChange={(event) => actions.setConfirmation(event.target.value)}
-                rows={4}
-                spellCheck={false}
-                value={model.confirmation}
-              />
-            )}
-          </WalletField>
-          <Actions>
-            <Button
-              disabled={model.confirmation.trim().length === 0}
-              label="Confirm"
-              onClick={() => {
-                void actions.confirmPhrase();
-              }}
-            />
-          </Actions>
-        </Screen>
-      );
-
     case "review": {
       const returnDate = localReturnDate(model.returnDateLocal);
       return (
@@ -704,7 +766,8 @@ function CreateFlow(props: {
             />
           </Actions>
           <Note>
-            Ready prepares the proof and hands it straight to the sponsor.
+            No recovery phrase is required. You can create an optional backup
+            after parking.
           </Note>
         </Screen>
       );

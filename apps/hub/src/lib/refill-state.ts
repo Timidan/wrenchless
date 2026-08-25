@@ -44,7 +44,7 @@ type RpcInteger = z.infer<typeof rpcIntegerSchema>;
 export type RefillChainState = {
   stateId: string;
   claimCommitment: string;
-  refundPublicKey: string;
+  recoveryCommitment: string;
   tokenAddress: string;
   amountFri: string;
   returnDateSeconds: string;
@@ -309,11 +309,11 @@ export async function readRefillChainSnapshot(input: {
   if (result.length !== 6) {
     throw new Error("The Travel Safe helper returned an invalid state");
   }
-  const [claimCommitment, refundPublicKey, tokenAddress, amount, returnDate, status] =
+  const [claimCommitment, recoveryCommitment, tokenAddress, amount, returnDate, status] =
     result;
   if (
     claimCommitment === undefined ||
-    refundPublicKey === undefined ||
+    recoveryCommitment === undefined ||
     tokenAddress === undefined ||
     amount === undefined ||
     returnDate === undefined ||
@@ -341,7 +341,7 @@ export async function readRefillChainSnapshot(input: {
     state: {
       stateId,
       claimCommitment: felt(claimCommitment, "claim commitment"),
-      refundPublicKey: felt(refundPublicKey, "refund public key"),
+      recoveryCommitment: felt(recoveryCommitment, "recovery commitment"),
       tokenAddress: felt(tokenAddress, "Travel Safe token"),
       amountFri: amountValue.toString(),
       returnDateSeconds: returnDateValue.toString(),

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   computeRefillRefundHash,
+  computeRefillRecoveryCommitment,
   computeRefillReleaseHash,
   prepareRefillClaim,
   prepareRefillFund,
@@ -11,6 +12,7 @@ import {
   type PreparedStrk20Call,
   type RefillAction,
   type RefillPrepareWallet,
+  type RefillTypedDataWallet,
 } from "./refill-claim.js";
 
 const POOL = "0xabcd";
@@ -26,11 +28,13 @@ const CLAIM_PUBLIC_KEY = ec.starkCurve.getStarkKey(CLAIM_PRIVATE_KEY);
 const CLAIM_PUBLIC_POINT = ec.starkCurve.ProjectivePoint.fromPrivateKey(
   CLAIM_PRIVATE_KEY.slice(2).padStart(64, "0"),
 ).toRawBytes(true);
-const REFUND_PRIVATE_KEY = "0x67890";
-const REFUND_PUBLIC_KEY = ec.starkCurve.getStarkKey(REFUND_PRIVATE_KEY);
-const REFUND_PUBLIC_POINT = ec.starkCurve.ProjectivePoint.fromPrivateKey(
-  REFUND_PRIVATE_KEY.slice(2).padStart(64, "0"),
-).toRawBytes(true);
+const RECOVERY_ACCOUNT = "0x5678";
+const RECOVERY_SALT = "0x987";
+const RECOVERY_COMMITMENT = computeRefillRecoveryCommitment(
+  STATE_ID,
+  RECOVERY_ACCOUNT,
+  RECOVERY_SALT,
+);
 
 function makePreparedCall(
   actions: RefillAction[],
@@ -105,10 +109,16 @@ function makePreparedFundCall(
   };
 }
 
-function makeWallet(realNoteId = "0x444"): RefillPrepareWallet {
+function makeWallet(
+  realNoteId = "0x444",
+): RefillPrepareWallet & RefillTypedDataWallet {
   return {
     async strk20PrepareInvoke(actions, simulate = false) {
       return makePreparedCall(actions, simulate ? "0x444" : realNoteId, simulate);
+    },
+    async signTypedData(data) {
+      expect(data.primaryType).toBe("SafeReturn");
+      return ["0xaaa", "0xbbb"];
     },
   };
 }
@@ -135,7 +145,9 @@ describe("refill FUND preparation", () => {
         helperAddress: HELPER,
         stateId: STATE_ID,
         claimCommitment: "0x777",
-        refundPublicKey: REFUND_PUBLIC_KEY,
+        recoveryCommitment: RECOVERY_COMMITMENT,
+        recoveryAccount: RECOVERY_ACCOUNT,
+        recoverySalt: RECOVERY_SALT,
         token: TOKEN,
         amount: AMOUNT,
         expiry: EXPIRY,
@@ -158,7 +170,9 @@ describe("refill FUND preparation", () => {
       helperAddress: HELPER,
       stateId: STATE_ID,
       claimCommitment: "0x777",
-      refundPublicKey: REFUND_PUBLIC_KEY,
+      recoveryCommitment: RECOVERY_COMMITMENT,
+      recoveryAccount: RECOVERY_ACCOUNT,
+      recoverySalt: RECOVERY_SALT,
       token: TOKEN,
       amount: AMOUNT,
       expiry: EXPIRY,
@@ -178,7 +192,7 @@ describe("refill FUND preparation", () => {
           "0x0",
           STATE_ID,
           "0x777",
-          REFUND_PUBLIC_KEY,
+          RECOVERY_COMMITMENT,
           TOKEN,
           "0x3e8",
           `0x${EXPIRY.toString(16)}`,
@@ -201,7 +215,9 @@ describe("refill FUND preparation", () => {
         helperAddress: HELPER,
         stateId: STATE_ID,
         claimCommitment: "0x777",
-        refundPublicKey: REFUND_PUBLIC_KEY,
+        recoveryCommitment: RECOVERY_COMMITMENT,
+        recoveryAccount: RECOVERY_ACCOUNT,
+        recoverySalt: RECOVERY_SALT,
         token: TOKEN,
         amount: AMOUNT,
         expiry: EXPIRY,
@@ -232,7 +248,9 @@ describe("refill FUND preparation", () => {
         helperAddress: HELPER,
         stateId: STATE_ID,
         claimCommitment: "0x777",
-        refundPublicKey: REFUND_PUBLIC_KEY,
+        recoveryCommitment: RECOVERY_COMMITMENT,
+        recoveryAccount: RECOVERY_ACCOUNT,
+        recoverySalt: RECOVERY_SALT,
         token: TOKEN,
         amount: AMOUNT,
         expiry: EXPIRY,
@@ -373,18 +391,16 @@ describe("refill refund authorization", () => {
         chainId: "SN_SEPOLIA",
         helperAddress: HELPER,
         stateId: STATE_ID,
-        nonce: NONCE,
         expiry: EXPIRY,
         token: TOKEN,
         amount: AMOUNT,
         noteId: "0x444",
+        recoveryAccount: RECOVERY_ACCOUNT,
       }),
-    ).toBe(
-      "0x5e6e9fb889a751e1ed2413ad8c6d9245f873bbd88b0634711b5cbe59f3cb408",
-    );
+    ).toBe("0x3c38077faa10fc1942347c9cd014fa9c89b58aa93c5922b7e773c4d3a4edefc");
   });
 
-  it("previews, signs, and verifies the exact refund OPEN note", async () => {
+  it("asks Ready to sign the exact refund OPEN note", async () => {
     const result = await prepareRefillRefund({
       wallet: makeWallet(),
       chainId: "SN_SEPOLIA",
@@ -392,34 +408,15 @@ describe("refill refund authorization", () => {
       helperAddress: HELPER,
       recipient: RECIPIENT,
       stateId: STATE_ID,
-      nonce: NONCE,
       expiry: EXPIRY,
       token: TOKEN,
       amount: AMOUNT,
-      refundPrivateKey: REFUND_PRIVATE_KEY,
-      refundPublicKey: REFUND_PUBLIC_KEY,
+      recoveryAccount: RECOVERY_ACCOUNT,
+      recoverySalt: RECOVERY_SALT,
     });
 
     expect(result.noteId).toBe("0x444");
-    expect(
-      ec.starkCurve.verify(
-        new ec.starkCurve.Signature(
-          BigInt(result.signature.r),
-          BigInt(result.signature.s),
-        ),
-        computeRefillRefundHash({
-          chainId: "SN_SEPOLIA",
-          helperAddress: HELPER,
-          stateId: STATE_ID,
-          nonce: NONCE,
-          expiry: EXPIRY,
-          token: TOKEN,
-          amount: AMOUNT,
-          noteId: result.noteId,
-        }),
-        REFUND_PUBLIC_POINT,
-      ),
-    ).toBe(true);
+    expect(result.signature).toEqual(["0xaaa", "0xbbb"]);
   });
 
   it("discards a refund proof if the OPEN note changed after preview", async () => {
@@ -431,12 +428,11 @@ describe("refill refund authorization", () => {
         helperAddress: HELPER,
         recipient: RECIPIENT,
         stateId: STATE_ID,
-        nonce: NONCE,
         expiry: EXPIRY,
         token: TOKEN,
         amount: AMOUNT,
-        refundPrivateKey: REFUND_PRIVATE_KEY,
-        refundPublicKey: REFUND_PUBLIC_KEY,
+        recoveryAccount: RECOVERY_ACCOUNT,
+        recoverySalt: RECOVERY_SALT,
       }),
     ).rejects.toThrow("OPEN note changed after preview");
   });

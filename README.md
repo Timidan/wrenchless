@@ -5,8 +5,9 @@ Wrenchless is a one-device Travel Safe for private STRK on Starknet mainnet.
 A traveller chooses an amount and a return date. Ready prepares a STRK20 FUND
 proof and the Wrenchless sponsor submits it to the deployed refill helper. The
 reserve is no longer spendable from the wallet they carry. After the return
-date, a local passkey gates REFUND back to Ready as private STRK. A twelve-word
-phrase can CLAIM the reserve early from any compatible browser.
+date, the chosen Ready account can return it as private STRK. A passkey unlocks
+the saved Safe on this device. An optional twelve-word backup can return the
+reserve early from another compatible browser.
 
 Wrenchless is not a wallet implementation. Ready remains the wallet, account
 selector, signer, private-balance reader, proof producer, and private-note
@@ -24,19 +25,29 @@ mailboxes, PINs, or second-device setup in the shipped hub.
 
 ## Security boundary
 
-- The twelve words deterministically derive the state ID and CLAIM/REFUND
-  authority. Wrenchless shows them once and never stores them.
-- The local ticket stores only the REFUND private key and public Safe data. It
-  is AES-GCM encrypted with a non-extractable browser key and opened only after
-  local passkey verification.
+- Wrenchless generates early-return material inside one local ticket. The
+  ticket is AES-GCM encrypted by a key derived from the device passkey and can
+  reveal an optional twelve-word backup after passkey verification.
+- The passkey-derived encryption key is non-extractable and lives only for the
+  current unlocked session. Explicitly forgetting the Safe also removes legacy
+  ticket ciphertext and its former browser key database.
+- Before the return date, CLAIM requires the early-return key. After the date,
+  REFUND requires a typed-data signature from the Ready account selected during
+  setup.
 - Starknet accepted-block time, not device time, selects CLAIM at or before the
   return date and REFUND strictly after it.
 - The helper contract enforces the release boundary and one terminal release.
 - Every FUND attempt prepares a fresh short-lived Ready proof and sends it
   immediately. Prepared proofs are not persisted.
-- The sponsor rejects parks below 1 STRK or two hours, validates the prepared
-  FUND, reserves the maximum authorized fee, caps daily spend, serializes its
-  nonce stream, rate-limits callers, and can disable broadcasts.
+- The sponsor verifies Ready's registration approval, rejects parks below 1
+  STRK, shorter than two hours, or longer than 90 days, validates the prepared
+  FUND, caps fees and daily spend, serializes its nonce stream, rate-limits
+  callers, and can disable broadcasts.
+
+For fresh-browser recovery after the date, the sponsor retains one HMAC account
+tag and an encrypted locator containing only the Safe ID and recovery salt. A
+new Safe replaces the old locator. The sponsor does not retain the amount,
+return date, backup, balance, wallet address, or transaction history.
 
 The helper publishes the Safe ID, token, amount, return date, timing, and final
 status. Distinctive amounts or closely timed actions can still be correlated.

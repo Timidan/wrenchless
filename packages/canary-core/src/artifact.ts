@@ -58,7 +58,7 @@ export type RegistrationCanaryArtifact = z.infer<
 
 export const RefillFundArtifactSchema = z
   .object({
-    schemaVersion: z.literal("wrenchless.refill-fund.v1"),
+    schemaVersion: z.literal("wrenchless.refill-fund.v2"),
     chainId: z.literal("SN_MAIN"),
     poolAddress: feltSchema,
     helperAddress: feltSchema,
@@ -68,9 +68,16 @@ export const RefillFundArtifactSchema = z
     claimCommitment: feltSchema.refine((value) => BigInt(value) !== 0n, {
       message: "claim commitment must be non-zero",
     }),
-    refundPublicKey: feltSchema.refine((value) => BigInt(value) !== 0n, {
-      message: "refund public key must be non-zero",
+    recoveryCommitment: feltSchema.refine((value) => BigInt(value) !== 0n, {
+      message: "recovery commitment must be non-zero",
     }),
+    recoveryAccount: feltSchema.refine((value) => BigInt(value) !== 0n, {
+      message: "recovery account must be non-zero",
+    }),
+    recoverySalt: feltSchema.refine((value) => BigInt(value) !== 0n, {
+      message: "recovery salt must be non-zero",
+    }),
+    recoveryAuthorization: z.array(feltSchema).min(1).max(64),
     tokenAddress: feltSchema,
     amountFri: u128DecimalSchema.refine((value) => BigInt(value) !== 0n, {
       message: "amount must be non-zero",
@@ -102,7 +109,9 @@ export const RefillFundArtifactSchema = z
           helperAddress: artifact.helperAddress,
           stateId: artifact.stateId,
           claimCommitment: artifact.claimCommitment,
-          refundPublicKey: artifact.refundPublicKey,
+          recoveryCommitment: artifact.recoveryCommitment,
+          recoveryAccount: artifact.recoveryAccount,
+          recoverySalt: artifact.recoverySalt,
           token: artifact.tokenAddress,
           amount: artifact.amountFri,
           expiry: artifact.expiry,

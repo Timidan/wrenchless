@@ -3,9 +3,18 @@ import type { JSX } from "react";
 /**
  * Ready Wallet's own mark, held in one place.
  *
- * It appears on two grounds — the connect button here, and the first segment of
- * the setup strip — and it is somebody else's asset, so both draw the same two
- * paths rather than a redrawn copy that could drift from the export.
+ * It appears on the connect button, in the emblem above it, and on the public
+ * page's evidence run, and it is somebody else's asset, so all three draw the
+ * same two paths rather than a redrawn copy that could drift from the export.
+ *
+ * It draws in Ready's own orange rather than in ink. The argument is the one
+ * already made for Starknet's coral in `tokens.css`: a third party's identity
+ * is not ours to desaturate, and the exception is bought by the mark appearing
+ * exactly where that company's name appears and nowhere else.
+ *
+ * The two paths stay separate rather than being flattened into one, because
+ * the spark is the only part of the mark that is allowed to move: on a control
+ * it turns while the chevron — which is the mark — holds absolutely still.
  */
 export const READY_MARK_VIEW_BOX = "0 0 40 40";
 
@@ -14,27 +23,22 @@ export const READY_MARK_PATHS: readonly string[] = [
   "m28.241 15.351-.574-1.774a1.165 1.165 0 0 0-.763-.752l-1.783-.548a.263.263 0 0 1-.003-.502l1.773-.574c.36-.117.642-.402.753-.764l.547-1.782c.076-.246.424-.249.503-.004l.574 1.774c.117.36.401.64.763.752l1.783.548c.246.075.248.423.003.503l-1.773.574c-.36.116-.642.401-.752.763l-.548 1.782c-.075.246-.423.249-.503.004Z",
 ];
 
-/**
- * Ready Wallet's compact mark. The white ground keeps it legible inside the
- * wallet's ink button without introducing a separate dark-mode asset.
- */
 export function ReadyWalletMark({
   className,
 }: {
   className: string;
 }): JSX.Element {
+  const [chevron, spark] = READY_MARK_PATHS;
   return (
     <svg
       aria-hidden="true"
-      className={className}
+      className={`readymark ${className}`}
       fill="none"
       focusable="false"
       viewBox={READY_MARK_VIEW_BOX}
     >
-      <circle cx="20" cy="20" fill="white" r="20" />
-      {READY_MARK_PATHS.map((d) => (
-        <path d={d} fill="black" key={d} />
-      ))}
+      <path d={chevron} fill="currentColor" />
+      <path className="readymark__spark" d={spark} fill="currentColor" />
     </svg>
   );
 }

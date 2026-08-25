@@ -16,7 +16,7 @@ export type RefillFundFinalityRequest = {
   relayAddress: string;
   stateId: string;
   claimCommitment: string;
-  refundPublicKey: string;
+  recoveryCommitment: string;
   tokenAddress: string;
   amountFri: string;
   expiry: string;
@@ -116,6 +116,7 @@ type RefillFundInspectionInput = {
   client: RefillFundClient;
   minimumAmountFri?: bigint;
   minimumRemainingDurationSeconds?: bigint;
+  maximumRemainingDurationSeconds?: bigint;
   beforeBroadcast?: (maximumSpendFri: bigint) => Promise<void>;
 };
 
@@ -176,6 +177,13 @@ export async function inspectRefillFund(
   ) {
     throw new Error("refill duration is below the sponsor minimum");
   }
+  if (
+    input.maximumRemainingDurationSeconds !== undefined &&
+    BigInt(artifact.expiry) - latestBlockTimestamp >
+      input.maximumRemainingDurationSeconds
+  ) {
+    throw new Error("refill duration exceeds the sponsor maximum");
+  }
 
   const proofSummary = assertRefillFundProofFacts({
     artifact,
@@ -232,7 +240,7 @@ export async function inspectRefillFund(
         relayAddress: config.relayAddress,
         stateId: artifact.stateId,
         claimCommitment: artifact.claimCommitment,
-        refundPublicKey: artifact.refundPublicKey,
+        recoveryCommitment: artifact.recoveryCommitment,
         tokenAddress: artifact.tokenAddress,
         amountFri: artifact.amountFri,
         expiry: artifact.expiry,

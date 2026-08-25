@@ -1,6 +1,5 @@
 import {
   createTravelSafeTicketStore,
-  generateTravelSafeTicketSealingKey,
   removeTravelSafeTicket,
   type TravelSafeSecrets,
   type TravelSafeTicket,
@@ -11,81 +10,70 @@ import {
 
 import { readSettings, writeSettings } from "../adapters/settings.js";
 
-const KEY_DATABASE = "wrenchless-local-secrets-v1";
-const KEY_STORE = "keys";
-const SAFE_KEY = "safe";
+const TICKET_KEY_CONTEXT = "WRENCHLESS_TRAVEL_SAFE_TICKET_KEY_V2";
+const LEGACY_KEY_DATABASE = "wrenchless-local-secrets-v1";
+const LEGACY_TICKET_PREFIX = "wrenchless.travel-safe-ticket.v1:";
+let sessionSealingKey: CryptoKey | null = null;
 
-function requestResult<T>(request: IDBRequest<T>): Promise<T> {
+function deleteLegacyKeyDatabase(): Promise<void> {
+  if (!("indexedDB" in window)) return Promise.resolve();
   return new Promise((resolve, reject) => {
-    request.addEventListener("success", () => resolve(request.result), {
-      once: true,
-    });
+    const request = indexedDB.deleteDatabase(LEGACY_KEY_DATABASE);
+    request.addEventListener("success", () => resolve(), { once: true });
     request.addEventListener(
       "error",
-      () => reject(request.error ?? new Error("IndexedDB request failed")),
+      () => reject(request.error ?? new Error("Legacy Travel Safe data could not be erased")),
+      { once: true },
+    );
+    request.addEventListener(
+      "blocked",
+      () => reject(new Error("Close other Wrenchless tabs, then try again")),
       { once: true },
     );
   });
 }
 
-function transactionComplete(transaction: IDBTransaction): Promise<void> {
-  return new Promise((resolve, reject) => {
-    transaction.addEventListener("complete", () => resolve(), { once: true });
-    transaction.addEventListener(
-      "abort",
-      () => reject(transaction.error ?? new Error("IndexedDB transaction aborted")),
-      { once: true },
-    );
-    transaction.addEventListener(
-      "error",
-      () => reject(transaction.error ?? new Error("IndexedDB transaction failed")),
-      { once: true },
-    );
-  });
-}
-
-async function openKeyDatabase(): Promise<IDBDatabase> {
-  const request = indexedDB.open(KEY_DATABASE, 1);
-  request.addEventListener(
-    "upgradeneeded",
-    () => {
-      if (!request.result.objectStoreNames.contains(KEY_STORE)) {
-        request.result.createObjectStore(KEY_STORE);
-      }
-    },
-    { once: true },
-  );
-  return requestResult(request);
-}
-
-async function getOrCreateSealingKey(): Promise<CryptoKey> {
-  const database = await openKeyDatabase();
-  try {
-    const read = database.transaction(KEY_STORE, "readonly");
-    const stored = await requestResult<CryptoKey | undefined>(
-      read.objectStore(KEY_STORE).get(SAFE_KEY),
-    );
-    if (stored !== undefined) return stored;
-
-    const key = await generateTravelSafeTicketSealingKey();
-    const write = database.transaction(KEY_STORE, "readwrite");
-    write.objectStore(KEY_STORE).add(key, SAFE_KEY);
-    await transactionComplete(write);
-    return key;
-  } finally {
-    database.close();
+function removeLegacyTickets(): void {
+  for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+    const key = localStorage.key(index);
+    if (key?.startsWith(LEGACY_TICKET_PREFIX)) localStorage.removeItem(key);
   }
 }
 
-async function localTicketStore(): Promise<TravelSafeTicketStore> {
-  return createTravelSafeTicketStore(
-    localStorage,
-    await getOrCreateSealingKey(),
+export async function unlockTravelSafeTicketStorage(
+  passkeySecret: Uint8Array<ArrayBuffer>,
+): Promise<void> {
+  if (passkeySecret.byteLength !== 32) {
+    throw new Error("The passkey returned an invalid Travel Safe secret");
+  }
+  const material = await crypto.subtle.importKey(
+    "raw",
+    passkeySecret,
+    "HKDF",
+    false,
+    ["deriveKey"],
   );
+  const context = new TextEncoder().encode(TICKET_KEY_CONTEXT);
+  sessionSealingKey = await crypto.subtle.deriveKey(
+    { name: "HKDF", hash: "SHA-256", salt: context, info: context },
+    material,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  );
+}
+
+async function localTicketStore(): Promise<TravelSafeTicketStore> {
+  if (sessionSealingKey === null) {
+    throw new Error("Confirm your passkey to open this Travel Safe");
+  }
+  return createTravelSafeTicketStore(localStorage, sessionSealingKey);
 }
 
 export async function createTravelSafeTicket(input: {
   secrets: TravelSafeSecrets;
+  recoveryPhrase: string;
+  recoveryAccount: string;
   tokenAddress: string;
   amountFri: string;
   returnDateSeconds: string;
@@ -96,13 +84,12 @@ export async function createTravelSafeTicket(input: {
   }
   const timestamp = (input.now ?? new Date()).toISOString();
   const ticket: TravelSafeTicket = {
-    schemaVersion: "wrenchless.travel-safe-ticket.v1",
+    schemaVersion: "wrenchless.travel-safe-ticket.v2",
     role: "safe",
     stateId: input.secrets.stateId,
-    status: "PHRASE_CONFIRMED",
-    claimCommitment: input.secrets.claimCommitment,
-    refundPrivateKey: input.secrets.refundPrivateKey,
-    refundPublicKey: input.secrets.refundPublicKey,
+    status: "READY",
+    recoveryPhrase: input.recoveryPhrase,
+    recoveryAccount: input.recoveryAccount,
     tokenAddress: input.tokenAddress,
     amountFri: input.amountFri,
     returnDateSeconds: input.returnDateSeconds,
@@ -147,6 +134,9 @@ export async function clearTravelSafeTicket(stateId: string): Promise<void> {
   ) {
     throw new Error("That Travel Safe is not active on this device");
   }
+  await deleteLegacyKeyDatabase();
   removeTravelSafeTicket(localStorage, stateId);
+  removeLegacyTickets();
+  sessionSealingKey = null;
   writeSettings({ activeSafeStateId: null });
 }

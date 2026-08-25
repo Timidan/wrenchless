@@ -87,6 +87,15 @@
      protocol uses for its own name. It is never used as text on its own. */
   --coral: #ec796b;
 
+  /* Ready Wallet's own orange, on the same terms as the coral above: it draws
+     Ready's mark and nothing else, wherever that mark appears. A third party's
+     identity is not ours to desaturate.
+
+     VERIFY: this is Argent's long-standing brand orange, taken from the mark
+     the hub already ships. If Ready's rebrand moved the value, this one line
+     is the whole change. */
+  --ready-orange: #ff875b;
+
   /* ---- layout ----------------------------------------------------------
      No max-width box anywhere. The page is a fluid 12-column grid inset by
      one edge token, and content takes ten of the twelve. */

@@ -36,14 +36,18 @@ export function RecoverSurface(): JSX.Element {
   const { state } = recovery;
 
   return (
-    <ProductFrame detail="Twelve words" label="Recovery" role="recover">
+    <ProductFrame
+      detail="Optional backup"
+      label="Early recovery"
+      role="recover"
+    >
       {state.name === "entry" ? (
         <Screen
-          lede="Enter the words in order. They never leave this page."
+          lede="Use this only to return early from another device."
           onBack={() => navigate("/safe")}
-          title="Recover a safe"
+          title="Use early-recovery backup"
         >
-          <WalletField label="Recovery words">
+          <WalletField label="Backup words">
             {({ inputId, describedBy }) => (
               <textarea
                 aria-describedby={describedBy}
@@ -62,15 +66,19 @@ export function RecoverSurface(): JSX.Element {
             <Button
               disabled={recovery.words.trim().length === 0}
               icon={<KeyIcon />}
-              label="Check the words"
+              label="Check backup"
               onClick={() => void recovery.inspect()}
             />
           </Actions>
+          <Note>
+            This is not a wallet seed. No backup is needed after the return
+            date.
+          </Note>
         </Screen>
       ) : null}
 
       {state.name === "checking" ? (
-        <Screen center title="Checking the safe">
+        <Screen center title="Finding the Travel Safe">
           <Emblem>
             <KeyIcon />
           </Emblem>
@@ -80,15 +88,11 @@ export function RecoverSurface(): JSX.Element {
         </Screen>
       ) : null}
 
-      {state.name === "review" ? (
+      {state.name === "review" && state.release === "claim" ? (
         <Screen
-          lede={
-            state.release === "claim"
-              ? "The return date has not passed. These words can release it early."
-              : "The return date has passed. These words can bring it back."
-          }
+          lede="The return date has not passed. This backup can release it now."
           onBack={recovery.reset}
-          title={state.release === "claim" ? "Release early" : "Bring it back"}
+          title="Bring it back early"
         >
           <Balance
             caption="Found in the Travel Safe"
@@ -102,7 +106,7 @@ export function RecoverSurface(): JSX.Element {
             <Fact
               label="Action"
               strong
-              value={state.release === "claim" ? "Early release" : "Return"}
+              value="Early return"
             />
           </Facts>
           <Actions>
@@ -116,11 +120,27 @@ export function RecoverSurface(): JSX.Element {
         </Screen>
       ) : null}
 
+      {state.name === "review" && state.release === "refund" ? (
+        <Screen
+          center
+          lede="Reconnect the same Ready account. The backup is no longer needed."
+          onBack={recovery.reset}
+          title="The return date has passed"
+        >
+          <Emblem>
+            <ReadyWalletMark className="emblem__ready" />
+          </Emblem>
+          <Actions>
+            <Button label="Open Travel Safe" onClick={() => navigate("/safe")} />
+          </Actions>
+        </Screen>
+      ) : null}
+
       {state.name === "submitting" ? (
         <Screen
           center
           lede="Approve the private note in Ready."
-          title={state.release === "claim" ? "Releasing early" : "Returning"}
+          title="Returning early"
         >
           <Emblem>
             <LockKeyOpenIcon />
@@ -170,17 +190,17 @@ export function RecoverSurface(): JSX.Element {
       ) : null}
 
       {state.name === "complete" ? (
-        <Screen center title="Recovery complete">
+        <Screen center title="Early recovery complete">
           <Emblem>
             <CheckCircleIcon />
           </Emblem>
           <Note>
             {state.result.kind === "claimed"
-              ? "Released early to Shielded Starknet."
+              ? "Returned early to Shielded Starknet."
               : state.result.kind === "refunded"
                 ? "Returned to Shielded Starknet."
                 : state.result.kind === "already-claimed"
-                  ? "This safe was already released early."
+                  ? "This safe was already returned early."
                   : "This safe was already returned."}
           </Note>
           {"transactionHash" in state.result ? (
@@ -199,9 +219,9 @@ export function RecoverSurface(): JSX.Element {
       {state.name === "failed" ? (
         <Screen
           center
-          lede="The safe was not released."
+          lede="The reserve was not returned."
           onBack={recovery.reset}
-          title="Recovery did not finish"
+          title="Early recovery did not finish"
           tone="alert"
         >
           <StatusLine icon={<WarningCircleIcon />} tone="alert">

@@ -1,4 +1,5 @@
 import { RpcProvider, constants } from "starknet";
+import { MAINNET_REFILL_HELPER_CLASS_HASH } from "@wrenchless/relay-canary/config";
 
 import type { SponsorConfig } from "./config.js";
 
@@ -46,8 +47,9 @@ export async function inspectFundSponsorReadiness(
   if (chainId !== constants.StarknetChainId.SN_MAIN) {
     throw new Error(`sponsor RPC is not Starknet mainnet: ${chainId}`);
   }
-  const [poolFee, publicBalance, helperPool, helperToken] = await Promise.all([
-    provider.callContract(
+  const [poolFee, helperClassHash, publicBalance, helperPool, helperToken] =
+    await Promise.all([
+      provider.callContract(
       {
         contractAddress: config.poolAddress,
         entrypoint: "get_fee_amount",
@@ -55,6 +57,7 @@ export async function inspectFundSponsorReadiness(
       },
       "latest",
     ),
+    provider.getClassHashAt(config.helperAddress, "latest"),
     provider.callContract(
       {
         contractAddress: config.tokenAddress,
@@ -79,7 +82,7 @@ export async function inspectFundSponsorReadiness(
       },
       "latest",
     ),
-  ]);
+    ]);
   const poolFeeFri = parseSingleFelt(poolFee, "get_fee_amount");
   const accountPublicBalanceFri = parseU256(publicBalance, "balance_of");
   const fundRelayMinimumBalanceFri = poolFeeFri + config.maxTransactionFeeFri;
@@ -92,6 +95,7 @@ export async function inspectFundSponsorReadiness(
       accountPublicBalanceFri >= fundRelayMinimumBalanceFri,
     fundRelayBroadcastEnabled: config.refillFundBroadcastEnabled,
     helperMatchesConfiguration:
+      BigInt(helperClassHash) === BigInt(MAINNET_REFILL_HELPER_CLASS_HASH) &&
       parseSingleFelt(helperPool, "privacy_pool") === BigInt(config.poolAddress) &&
       parseSingleFelt(helperToken, "allowed_token") === BigInt(config.tokenAddress),
   };
