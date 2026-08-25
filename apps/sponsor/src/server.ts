@@ -14,8 +14,9 @@ import type {
   SponsorUnavailableReason,
 } from "./availability.js";
 import {
-  RefillFundRelay,
   RefillFundRelayError,
+  type RefillFundRelay,
+  type RefillFundEstimate,
   type RefillFundSubmission,
 } from "./fund-relay.js";
 import {
@@ -28,6 +29,15 @@ import {
 const MAX_FUND_BODY_BYTES = 8 * 1_024 * 1_024;
 const MAX_RECOVERY_BODY_BYTES = 16 * 1_024;
 const RATE_WINDOW_MILLISECONDS = 60 * 60 * 1_000;
+
+const fundSubmissionSchema = z
+  .object({
+    artifact: jsonValueSchema,
+    acceptedMaxSpendFri: z
+      .string()
+      .regex(/^[1-9][0-9]*$/, "expected a positive canonical decimal integer"),
+  })
+  .strict();
 const STARK_FIELD_PRIME = (1n << 251n) + 17n * (1n << 192n) + 1n;
 const recoveryFeltSchema = z
   .string()
@@ -45,6 +55,11 @@ type SponsorServerOptions = {
   requireHttps: boolean;
   trustProxy: boolean;
 };
+
+type SponsorFundRelay = Pick<
+  RefillFundRelay,
+  "canFundOneMaximumTransaction" | "estimate" | "submit"
+>;
 
 type RateBucket = { count: number; resetsAt: number };
 
@@ -80,6 +95,7 @@ class RateLimiter {
 
 type SponsorResponse =
   | RefillFundSubmission
+  | RefillFundEstimate
   | RecoveryChallenge
   | RecoveryLocator
   | { error: string; reason?: SponsorUnavailableReason }
@@ -158,6 +174,9 @@ function publicError(error: Error): PublicError {
     if (error.code === "recovery_not_approved") {
       return { status: 422, code: error.code };
     }
+    if (error.code === "fund_cost_changed") {
+      return { status: 409, code: error.code };
+    }
     if (
       error.code === "fund_broadcast_disabled" ||
       error.code === "daily_fund_budget_exhausted"
@@ -184,7 +203,7 @@ function publicError(error: Error): PublicError {
 }
 
 export function createSponsorServer(
-  fundRelay: RefillFundRelay,
+  fundRelay: SponsorFundRelay,
   recoveryLookup: RecoveryLookupService,
   options: SponsorServerOptions,
 ): Server {
@@ -254,8 +273,36 @@ export function createSponsorServer(
           sendJson(response, 429, { error: "rate_limited" });
           return;
         }
-        const submission = await fundRelay.submit(await readJsonBody(request));
+        const body = fundSubmissionSchema.parse(await readJsonBody(request));
+        const submission = await fundRelay.submit(
+          body.artifact,
+          BigInt(body.acceptedMaxSpendFri),
+        );
         sendJson(response, submission.status === "finalized" ? 201 : 202, submission);
+        return;
+      }
+      if (
+        request.method === "POST" &&
+        url.pathname === "/v1/refill-funds/estimate"
+      ) {
+        const fundUnavailableReason = await options.fundUnavailableReason();
+        if (fundUnavailableReason !== undefined) {
+          response.setHeader("Retry-After", "300");
+          sendJson(response, 503, {
+            error: "sponsor_unavailable",
+            reason: fundUnavailableReason,
+          });
+          return;
+        }
+        if (!rates.allow(rateBucket("fund-estimate", request), 6)) {
+          response.setHeader("Retry-After", "3600");
+          sendJson(response, 429, { error: "rate_limited" });
+          return;
+        }
+        const estimate: RefillFundEstimate = await fundRelay.estimate(
+          await readJsonBody(request),
+        );
+        sendJson(response, 200, estimate);
         return;
       }
       if (request.method === "POST" && url.pathname === "/v1/recovery/challenge") {

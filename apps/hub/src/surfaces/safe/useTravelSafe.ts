@@ -22,10 +22,12 @@ import { requestWalletAccount, type BrowserWallet } from "../../adapters/wallet"
 import { readSettings, useSettings, writeSettings } from "../../adapters/settings";
 import { WRENCHLESS_MAINNET } from "../../lib/product-config";
 import {
-  fundTravelSafe,
+  prepareTravelSafeFund,
   recoverTravelSafe,
   returnRecoveredTravelSafe,
   returnTravelSafe,
+  submitPreparedTravelSafeFund,
+  type PreparedTravelSafeFund,
   type TravelSafeRecoveryResult,
 } from "../../lib/refill-operations";
 import {
@@ -83,6 +85,7 @@ export type CreateStep =
   | "connect"
   | "details"
   | "review"
+  | "quote"
   | "parking";
 
 export type TravelSafeViewModel = {
@@ -90,6 +93,7 @@ export type TravelSafeViewModel = {
   createStep: CreateStep;
   walletAccount: string | null;
   readiness: TravelSafeReadiness | null;
+  fundQuote: PreparedTravelSafeFund["estimate"]["summary"] | null;
   amount: string;
   returnDateLocal: string;
   earlyRecoveryBackup: string | null;
@@ -106,6 +110,7 @@ export type TravelSafeActions = {
   setReturnDateLocal(value: string): void;
   continueFromDetails(): Promise<void>;
   back(): void;
+  prepare(): Promise<void>;
   park(): Promise<void>;
   unlock(): Promise<void>;
   refresh(): Promise<void>;
@@ -350,6 +355,8 @@ export function useTravelSafe(): TravelSafeController {
   const [wallet, setWallet] = useState<BrowserWallet | null>(null);
   const [walletAccount, setWalletAccount] = useState<string | null>(null);
   const [readiness, setReadiness] = useState<TravelSafeReadiness | null>(null);
+  const [preparedFund, setPreparedFund] =
+    useState<PreparedTravelSafeFund | null>(null);
   const [amount, setAmount] = useState("");
   const [returnDateLocal, setReturnDateLocal] = useState("");
   const [earlyRecoveryBackup, setEarlyRecoveryBackup] = useState<string | null>(null);
@@ -438,6 +445,7 @@ export function useTravelSafe(): TravelSafeController {
         setReturnDateLocal(localDateTimeInput(active.returnDateSeconds));
         setCreateStep("review");
       }
+      setPreparedFund(null);
       setLive(null);
     } catch (caught) {
       setError(reasonFrom(caught));
@@ -478,6 +486,7 @@ export function useTravelSafe(): TravelSafeController {
           amountFri: parsed.fri,
           returnDateSeconds,
         });
+        setPreparedFund(null);
         setCreateStep("review");
         return;
       }
@@ -487,13 +496,14 @@ export function useTravelSafe(): TravelSafeController {
     }
   }, [amount, readiness, returnDateLocal]);
 
-  const park = useCallback(async (): Promise<void> => {
+  const prepare = useCallback(async (): Promise<void> => {
     if (wallet === null) {
       setCreateStep("connect");
       return;
     }
     setError(null);
-    setCreateStep("parking");
+    setPreparedFund(null);
+    setCreateStep("quote");
     setLive("Preparing privately in Ready");
     try {
       const ticket = await readActiveTravelSafeTicket();
@@ -505,7 +515,7 @@ export function useTravelSafe(): TravelSafeController {
         rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
       });
       await inspectRefillSponsor({ sponsorUrl: readSettings().sponsorUrl });
-      await fundTravelSafe({
+      const prepared = await prepareTravelSafeFund({
         wallet,
         readiness: currentReadiness,
         ticket,
@@ -514,10 +524,51 @@ export function useTravelSafe(): TravelSafeController {
         sponsorUrl: readSettings().sponsorUrl,
         rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
       });
+      setReadiness(currentReadiness);
+      setPreparedFund(prepared);
+      setLive(null);
+    } catch (caught) {
+      setError(reasonFrom(caught));
+      setCreateStep("review");
+      setLive(null);
+    }
+  }, [wallet]);
+
+  const park = useCallback(async (): Promise<void> => {
+    if (wallet === null || preparedFund === null) {
+      setPreparedFund(null);
+      setError("Prepare a new cost before parking");
+      setCreateStep(wallet === null ? "connect" : "review");
+      return;
+    }
+    setError(null);
+    setCreateStep("parking");
+    setLive("Submitting to Starknet");
+    try {
+      const ticket = await readActiveTravelSafeTicket();
+      if (ticket === null) throw new Error("Travel Safe setup was not saved");
+      const currentReadiness = await inspectTravelSafeReadiness({
+        wallet,
+        poolAddress: WRENCHLESS_MAINNET.poolAddress,
+        tokenAddress: WRENCHLESS_MAINNET.strkTokenAddress,
+        rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
+      });
+      await inspectRefillSponsor({ sponsorUrl: readSettings().sponsorUrl });
+      await submitPreparedTravelSafeFund({
+        wallet,
+        readiness: currentReadiness,
+        ticket,
+        prepared: preparedFund,
+        helperAddress: WRENCHLESS_MAINNET.helperAddress,
+        sponsorUrl: readSettings().sponsorUrl,
+        rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
+      });
+      setPreparedFund(null);
       setCreateStep("closed");
       setLive("Travel Safe submitted");
       await loadHome();
     } catch (caught) {
+      setPreparedFund(null);
       setError(reasonFrom(caught));
       if (caught instanceof RelayedRefillFundError && caught.ambiguous) {
         setCreateStep("closed");
@@ -527,7 +578,7 @@ export function useTravelSafe(): TravelSafeController {
       }
       setLive(null);
     }
-  }, [loadHome, wallet]);
+  }, [loadHome, preparedFund, wallet]);
 
   const unlock = useCallback(async (): Promise<void> => {
     setError(null);
@@ -613,9 +664,11 @@ export function useTravelSafe(): TravelSafeController {
 
   const back = useCallback((): void => {
     setError(null);
+    setPreparedFund(null);
     setCreateStep((current) => {
       if (current === "details") return "connect";
       if (current === "review") return "closed";
+      if (current === "quote") return "review";
       return current;
     });
   }, []);
@@ -626,6 +679,7 @@ export function useTravelSafe(): TravelSafeController {
       createStep,
       walletAccount,
       readiness,
+      fundQuote: preparedFund?.estimate.summary ?? null,
       amount,
       returnDateLocal,
       earlyRecoveryBackup,
@@ -636,10 +690,12 @@ export function useTravelSafe(): TravelSafeController {
     actions: {
       startCreate() {
         setError(null);
+        setPreparedFund(null);
         setCreateStep("connect");
       },
       closeCreate() {
         setEarlyRecoveryBackup(null);
+        setPreparedFund(null);
         setCreateStep("closed");
         setError(null);
       },
@@ -648,6 +704,7 @@ export function useTravelSafe(): TravelSafeController {
       setReturnDateLocal,
       continueFromDetails,
       back,
+      prepare,
       park,
       unlock,
       refresh: loadHome,

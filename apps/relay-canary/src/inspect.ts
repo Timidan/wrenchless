@@ -13,6 +13,19 @@ export type RelayFeeEstimate = {
   resourceBounds: ResourceBoundsBN;
 };
 
+export function maximumAuthorizedFeeFri(
+  resourceBounds: ResourceBoundsBN,
+): bigint {
+  return (
+    resourceBounds.l1_gas.max_amount *
+      resourceBounds.l1_gas.max_price_per_unit +
+    resourceBounds.l1_data_gas.max_amount *
+      resourceBounds.l1_data_gas.max_price_per_unit +
+    resourceBounds.l2_gas.max_amount *
+      resourceBounds.l2_gas.max_price_per_unit
+  );
+}
+
 export type RegistrationFinalityRequest = {
   transactionHash: string;
   poolAddress: string;
@@ -102,13 +115,9 @@ export function assertRelayFeeWithinCap(
   if (fee > cap) {
     throw new Error(`${label} transaction fee exceeds configured cap`);
   }
-  const maximumAuthorizedFee =
-    estimate.resourceBounds.l1_gas.max_amount *
-      estimate.resourceBounds.l1_gas.max_price_per_unit +
-    estimate.resourceBounds.l1_data_gas.max_amount *
-      estimate.resourceBounds.l1_data_gas.max_price_per_unit +
-    estimate.resourceBounds.l2_gas.max_amount *
-      estimate.resourceBounds.l2_gas.max_price_per_unit;
+  const maximumAuthorizedFee = maximumAuthorizedFeeFri(
+    estimate.resourceBounds,
+  );
   if (maximumAuthorizedFee > cap) {
     throw new Error(`${label} transaction resource bounds exceed configured cap`);
   }

@@ -7,6 +7,18 @@ const relayResultSchema = z.object({
   transactionHash: z.string().regex(/^0x[0-9a-f]+$/),
 });
 
+const relayEstimateSchema = z.object({
+  status: z.literal("estimated"),
+  summary: z.object({
+    mode: z.literal("dry-run"),
+    poolFeeFri: z.string().regex(/^(?:0|[1-9][0-9]*)$/),
+    estimatedTransactionFeeFri: z.string().regex(/^[1-9][0-9]*$/),
+    maxTransactionFeeFri: z.string().regex(/^[1-9][0-9]*$/),
+    maxSpendFri: z.string().regex(/^[1-9][0-9]*$/),
+    proofExpiresAtBlock: z.string().regex(/^(?:0|[1-9][0-9]*)$/),
+  }),
+});
+
 const relayErrorSchema = z.object({
   error: z.string(),
   reason: z.string().optional(),
@@ -15,6 +27,7 @@ const relayErrorSchema = z.object({
 const readinessSchema = z.object({ status: z.literal("ready") });
 
 export type RelayedRefillFundResult = z.infer<typeof relayResultSchema>;
+export type RelayedRefillFundEstimate = z.infer<typeof relayEstimateSchema>;
 
 const FUND_REQUEST_TIMEOUT_MILLISECONDS = 60_000;
 
@@ -31,6 +44,11 @@ export class RelayedRefillFundError extends Error {
 function endpoint(sponsorUrl: string): string {
   const base = sponsorUrl.endsWith("/") ? sponsorUrl : `${sponsorUrl}/`;
   return new URL("v1/refill-funds", base).toString();
+}
+
+function estimateEndpoint(sponsorUrl: string): string {
+  const base = sponsorUrl.endsWith("/") ? sponsorUrl : `${sponsorUrl}/`;
+  return new URL("v1/refill-funds/estimate", base).toString();
 }
 
 function readinessEndpoint(sponsorUrl: string): string {
@@ -58,6 +76,9 @@ function publicMessage(code: string, reason?: string): string {
   if (code === "active_safe_exists") {
     return "This Ready account already has an active Travel Safe.";
   }
+  if (code === "fund_cost_changed") {
+    return "The relay cost changed. Prepare a new estimate.";
+  }
   if (code === "recovery_not_approved") {
     return "Ready did not approve this Travel Safe recovery path.";
   }
@@ -76,6 +97,7 @@ function publicMessage(code: string, reason?: string): string {
 export async function submitRelayedRefillFund(input: {
   sponsorUrl: string;
   artifact: RefillFundArtifact;
+  acceptedMaxSpendFri: string;
   fetcher?: typeof fetch;
 }): Promise<RelayedRefillFundResult> {
   let response: Response;
@@ -83,7 +105,10 @@ export async function submitRelayedRefillFund(input: {
     response = await (input.fetcher ?? fetch)(endpoint(input.sponsorUrl), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input.artifact),
+      body: JSON.stringify({
+        artifact: input.artifact,
+        acceptedMaxSpendFri: input.acceptedMaxSpendFri,
+      }),
       signal: AbortSignal.timeout(FUND_REQUEST_TIMEOUT_MILLISECONDS),
     });
   } catch {
@@ -118,6 +143,54 @@ export async function submitRelayedRefillFund(input: {
     throw new RelayedRefillFundError(
       "The parking service returned an invalid transaction reference. The safe may still land; check the chain before trying again.",
       true,
+    );
+  }
+  return parsed.data;
+}
+
+export async function estimateRelayedRefillFund(input: {
+  sponsorUrl: string;
+  artifact: RefillFundArtifact;
+  fetcher?: typeof fetch;
+}): Promise<RelayedRefillFundEstimate> {
+  let response: Response;
+  try {
+    response = await (input.fetcher ?? fetch)(estimateEndpoint(input.sponsorUrl), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input.artifact),
+      signal: AbortSignal.timeout(FUND_REQUEST_TIMEOUT_MILLISECONDS),
+    });
+  } catch {
+    throw new RelayedRefillFundError(
+      "The parking service could not prepare a cost estimate.",
+      false,
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    throw new RelayedRefillFundError(
+      "The parking service returned an unreadable cost estimate.",
+      false,
+    );
+  }
+  if (!response.ok) {
+    const parsed = relayErrorSchema.safeParse(body);
+    throw new RelayedRefillFundError(
+      parsed.success
+        ? publicMessage(parsed.data.error, parsed.data.reason)
+        : "The parking service could not prepare a cost estimate.",
+      false,
+    );
+  }
+  const parsed = relayEstimateSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new RelayedRefillFundError(
+      "The parking service returned an invalid cost estimate.",
+      false,
     );
   }
   return parsed.data;

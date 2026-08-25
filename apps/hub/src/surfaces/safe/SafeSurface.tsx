@@ -68,6 +68,7 @@ const CREATE_STEPS: readonly CreateStep[] = [
   "connect",
   "details",
   "review",
+  "quote",
   "parking",
 ];
 
@@ -82,6 +83,10 @@ function localReturnDate(value: string): string | null {
     dateStyle: "medium",
     timeStyle: "short",
   });
+}
+
+function addFri(left: string, right: string): string {
+  return (BigInt(left) + BigInt(right)).toString();
 }
 
 /**
@@ -759,9 +764,9 @@ function CreateFlow(props: {
           <Actions>
             <Button
               icon={<LockSimpleIcon />}
-              label="Park it"
+              label="Prepare cost"
               onClick={() => {
-                void actions.park();
+                void actions.prepare();
               }}
             />
           </Actions>
@@ -769,6 +774,75 @@ function CreateFlow(props: {
             No recovery phrase is required. You can create an optional backup
             after parking.
           </Note>
+        </Screen>
+      );
+    }
+
+    case "quote": {
+      const quote = model.fundQuote;
+      if (quote === null) {
+        return (
+          <Screen
+            center
+            lede="No transaction will be sent yet."
+            title="Preparing the cost"
+          >
+            <Emblem>
+              <ArrowsClockwiseIcon />
+            </Emblem>
+            <StatusLine icon={<ArrowsClockwiseIcon />} iconMotion="spin">
+              Ready is preparing the private proof
+            </StatusLine>
+            <Live message={model.live} />
+          </Screen>
+        );
+      }
+      const estimatedTotalFri = addFri(
+        quote.poolFeeFri,
+        quote.estimatedTransactionFeeFri,
+      );
+      return (
+        <Screen
+          lede="Nothing has been sent. Confirming is the only step that broadcasts."
+          onBack={actions.back}
+          title="Confirm the cost"
+        >
+          <Facts>
+            <Fact
+              label="Safe receives"
+              strong
+              value={<Amount value={model.amount} />}
+            />
+            <Fact
+              label="Privacy fee"
+              value={<Amount value={formatStrk(quote.poolFeeFri)} />}
+            />
+            <Fact
+              label="Network fee estimate"
+              value={
+                <Amount value={formatStrk(quote.estimatedTransactionFeeFri)} />
+              }
+            />
+            <Fact
+              label="Estimated relay cost"
+              strong
+              value={<Amount value={formatStrk(estimatedTotalFri)} />}
+            />
+            <Fact
+              label="Maximum relay spend"
+              value={<Amount value={formatStrk(quote.maxSpendFri)} />}
+            />
+          </Facts>
+          <Actions>
+            <Button
+              icon={<LockSimpleIcon />}
+              label="Confirm and park"
+              onClick={() => {
+                void actions.park();
+              }}
+            />
+          </Actions>
+          <Note>If the cost changes, Wrenchless stops and asks you to prepare again.</Note>
         </Screen>
       );
     }

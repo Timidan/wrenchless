@@ -23,8 +23,10 @@ import {
   transitionStoredTravelSafeTicket,
 } from "./refill-ticket.js";
 import {
+  estimateRelayedRefillFund,
   RelayedRefillFundError,
   submitRelayedRefillFund,
+  type RelayedRefillFundEstimate,
 } from "./relayed-refill.js";
 import {
   createTravelSafeReleaseNonce,
@@ -80,7 +82,13 @@ async function snapshot(input: {
   return readRefillChainSnapshot(request);
 }
 
-export async function fundTravelSafe(input: {
+export type PreparedTravelSafeFund = {
+  artifact: Awaited<ReturnType<typeof prepareReadyRefillFundArtifact>>;
+  estimate: RelayedRefillFundEstimate;
+  proofExpiresAtBlock: string;
+};
+
+export async function prepareTravelSafeFund(input: {
   wallet: SelectedReadyWallet;
   readiness: TravelSafeReadiness;
   ticket: TravelSafeTicket;
@@ -89,7 +97,7 @@ export async function fundTravelSafe(input: {
   sponsorUrl: string;
   rpcUrl?: string;
   fetcher?: typeof fetch;
-}): Promise<{ transactionHash: string; final: boolean }> {
+}): Promise<PreparedTravelSafeFund> {
   assertDestination(input.wallet, input.readiness.account);
   if (!sameFelt(input.ticket.recoveryAccount, input.readiness.account)) {
     throw new Error("Use the Ready account chosen for this Travel Safe");
@@ -140,10 +148,53 @@ export async function fundTravelSafe(input: {
     proofExpiryRequest,
   );
 
+  const estimateRequest: Parameters<typeof estimateRelayedRefillFund>[0] = {
+    sponsorUrl: input.sponsorUrl,
+    artifact,
+  };
+  if (input.fetcher !== undefined) estimateRequest.fetcher = input.fetcher;
+  const estimate = await estimateRelayedRefillFund(estimateRequest);
+  return { artifact, estimate, proofExpiresAtBlock };
+}
+
+export async function submitPreparedTravelSafeFund(input: {
+  wallet: SelectedReadyWallet;
+  readiness: TravelSafeReadiness;
+  ticket: TravelSafeTicket;
+  prepared: PreparedTravelSafeFund;
+  helperAddress: string;
+  sponsorUrl: string;
+  rpcUrl?: string;
+  fetcher?: typeof fetch;
+}): Promise<{ transactionHash: string; final: boolean }> {
+  assertDestination(input.wallet, input.readiness.account);
+  if (!sameFelt(input.ticket.recoveryAccount, input.readiness.account)) {
+    throw new Error("Use the Ready account chosen for this Travel Safe");
+  }
+  const artifact = input.prepared.artifact;
+  if (
+    !sameFelt(artifact.stateId, input.ticket.stateId) ||
+    !sameFelt(artifact.recoveryAccount, input.ticket.recoveryAccount) ||
+    !sameFelt(artifact.tokenAddress, input.ticket.tokenAddress) ||
+    BigInt(artifact.amountFri) !== BigInt(input.ticket.amountFri) ||
+    BigInt(artifact.expiry) !== BigInt(input.ticket.returnDateSeconds)
+  ) {
+    throw new Error("The prepared cost does not match this Travel Safe");
+  }
+  const current = await snapshot({
+    helperAddress: input.helperAddress,
+    stateId: input.ticket.stateId,
+    rpcUrl: input.rpcUrl,
+    fetcher: input.fetcher,
+  });
+  if (current.state !== null) {
+    throw new Error("This Travel Safe state already exists onchain");
+  }
+
   await transitionStoredTravelSafeTicket(
     input.ticket.stateId,
     "FUND_SUBMITTING",
-    { fundProofExpiresAtBlock: proofExpiresAtBlock },
+    { fundProofExpiresAtBlock: input.prepared.proofExpiresAtBlock },
   );
 
   let result;
@@ -151,6 +202,7 @@ export async function fundTravelSafe(input: {
     const request: Parameters<typeof submitRelayedRefillFund>[0] = {
       sponsorUrl: input.sponsorUrl,
       artifact,
+      acceptedMaxSpendFri: input.prepared.estimate.summary.maxSpendFri,
     };
     if (input.fetcher !== undefined) request.fetcher = input.fetcher;
     result = await submitRelayedRefillFund(request);
