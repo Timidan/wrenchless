@@ -6,6 +6,25 @@ import {
 } from "./artifact.js";
 import type { JsonValue } from "./json.js";
 
+const STARK_FIELD_PRIME = (1n << 251n) + 17n * (1n << 192n) + 1n;
+
+const readySignatureSchema = z
+  .array(
+    z
+      .string()
+      .regex(
+        /^(?:0x[0-9a-fA-F]+|(?:0|[1-9][0-9]*))$/,
+        "expected a hexadecimal or decimal felt",
+      )
+      .transform((value) => `0x${BigInt(value).toString(16)}`)
+      .refine(
+        (value) => BigInt(value) < STARK_FIELD_PRIME,
+        "felt exceeds the Stark field",
+      ),
+  )
+  .min(1)
+  .max(64);
+
 const readyPreparedCallSchema = z
   .object({
     call: z
@@ -43,6 +62,12 @@ const readyPreparedRefillFundSchema = z
   })
   .strict();
 
+export function normalizeReadySignature(
+  signature: readonly string[],
+): string[] {
+  return readySignatureSchema.parse(signature);
+}
+
 export function normalizeReadyRefillFundArtifact(
   input: JsonValue,
 ): RefillFundArtifact {
@@ -57,7 +82,9 @@ export function normalizeReadyRefillFundArtifact(
     recoveryCommitment: value.recoveryCommitment,
     recoveryAccount: value.recoveryAccount,
     recoverySalt: value.recoverySalt,
-    recoveryAuthorization: value.recoveryAuthorization,
+    recoveryAuthorization: normalizeReadySignature(
+      value.recoveryAuthorization,
+    ),
     tokenAddress: value.tokenAddress,
     amountFri: value.amountFri,
     expiry: value.expiry,

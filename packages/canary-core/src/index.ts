@@ -23,6 +23,7 @@ export type {
 } from "./proof-facts.js";
 export {
   normalizeReadyRefillFundArtifact,
+  normalizeReadySignature,
 } from "./ready-artifact.js";
 export {
   assertPreparedRefillFund,

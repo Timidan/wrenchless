@@ -53,7 +53,7 @@ describe("normalizeReadyRefillFundArtifact", () => {
         recoveryCommitment,
         recoveryAccount,
         recoverySalt,
-        recoveryAuthorization: ["0xaaa", "0x0"],
+        recoveryAuthorization: ["2730", "0"],
         tokenAddress: token,
         amountFri: "1000",
         expiry: "1800003600",
@@ -65,6 +65,7 @@ describe("normalizeReadyRefillFundArtifact", () => {
       helperAddress: helper,
       stateId: "0x111",
       amountFri: "1000",
+      recoveryAuthorization: ["0xaaa", "0x0"],
       proof: "proof-payload",
     });
   });

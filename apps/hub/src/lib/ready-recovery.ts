@@ -1,5 +1,6 @@
 import {
   createRecoveryLookupTypedData,
+  normalizeReadySignature,
   type JsonValue,
 } from "@wrenchless/canary-core";
 import { z } from "zod";
@@ -112,7 +113,11 @@ export async function requestReadyRecoveryLocator(input: {
     lookedUp = await post(
       input.sponsorUrl,
       "v1/recovery/lookup",
-      { account, token: challenge.token, signature },
+      {
+        account,
+        token: challenge.token,
+        signature: normalizeReadySignature(signature),
+      },
       fetcher,
     );
   } catch {
