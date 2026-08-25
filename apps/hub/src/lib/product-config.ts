@@ -4,7 +4,7 @@ export const WRENCHLESS_MAINNET = {
   poolAddress:
     "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a",
   helperAddress:
-    "0x026ce951b858934b1ad832be2f93a102b9bf42deb5b824204278ed72b45fa828",
+    "0x018f6925422c85da8c9e0c1572adf4316a9821ffabc4b29db37d11c6a0c2844a",
   strkTokenAddress:
     "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
 } as const;
