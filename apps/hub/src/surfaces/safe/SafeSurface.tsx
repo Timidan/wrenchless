@@ -21,6 +21,7 @@ import {
   SuitcaseRollingIcon,
   WarningCircleIcon,
 } from "../../components/icons";
+import type { TravelSafeFundProgress } from "../../lib/travel-safe-progress";
 import { navigate } from "../../routes";
 import {
   Actions,
@@ -142,6 +143,43 @@ function SafeFigure(props: {
   );
 }
 
+function FundProgress(props: { progress: TravelSafeFundProgress }): JSX.Element {
+  return (
+    <section aria-label="Parking progress" className="fund-progress">
+      <ol className="fund-progress__steps">
+        {props.progress.steps.map((step) => (
+          <li
+            aria-current={step.state === "current" ? "step" : undefined}
+            data-state={step.state}
+            key={step.id}
+          >
+            <span aria-hidden="true" className="fund-progress__marker">
+              {step.state === "complete" ? <CheckCircleIcon /> : null}
+            </span>
+            <span>{step.label}</span>
+          </li>
+        ))}
+      </ol>
+      <StatusLine
+        announce
+        icon={
+          props.progress.working ? (
+            <ArrowsClockwiseIcon />
+          ) : (
+            <CheckCircleIcon />
+          )
+        }
+        iconMotion={props.progress.working ? "spin" : undefined}
+      >
+        {props.progress.message}
+      </StatusLine>
+      <p className="fund-progress__money" data-state={props.progress.money}>
+        {props.progress.moneyLabel}
+      </p>
+    </section>
+  );
+}
+
 export function SafeSurface(): JSX.Element {
   const { model, actions } = useTravelSafe();
   const { home, createStep } = model;
@@ -215,6 +253,7 @@ export function SafeSurface(): JSX.Element {
         <Home
           actions={actions}
           error={model.error}
+          fundProgress={model.fundProgress}
           home={home}
           live={model.live}
         />
@@ -250,6 +289,7 @@ function EarlyRecoveryBackup(props: {
 function Home(props: {
   home: SafeHomeState;
   error: string | null;
+  fundProgress: TravelSafeFundProgress | null;
   live: string | null;
   actions: TravelSafeActions;
 }): JSX.Element {
@@ -296,7 +336,9 @@ function Home(props: {
             <Button
               icon={<SuitcaseRollingIcon />}
               label="Create a new safe"
-              onClick={actions.startCreate}
+              onClick={() => {
+                void actions.startCreate();
+              }}
               tone="quiet"
             />
           </Actions>
@@ -376,14 +418,16 @@ function Home(props: {
     case "parking":
       return (
         <Screen
-          lede="Starknet is confirming it."
-          title="Transaction submitted"
+          title={
+            home.ticket.fundTransactionHash === null
+              ? "Checking submission"
+              : "Transaction submitted"
+          }
         >
           <SafeFigure caption="On its way to the safe" ticket={home.ticket} />
-          <StatusLine icon={<CheckCircleIcon />}>Transaction submitted</StatusLine>
-          <StatusLine icon={<ArrowsClockwiseIcon />} iconMotion="spin">
-            {props.live ?? "Checking Starknet"}
-          </StatusLine>
+          {props.fundProgress === null ? null : (
+            <FundProgress progress={props.fundProgress} />
+          )}
           {props.error === null ? null : <Failure message={props.error} />}
           <SafeEvidence ticket={home.ticket} />
           <Actions>
@@ -690,6 +734,7 @@ function CreateFlow(props: {
           {model.error === null ? null : <Failure message={model.error} />}
           <Actions>
             <Button
+              disabled={model.preflight === "checking"}
               icon={<ReadyWalletMark className="wbtn__ready" />}
               iconMotion={model.live === null ? undefined : "spin"}
               label="Connect wallet"
@@ -820,17 +865,11 @@ function CreateFlow(props: {
       const quote = model.fundQuote;
       if (quote === null) {
         return (
-          <Screen
-            center
-            lede="No transaction sent."
-            title="Preparing the cost"
-          >
-            <Emblem>
-              <ArrowsClockwiseIcon />
-            </Emblem>
-            <StatusLine icon={<ArrowsClockwiseIcon />} iconMotion="spin">
-              {model.live ?? "Starting"}
-            </StatusLine>
+          <Screen center title="Preparing the cost">
+            {model.fundProgress === null ? null : (
+              <FundProgress progress={model.fundProgress} />
+            )}
+            <Live message={model.live} />
           </Screen>
         );
       }
@@ -840,10 +879,12 @@ function CreateFlow(props: {
       );
       return (
         <Screen
-          lede="No transaction sent."
           onBack={actions.back}
           title="Confirm the cost"
         >
+          {model.fundProgress === null ? null : (
+            <FundProgress progress={model.fundProgress} />
+          )}
           <Facts>
             <Fact
               label="Safe receives"
@@ -886,21 +927,13 @@ function CreateFlow(props: {
 
     case "parking":
       return (
-        <Screen
-          center
-          lede="The private proof is ready."
-          title="Sending transaction"
-        >
-          <Emblem>
-            <LockSimpleIcon />
-          </Emblem>
-          <StatusLine icon={<CheckCircleIcon />}>Private proof approved</StatusLine>
-          <StatusLine icon={<ArrowsClockwiseIcon />} iconMotion="spin">
-            {model.live ?? "Sending to Starknet"}
-          </StatusLine>
-          <StatusLine icon={<HourglassIcon />}>Confirmation comes next</StatusLine>
+        <Screen center title="Sending transaction">
+          {model.fundProgress === null ? null : (
+            <FundProgress progress={model.fundProgress} />
+          )}
+          <Live message={model.live} />
           <Waiting seconds={model.elapsedSeconds} />
-          <Note>Keep this screen open.</Note>
+          <Note>Close after a transaction reference appears.</Note>
         </Screen>
       );
 

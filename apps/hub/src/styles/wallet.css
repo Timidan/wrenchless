@@ -930,6 +930,97 @@ html.reduced-motion .iconbtn:active {
   font-weight: 500;
 }
 
+/* ---------- financial action progress ---------- */
+
+.fund-progress {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.fund-progress__steps {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fund-progress__steps::before {
+  position: absolute;
+  top: 12px;
+  right: 10%;
+  left: 10%;
+  height: 1px;
+  background: var(--w-rule);
+  content: "";
+}
+
+.fund-progress__steps li {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+  color: var(--w-text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--size-micro);
+  text-align: center;
+}
+
+.fund-progress__marker {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--w-rule);
+  border-radius: 50%;
+  background: var(--w-ground);
+}
+
+.fund-progress__marker svg {
+  width: 16px;
+  height: 16px;
+}
+
+.fund-progress__steps li[data-state="complete"],
+.fund-progress__steps li[data-state="current"] {
+  color: var(--w-text);
+}
+
+.fund-progress__steps li[data-state="current"] .fund-progress__marker {
+  border-color: var(--w-text);
+  animation: progress-pulse 1400ms var(--ease-settle) infinite;
+}
+
+.fund-progress__money {
+  color: var(--w-text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--size-micro);
+  text-align: center;
+}
+
+.fund-progress__money[data-state="submitted"],
+.fund-progress__money[data-state="locked"] {
+  color: var(--w-text);
+}
+
+@keyframes progress-pulse {
+  50% {
+    transform: scale(1.08);
+  }
+}
+
+html.reduced-motion .fund-progress__marker {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fund-progress__marker {
+    animation: none;
+  }
+}
+
 /* ---------- state lines and notes ---------- */
 
 .statusline {

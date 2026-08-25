@@ -423,18 +423,20 @@ export function StatusLine(props: {
   icon: ReactNode;
   tone?: "plain" | "alert" | undefined;
   children: ReactNode;
+  announce?: boolean | undefined;
   /** Set only while the state machine behind this line is actively
    * working; the icon rotates and the line reports `aria-busy`. */
   iconMotion?: "spin" | undefined;
 }): JSX.Element {
   const spinning = props.iconMotion === "spin";
+  const announcing = spinning || props.announce === true;
   return (
     <p
       aria-busy={spinning ? "true" : undefined}
-      aria-live={spinning ? "polite" : undefined}
+      aria-live={announcing ? "polite" : undefined}
       className="statusline"
       data-tone={props.tone ?? "plain"}
-      role={spinning ? "status" : undefined}
+      role={announcing ? "status" : undefined}
     >
       <span
         aria-hidden="true"

@@ -50,9 +50,14 @@ import {
   unlockTravelSafeTicketStorage,
 } from "../../lib/refill-ticket";
 import {
-  inspectRefillSponsor,
   RelayedRefillFundError,
 } from "../../lib/relayed-refill";
+import { inspectTravelSafePreflight } from "../../lib/travel-safe-preflight";
+import {
+  deriveTravelSafeFundProgress,
+  type TravelSafeFundMoment,
+  type TravelSafeFundProgress,
+} from "../../lib/travel-safe-progress";
 import {
   sameFelt,
   validateTravelSafeAmount,
@@ -101,10 +106,12 @@ export type TravelSafeViewModel = {
   error: string | null;
   live: string | null;
   elapsedSeconds: number;
+  preflight: "idle" | "checking" | "ready";
+  fundProgress: TravelSafeFundProgress | null;
 };
 
 export type TravelSafeActions = {
-  startCreate(): void;
+  startCreate(): Promise<void>;
   closeCreate(): void;
   connect(): Promise<void>;
   setAmount(value: string): void;
@@ -364,6 +371,10 @@ export function useTravelSafe(): TravelSafeController {
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [preflight, setPreflight] = useState<"idle" | "checking" | "ready">(
+    "idle",
+  );
+  const [fundMoment, setFundMoment] = useState<TravelSafeFundMoment | null>(null);
 
   useEffect(() => {
     if (createStep !== "parking") return;
@@ -500,21 +511,44 @@ export function useTravelSafe(): TravelSafeController {
     };
   }, [home]);
 
+  const runPreflight = useCallback(async (): Promise<boolean> => {
+    setError(null);
+    setPreflight("checking");
+    setLive("Checking Travel Safe");
+    try {
+      if (!devicePasskeysAvailable()) {
+        throw new Error("Open Wrenchless over HTTPS on a device that supports passkeys");
+      }
+      await inspectTravelSafePreflight({
+        sponsorUrl: readSettings().sponsorUrl,
+        rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
+        poolAddress: WRENCHLESS_MAINNET.poolAddress,
+        helperAddress: WRENCHLESS_MAINNET.helperAddress,
+      });
+      setPreflight("ready");
+      setLive(null);
+      return true;
+    } catch (caught) {
+      setPreflight("idle");
+      setError(reasonFrom(caught));
+      setLive(null);
+      return false;
+    }
+  }, []);
+
   const connect = useCallback(async (): Promise<void> => {
     setError(null);
+    if (preflight !== "ready" && !(await runPreflight())) return;
     setLive("Connect your wallet");
     try {
       const connected = await requestWalletAccount();
       setLive("Reading private balance");
-      const [ready] = await Promise.all([
-        inspectTravelSafeReadiness({
-          wallet: connected.wallet,
-          poolAddress: WRENCHLESS_MAINNET.poolAddress,
-          tokenAddress: WRENCHLESS_MAINNET.strkTokenAddress,
-          rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
-        }),
-        inspectRefillSponsor({ sponsorUrl: readSettings().sponsorUrl }),
-      ]);
+      const ready = await inspectTravelSafeReadiness({
+        wallet: connected.wallet,
+        poolAddress: WRENCHLESS_MAINNET.poolAddress,
+        tokenAddress: WRENCHLESS_MAINNET.strkTokenAddress,
+        rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
+      });
       if (!ready.registered) {
         throw new Error("Set up Shielded Starknet, then try again");
       }
@@ -540,7 +574,7 @@ export function useTravelSafe(): TravelSafeController {
       setError(reasonFrom(caught));
       setLive(null);
     }
-  }, []);
+  }, [preflight, runPreflight]);
 
   const continueFromDetails = useCallback(async (): Promise<void> => {
     if (readiness === null) return;
@@ -592,12 +626,12 @@ export function useTravelSafe(): TravelSafeController {
     }
     setError(null);
     setPreparedFund(null);
+    setFundMoment("approving");
     setCreateStep("quote");
     setLive("Preparing private proof");
     try {
       const ticket = await readActiveTravelSafeTicket();
       if (ticket === null) throw new Error("Travel Safe setup was not saved");
-      await inspectRefillSponsor({ sponsorUrl: readSettings().sponsorUrl });
       const prepared = await prepareTravelSafeFund({
         wallet,
         readiness,
@@ -607,6 +641,7 @@ export function useTravelSafe(): TravelSafeController {
         sponsorUrl: readSettings().sponsorUrl,
         rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
         onStage(stage) {
+          setFundMoment(stage === "estimate" ? "estimating" : "approving");
           setLive(
             stage === "proof"
               ? "Approve the private proof"
@@ -617,9 +652,11 @@ export function useTravelSafe(): TravelSafeController {
         },
       });
       setPreparedFund(prepared);
+      setFundMoment("cost-ready");
       setLive(null);
     } catch (caught) {
       setError(reasonFrom(caught));
+      setFundMoment(null);
       setCreateStep("review");
       setLive(null);
     }
@@ -633,6 +670,7 @@ export function useTravelSafe(): TravelSafeController {
       return;
     }
     setError(null);
+    setFundMoment("submitting");
     setCreateStep("parking");
     setLive("Submitting to Starknet");
     try {
@@ -658,6 +696,7 @@ export function useTravelSafe(): TravelSafeController {
         setCreateStep("closed");
         await loadHome();
       } else {
+        setFundMoment(null);
         setCreateStep("review");
       }
       setLive(null);
@@ -750,6 +789,7 @@ export function useTravelSafe(): TravelSafeController {
   const back = useCallback((): void => {
     setError(null);
     setPreparedFund(null);
+    setFundMoment(null);
     setCreateStep((current) => {
       if (current === "details") return "connect";
       if (current === "review") return "closed";
@@ -771,17 +811,35 @@ export function useTravelSafe(): TravelSafeController {
       error,
       live,
       elapsedSeconds,
+      preflight,
+      fundProgress:
+        createStep === "quote" && fundMoment !== null
+          ? deriveTravelSafeFundProgress(fundMoment)
+          : createStep === "parking"
+            ? deriveTravelSafeFundProgress("submitting")
+            : home.name === "parking"
+              ? deriveTravelSafeFundProgress(
+                  home.ticket.fundTransactionHash === null
+                    ? "unknown"
+                    : "confirming",
+                )
+              : null,
     },
     actions: {
-      startCreate() {
+      async startCreate() {
         setError(null);
         setPreparedFund(null);
+        setFundMoment(null);
         setCreateStep("connect");
+        setPreflight("idle");
+        await runPreflight();
       },
       closeCreate() {
         setEarlyRecoveryBackup(null);
         setPreparedFund(null);
+        setFundMoment(null);
         setCreateStep("closed");
+        setPreflight("idle");
         setError(null);
       },
       connect,
