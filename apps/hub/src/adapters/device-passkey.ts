@@ -35,12 +35,10 @@ export type DevicePasskey = {
   publicKey: string;
 };
 
-export class PasskeyPrfUnavailableError extends Error {
-  constructor() {
-    super("This passkey cannot protect Travel Safe secrets on this device.");
-    this.name = "PasskeyPrfUnavailableError";
-  }
-}
+export type DevicePasskeyVerification = {
+  /** Present only when this authenticator supports WebAuthn's PRF extension. */
+  prfSecret: Uint8Array<ArrayBuffer> | null;
+};
 
 function toBase64Url(bytes: ArrayBuffer): string {
   let binary = "";
@@ -129,10 +127,6 @@ const prfResultSchema = z
     }),
   })
   .loose();
-const prfCreationSchema = z
-  .object({ prf: z.object({ enabled: z.literal(true) }) })
-  .loose();
-
 function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
   if (left.length !== right.length) return false;
   let difference = 0;
@@ -216,11 +210,6 @@ export async function createDevicePasskey(
   if (response.getPublicKeyAlgorithm() !== ES256) {
     throw new Error("This device offered a passkey type Wrenchless cannot check.");
   }
-  if (
-    !prfCreationSchema.safeParse(credential.getClientExtensionResults()).success
-  ) {
-    throw new PasskeyPrfUnavailableError();
-  }
   const publicKey = response.getPublicKey();
   if (publicKey === null) {
     throw new Error("This device did not return a passkey public key.");
@@ -243,7 +232,7 @@ export async function createDevicePasskey(
  */
 export async function verifyDevicePasskey(
   passkey: DevicePasskey,
-): Promise<Uint8Array<ArrayBuffer>> {
+): Promise<DevicePasskeyVerification> {
   assertAvailable();
   const challenge = randomChallenge();
   const prfSalt = new Uint8Array(
@@ -283,9 +272,10 @@ export async function verifyDevicePasskey(
   const prfResult = prfResultSchema.safeParse(
     assertion.getClientExtensionResults(),
   );
-  if (!prfResult.success || prfResult.data.prf.results.first.byteLength !== 32) {
-    throw new PasskeyPrfUnavailableError();
-  }
+  const prfSecret =
+    prfResult.success && prfResult.data.prf.results.first.byteLength === 32
+      ? new Uint8Array(prfResult.data.prf.results.first.slice(0))
+      : null;
 
   // The authenticator's own account of what it was asked. It is parsed rather
   // than cast: this is the only place the challenge this call generated can be
@@ -351,5 +341,5 @@ export async function verifyDevicePasskey(
     signed,
   );
   if (!valid) throw new Error("The passkey was not accepted.");
-  return new Uint8Array(prfResult.data.prf.results.first.slice(0));
+  return { prfSecret };
 }

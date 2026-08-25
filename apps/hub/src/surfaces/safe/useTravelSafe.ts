@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createDevicePasskey,
   devicePasskeysAvailable,
-  PasskeyPrfUnavailableError,
+  type DevicePasskey,
   verifyDevicePasskey,
 } from "../../adapters/device-passkey";
 import {
@@ -122,7 +122,7 @@ export type TravelSafeController = {
   actions: TravelSafeActions;
 };
 
-function passkeyFromSettings(): { credentialId: string; publicKey: string } | null {
+function passkeyFromSettings(): DevicePasskey | null {
   const settings = readSettings();
   if (
     settings.devicePasskeyId === null ||
@@ -136,29 +136,32 @@ function passkeyFromSettings(): { credentialId: string; publicKey: string } | nu
   };
 }
 
+async function unlockWithPasskey(
+  passkey: DevicePasskey,
+  allowLocalKeyCreation = false,
+): Promise<void> {
+  const verification = await verifyDevicePasskey(passkey);
+  await unlockTravelSafeTicketStorage(
+    verification.prfSecret,
+    allowLocalKeyCreation,
+  );
+}
+
 async function createOrVerifyPasskey(account: string): Promise<void> {
   const existing = passkeyFromSettings();
   if (existing !== null) {
-    try {
-      await unlockTravelSafeTicketStorage(await verifyDevicePasskey(existing));
-      return;
-    } catch (error) {
-      if (!(error instanceof PasskeyPrfUnavailableError)) throw error;
-      if (readSettings().activeSafeStateId !== null) {
-        throw new Error(
-          "This saved passkey predates secure Travel Safe storage. Recover or clear the existing Safe before creating another.",
-        );
-      }
-      writeSettings({ devicePasskeyId: null, devicePasskeyPublicKey: null });
-    }
+    await unlockWithPasskey(
+      existing,
+      readSettings().activeSafeStateId === null,
+    );
+    return;
   }
   const created = await createDevicePasskey(`Travel Safe ${account.slice(0, 8)}`);
-  const passkeySecret = await verifyDevicePasskey(created);
+  await unlockWithPasskey(created, true);
   writeSettings({
     devicePasskeyId: created.credentialId,
     devicePasskeyPublicKey: created.publicKey,
   });
-  await unlockTravelSafeTicketStorage(passkeySecret);
 }
 
 async function readSafeSnapshot(stateId: string): Promise<RefillChainSnapshot> {
@@ -531,7 +534,7 @@ export function useTravelSafe(): TravelSafeController {
     try {
       const passkey = passkeyFromSettings();
       if (passkey === null) throw new Error("This device has no Wrenchless passkey");
-      await unlockTravelSafeTicketStorage(await verifyDevicePasskey(passkey));
+      await unlockWithPasskey(passkey);
       await loadHome();
     } catch (caught) {
       setHome({ name: "device-locked", reason: reasonFrom(caught) });
@@ -583,7 +586,7 @@ export function useTravelSafe(): TravelSafeController {
       }
       const passkey = passkeyFromSettings();
       if (passkey === null) throw new Error("This device has no Wrenchless passkey");
-      await unlockTravelSafeTicketStorage(await verifyDevicePasskey(passkey));
+      await unlockWithPasskey(passkey);
       const ticket = await readTravelSafeTicket(stateId);
       setHome({ name: "returning", ticket });
       await returnTravelSafe({
@@ -657,7 +660,7 @@ export function useTravelSafe(): TravelSafeController {
           if (passkey === null) {
             throw new Error("This device has no Wrenchless passkey");
           }
-          await unlockTravelSafeTicketStorage(await verifyDevicePasskey(passkey));
+          await unlockWithPasskey(passkey);
           const ticket = await readActiveTravelSafeTicket();
           if (ticket === null) throw new Error("No Travel Safe is active here");
           setEarlyRecoveryBackup(ticket.recoveryPhrase);

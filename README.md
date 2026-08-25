@@ -26,11 +26,12 @@ mailboxes, PINs, or second-device setup in the shipped hub.
 ## Security boundary
 
 - Wrenchless generates early-return material inside one local ticket. The
-  ticket is AES-GCM encrypted by a key derived from the device passkey and can
-  reveal an optional twelve-word backup after passkey verification.
-- The passkey-derived encryption key is non-extractable and lives only for the
-  current unlocked session. Explicitly forgetting the Safe also removes legacy
-  ticket ciphertext and its former browser key database.
+  ticket is AES-GCM encrypted and can reveal an optional twelve-word backup
+  only after passkey verification.
+- With a PRF-capable passkey, the non-extractable encryption key is derived for
+  the current session. Otherwise, the browser keeps one random non-extractable
+  key on this device. Neither key is sent to the sponsor. Explicitly forgetting
+  the Safe removes its ciphertext and local key data.
 - Before the return date, CLAIM requires the early-return key. After the date,
   REFUND requires a typed-data signature from the Ready account selected during
   setup.
