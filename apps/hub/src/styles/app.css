@@ -61,15 +61,19 @@ button {
   cursor: pointer;
 }
 
+/* Selection, the focus ring and the skip link all read the surface roles
+   rather than the palette, so each one inverts with the ground it is drawn on
+   instead of needing a second rule per ground. On every light surface the
+   roles resolve to exactly the ink and white these used to name. */
 ::selection {
-  background: var(--ink);
-  color: var(--white);
+  background: var(--w-text);
+  color: var(--w-ground);
 }
 
 /* Rings are per ground: ink on the white bed, white on the two dark ones.
    Never animated, because a ring that fades in reads as lag on a tab. */
 :focus-visible {
-  outline: 2px solid var(--ink);
+  outline: 2px solid var(--w-text);
   outline-offset: 3px;
   transition: none;
 }
@@ -139,17 +143,19 @@ p {
   min-height: 44px;
   padding: 0 var(--space-6);
   border-radius: var(--r-pill);
-  background: var(--ink);
-  color: var(--white);
+  background: var(--w-text);
+  color: var(--w-ground);
   font-family: var(--font-mono);
   font-size: var(--size-ui);
   transform: translateY(-220%);
   transition: transform var(--dur-fast) var(--ease-settle);
 }
 
+/* The ring is drawn outside the pill, on the page's own ground, so it takes the
+   page's ink and not the pill's. */
 .skip-link:focus-visible {
   transform: translateY(0);
-  outline-color: var(--ink);
+  outline-color: var(--w-text);
 }
 
 /* ---------- the grid ----------

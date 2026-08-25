@@ -1,5 +1,13 @@
 import type { JSX, ReactNode } from "react";
-import { useEffect, useId, useRef, useState } from "react";
+import {
+  Children,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 
 import { StrkTokenMark } from "../../components/StrkTokenMark";
 import { WrenchlessMark } from "../../components/WrenchlessMark";
@@ -166,9 +174,150 @@ export function Button(props: {
   );
 }
 
-/** Actions sit on the centre line, and wrap under each other rather than shrink. */
-export function Actions(props: { children: ReactNode }): JSX.Element {
-  return <div className="wactions">{props.children}</div>;
+/**
+ * Actions sit on the centre line, and wrap under each other rather than shrink.
+ *
+ * A stack of two or more is one decision, and it is drawn as one: the buttons
+ * give up their own outlines and a single hairline ring rests on the strong
+ * action, travelling to whatever is pointed at or tabbed to. A stack of one is
+ * not a decision, so it keeps the outline and the lift a lone button has always
+ * had. Which of the two this is, is counted here, because this is the only
+ * place that can see all of them.
+ *
+ * The ring is measured rather than described. Its buttons are sized by their
+ * own words, they wrap, and the face they are set in arrives after first paint;
+ * every one of those moves the edges any fixed figure would have been written
+ * against. A ResizeObserver on the stack and on each button is what keeps the
+ * ring honest through all three.
+ */
+export function Actions(props: {
+  children: ReactNode;
+  /** A column rather than a row: one strong action with quiet alternatives
+   *  under it, which is the shape the travelling ring is drawn for. */
+  stack?: boolean | undefined;
+}): JSX.Element {
+  const stack = useRef<HTMLDivElement | null>(null);
+  const [at, setAt] = useState<number | null>(null);
+  const [box, setBox] = useState<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null>(null);
+  const [primed, setPrimed] = useState(false);
+
+  // The ring belongs only to an explicit stack with a real choice. Ordinary
+  // multi-button rows keep their independent controls and outlines.
+  const marked = props.stack === true && Children.count(props.children) > 1;
+
+  const measure = useCallback(() => {
+    const frame = stack.current;
+    if (!frame || !marked) return;
+    const all = [...frame.querySelectorAll<HTMLButtonElement>(".wbtn")];
+
+    // Where the ring rests: the strong action, which is the first one that is
+    // not quiet and not disabled. A stack whose primary is disabled has nothing
+    // to recommend, so the ring rests on the first thing that can be pressed.
+    const strong = all.findIndex(
+      (button) => !button.classList.contains("wbtn--quiet") && !button.disabled,
+    );
+    const pressable = all.findIndex((button) => !button.disabled);
+    const home = strong === -1 ? Math.max(pressable, 0) : strong;
+
+    const target = all[at ?? home];
+    if (!target) return;
+    const outer = frame.getBoundingClientRect();
+    const inner = target.getBoundingClientRect();
+    setBox({
+      x: inner.left - outer.left,
+      y: inner.top - outer.top,
+      w: inner.width,
+      h: inner.height,
+    });
+  }, [at, marked]);
+
+  useLayoutEffect(measure, [measure]);
+
+  useEffect(() => {
+    const frame = stack.current;
+    if (!frame || !marked) return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(frame);
+    for (const button of frame.querySelectorAll(".wbtn")) observer.observe(button);
+    return () => {
+      observer.disconnect();
+    };
+  }, [marked, measure]);
+
+  // Travel is switched on only after the first placement has been painted.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      setPrimed(true);
+    });
+    return () => {
+      cancelAnimationFrame(id);
+    };
+  }, []);
+
+  // Which button the pointer or the keyboard is on. Both are answered, because
+  // a treatment that only exists for a mouse is half a treatment.
+  const seek = (target: EventTarget | null): void => {
+    const frame = stack.current;
+    if (!(target instanceof Element) || !frame) return;
+    const button = target.closest<HTMLButtonElement>(".wbtn");
+    if (!button || button.disabled) return;
+    const index = [...frame.querySelectorAll(".wbtn")].indexOf(button);
+    if (index !== -1) setAt(index);
+  };
+
+  return (
+    <div
+      className={props.stack === true ? "wactions wactions--stack" : "wactions"}
+      data-marked={marked ? "" : undefined}
+      data-primed={primed ? "" : undefined}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setAt(null);
+      }}
+      onFocus={(event) => {
+        seek(event.target);
+      }}
+      onPointerLeave={() => {
+        setAt(null);
+      }}
+      onPointerDown={(event) => {
+        seek(event.target);
+      }}
+      onPointerOver={(event) => {
+        seek(event.target);
+      }}
+      ref={stack}
+    >
+      {marked && box !== null ? (
+        <span
+          aria-hidden="true"
+          className="wactions__ring"
+          /*
+           * Written as real properties rather than through four `--ring-*`
+           * custom properties read by the stylesheet.
+           *
+           * Both shapes work. This one is chosen because it puts nothing
+           * between the measurement and the box: these are the three properties
+           * the stylesheet transitions, and they are set here with the numbers
+           * this component just took off the target. The custom-property
+           * version needs a cast to write a `--*` key through `CSSProperties`,
+           * and it splits one fact — where the ring is — across a component and
+           * a stylesheet.
+           */
+          style={{
+            height: `${String(box.h)}px`,
+            transform: `translate(${String(box.x)}px, ${String(box.y)}px)`,
+            width: `${String(box.w)}px`,
+          }}
+        />
+      ) : null}
+      {props.children}
+    </div>
+  );
 }
 
 /** An icon-only control always carries its name; the glyph never carries it. */

@@ -4,15 +4,44 @@
    Every contrast figure quoted below was computed against WCAG 2.1 relative
    luminance, not judged by eye. */
 
+/* ---- the face ---------------------------------------------------------------
+
+   Hanken Grotesk, self-hosted. It is served from this origin and nowhere else:
+   no Google Fonts stylesheet, no third-party CDN, no request that tells anybody
+   which page a reader is on. That is the property the hub actually needs, and
+   the earlier wording — "no font request leaves the page" — was describing the
+   implementation rather than the requirement. BRAND.md states the requirement
+   correctly: the hub does not request *remote* fonts.
+
+   One variable file, wght instanced to 400:500 and subset to Latin, is 19KB.
+   Weights stop at 500 in this system, so the rest of the axis is not shipped.
+
+   `font-display: swap` is safe here in a way it usually is not. The fallback
+   below is metric-matched to this exact file — measured, not guessed: Hanken's
+   own ascent is 100% of the em, its descent 30.3%, its line gap 0, which is
+   what the overrides declare. The line box is therefore the same height before
+   and after the swap, so the text re-renders in place instead of reflowing. */
+
+@font-face {
+  font-family: "Hanken Grotesk";
+  src: url("/fonts/hanken-grotesk-latin-var.woff2") format("woff2");
+  font-weight: 400 500;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ---- metric-matched fallbacks ----------------------------------------------
 
+   The face above is what a reader sees. This is what holds its place while the
+   file is in flight, and what draws the page if it never arrives.
+
    Both faces below are local system fonts with the approved metrics written
-   over them. No font request leaves the page. Every figure was measured
-   rather than looked up: rendered at 100px, one long line of the page's own
-   copy is 5155.9 units wide in Hanken Grotesk and 5142.0 in Arial and its
-   clones, and a "wrenchless 0123456789" is 1297.8 in Fragment Mono against
-   1260.0 in every 0.6em monospace. The ascent and descent figures are those
-   fonts' own, so the baseline stays consistent across supported fallbacks.
+   over them. Every figure was measured rather than looked up: rendered at
+   100px, one long line of the page's own copy is 5155.9 units wide in Hanken
+   Grotesk and 5142.0 in Arial and its clones, and a "wrenchless 0123456789" is
+   1297.8 in Fragment Mono against 1260.0 in every 0.6em monospace. The ascent
+   and descent figures are those fonts' own, so the baseline stays consistent
+   across supported fallbacks.
 
    `Helvetica Neue` is deliberately not in either stack any more. It was first
    in the old sans list and it is 9% narrower than Hanken Grotesk, which is
@@ -71,6 +100,34 @@
   --rule-light: rgba(255, 255, 255, 0.14);
   --rule-light-strong: rgba(255, 255, 255, 0.5);
 
+  /* ---- the product surfaces' ground ------------------------------------
+
+     The landing page commits to three grounds in a fixed order and they are
+     the identity: a black hero, a white bed, an ink footer. It is a document,
+     it is read once, and it does not get a dark mode — inverting it would be
+     inverting the argument.
+
+     The product surfaces are a different object. They are a device somebody
+     opens, repeatedly, wherever they happen to be, and the whole premise of
+     this product is that where they happen to be is an airport at four in the
+     morning. A white slab at full brightness is the wrong thing to hand that
+     person, and the system already owns every value needed to avoid it — the
+     dark-ground ink, paper and hairline tokens have been sitting above this
+     block unused by these routes.
+
+     So the surfaces read roles, never colours, and the block below is the only
+     place the roles are bound. Nothing in `wallet.css` names a colour.        */
+  --w-bed: var(--near-white);
+  --w-ground: var(--white);
+  /* A wash one step off the ground: a hover fill, a state strip, the skeleton
+     that holds a figure's place before the first read. */
+  --w-raised: var(--near-white);
+  --w-text: var(--ink);
+  --w-text-body: var(--ink-body);
+  --w-text-secondary: var(--ink-secondary);
+  --w-rule: var(--rule);
+  --w-rule-strong: var(--rule-strong);
+
   /* ---- rationed chroma -------------------------------------------------
      Two colours survive on an otherwise grayscale page, and each one is
      load-bearing.
@@ -79,6 +136,24 @@
      colour only agrees with them.
 
      --chip-fill is the evidence tag fill: white on it reads 15.88:1. */
+
+  /* Declared twice on purpose, and the order is the whole point. A browser
+     that cannot parse `oklch()` drops that line and keeps the hex above it;
+     one that can, overwrites it. The hex is the same colour, converted rather
+     than picked: oklch(66% 0.19 28) resolves to #F0584B inside sRGB with no
+     clipping, so the two declarations are the same red and not an approximate
+     pair that drift apart under a theme change.
+
+     This is the only oklch value in the system and it is the one that marks an
+     actionable error. Without the fallback, a browser that failed to parse it
+     would leave the error strip inheriting ink — the error would still say what
+     it says, but it would stop looking like one, which is exactly the failure
+     the colour exists to prevent.
+
+     It is a strip and a border, never body text: 3.39:1 on white against a 3:1
+     floor for non-text, and 5.70:1 on --black where the story section does set
+     it as type against a 4.5:1 floor. */
+  --signal: #f0584b;
   --signal: oklch(66% 0.19 28);
   --chip-fill: #15242d;
 
@@ -123,7 +198,7 @@
 
   /* ---- type ------------------------------------------------------------
      Weights stop at 500. Hierarchy is carried by scale, never by weight. */
-  --font-sans: "Hanken Fallback", Arial, sans-serif;
+  --font-sans: "Hanken Grotesk", "Hanken Fallback", Arial, sans-serif;
   --font-mono: "Fragment Fallback", monospace;
 
   --size-display: clamp(3rem, 2.1rem + 4.6vw, 6rem);
@@ -198,5 +273,49 @@
   :root {
     --mark-size: 20px;
     --wordmark-size: 0.8125rem;
+  }
+}
+
+/* ---- the product surfaces, on a dark ground --------------------------------
+
+   Bound here and nowhere else. Only `html.app-page` is answered: the landing
+   page keeps its three grounds in their fixed order, because that sequence is
+   the argument and inverting it would invert the argument.
+
+   Every figure below was computed against the ink ground the device is drawn
+   on, the same way the light values above were computed against white.
+
+   The device sits on the blacker of the two grounds rather than the other way
+   round, which is the same relationship the light surfaces have: the thing you
+   are working in is a step nearer the light than the page it rests on. The two
+   are only 1.05:1 apart, so the hairline is what actually draws the device —
+   exactly as on white, where #ffffff on #f7f6f4 is 1.06:1 and the border does
+   the same job.
+
+   Text is more forgiving here than on white and the values say so. 70% white
+   composites to #b8b8b8 for 9.29:1, and 50% — the value that only reaches
+   3.48:1 on white and is rationed to 24px and up there — reaches 5.34:1 on ink
+   and clears the small-text floor outright.
+
+   The wash is 6% white, #222222, 1.16:1 off its ground. It is a little stronger
+   than the 1.06:1 that --near-white gives on white, because a wash this close
+   to black loses to any reflection on the glass and the surface is designed to
+   be read on a phone in a room the reader did not choose.
+
+   --signal is not rebound. #f0584b reads 5.44:1 on this ground against 3.39:1
+   on white: the one colour in the system gets better here, not worse.        */
+
+@media (prefers-color-scheme: dark) {
+  html.app-page {
+    color-scheme: dark;
+
+    --w-bed: var(--black);
+    --w-ground: var(--ink);
+    --w-raised: rgba(255, 255, 255, 0.06);
+    --w-text: var(--paper);
+    --w-text-body: var(--paper-body);
+    --w-text-secondary: rgba(255, 255, 255, 0.5);
+    --w-rule: var(--rule-light);
+    --w-rule-strong: var(--rule-light-strong);
   }
 }

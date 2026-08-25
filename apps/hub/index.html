@@ -22,7 +22,26 @@
     <link rel="canonical" href="%SITE_URL%/" />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    <!-- Stays `light`, deliberately. This is the SPA entry for every route,
+         and the landing page is light on all of them; declaring `light dark`
+         here would hand a dark-preferring reader a dark canvas for the frame
+         before the stylesheet lands, on the one page that is never dark.
+         The product surfaces opt themselves in from CSS instead — `color-scheme:
+         dark` on `html.app-page` overrides this for exactly those routes, which
+         is what the scrollbars and the form controls there read. -->
     <meta name="color-scheme" content="light" />
+    <!-- The one font file, fetched in parallel with the stylesheet that asks
+         for it rather than after it. It is same-origin, so `crossorigin` here
+         is not optional decoration: a font is always fetched in CORS mode, and
+         without the attribute the preload lands in a different cache partition
+         than the @font-face request and is simply fetched twice. -->
+    <link
+      rel="preload"
+      href="/fonts/hanken-grotesk-latin-var.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
   </head>
   <body>
     <div id="root"></div>

@@ -12,8 +12,15 @@
 html.app-page,
 html.app-page body {
   height: 100%;
-  background: var(--white);
+  background: var(--w-ground);
   overflow-x: clip;
+}
+
+/* The ground is set above; the ink has to be set with it. `app.css` gives the
+   document `--ink` and on a dark surface that is near-black type on a near-black
+   page. */
+html.app-page body {
+  color: var(--w-text);
 }
 
 /* ---------- frame ---------- */
@@ -37,7 +44,7 @@ html.app-page body {
   min-height: 100svh;
   width: 100%;
   margin-inline: auto;
-  background: var(--white);
+  background: var(--w-ground);
 }
 
 /* Both product routes stay a compact device instead of widening into a
@@ -50,12 +57,12 @@ html.app-page body {
 @media (min-width: 48rem) {
   html.app-page,
   html.app-page body {
-    background: var(--near-white);
+    background: var(--w-bed);
   }
   .product-stage {
     align-content: center;
     padding: var(--space-8) var(--space-5);
-    background: var(--near-white);
+    background: var(--w-bed);
   }
   /* 46rem is the tallest the device is allowed to be, not the height it wants
      to be: below that it takes the window, above it it stops. It is set where
@@ -68,7 +75,7 @@ html.app-page body {
   .product {
     min-height: 0;
     height: min(100svh - 2 * var(--space-8), 46rem);
-    border: 1px solid var(--rule);
+    border: 1px solid var(--w-rule);
     border-radius: var(--r-card);
     overflow: clip;
   }
@@ -87,7 +94,7 @@ html.app-page body {
   min-height: 60px;
   padding: var(--space-3) var(--space-5);
   padding-top: calc(var(--space-3) + env(safe-area-inset-top, 0px));
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--w-rule);
 }
 
 /* The lockup is a link, so it is a tap target: 44px of row, with the mark and
@@ -99,7 +106,7 @@ html.app-page body {
   gap: var(--space-2);
   min-height: 44px;
   min-width: 0;
-  color: var(--ink);
+  color: var(--w-text);
   font-family: var(--font-mono);
   font-size: var(--wordmark-size);
   letter-spacing: -0.01em;
@@ -130,7 +137,7 @@ html.app-page body {
 }
 
 .product__detail {
-  color: var(--ink-secondary);
+  color: var(--w-text-secondary);
   font-family: var(--font-mono);
   font-size: var(--size-micro);
   overflow-wrap: anywhere;
@@ -141,8 +148,8 @@ html.app-page body {
 .product__step {
   flex: none;
   padding-left: var(--space-3);
-  border-left: 1px solid var(--rule);
-  color: var(--ink-secondary);
+  border-left: 1px solid var(--w-rule);
+  color: var(--w-text-secondary);
   font-family: var(--font-mono);
   font-size: var(--size-micro);
   font-variant-numeric: tabular-nums;
@@ -200,7 +207,7 @@ html.app-page body {
 .screen__title p {
   max-width: var(--screen-measure);
   margin: var(--space-3) auto 0;
-  color: var(--ink-body);
+  color: var(--w-text-body);
   font-size: 0.9375rem;
   line-height: 1.5;
   text-wrap: pretty;
@@ -301,7 +308,7 @@ html.app-page body {
 
 .balance__caption {
   margin: var(--space-3) auto 0;
-  color: var(--ink-secondary);
+  color: var(--w-text-secondary);
   font-size: 0.8125rem;
 }
 
@@ -323,7 +330,7 @@ html.app-page body {
    that tracking is tuned for digits, and applied to four capitals it closes
    the letters into each other. */
 .amount__symbol {
-  color: var(--ink-secondary);
+  color: var(--w-text-secondary);
   letter-spacing: 0;
 }
 
@@ -379,7 +386,7 @@ html.app-page body {
   width: 5ch;
   height: 0.72em;
   border-radius: var(--r-card);
-  background: var(--near-white);
+  background: var(--w-raised);
 }
 
 /* ---------- controls ----------
@@ -390,10 +397,81 @@ html.app-page body {
    for a series of small ones.                                                 */
 
 .wactions {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: var(--space-3);
+}
+
+/* A screen that offers one strong action and quiet alternatives beneath it is
+   one stack, and it is written as one: a column, centred, at the gap the
+   treatment was judged at. It used to be one `.wactions` per button, which is
+   how three buttons ended up as three boxes the ring could not span — the ring
+   is drawn inside the stack, so the stack has to be the thing that holds all
+   of them. */
+.wactions--stack {
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+/* ---------- the travelling ring ----------
+
+   A stack that offers one strong action and a quiet alternative under it used
+   to answer the pointer three times over: the primary lifted and washed, the
+   quiet pair each brightened on their own. Crossing the stack was three
+   separate events with nothing connecting them, and three objects switching on
+   and off is not what the screen is: it is one decision with three answers.
+
+   So no button in a marked stack draws its own outline. There is one hairline
+   ring, it rests on the strong action — which is what keeps the strong action
+   strong without filling it — and it travels to whatever is pointed at or
+   tabbed to, stretching to that button's width on the way. The claim it makes
+   is the true one: these are one control in three positions.
+
+   `left` and `top` stay at zero and the position arrives as a transform, so
+   what changes between two actions is a matrix and a size rather than the
+   stack's own layout, and nothing the ring passes over is asked to re-lay out.
+   The three properties below are transitioned here and written onto the element
+   by `Actions`, which is the only thing that can measure them.
+
+   A stack holding a single button is not a choice and gets no ring; it keeps
+   the outline and the lift it has always had. `Actions` decides that, because
+   it is the only thing that can count them.                                   */
+
+.wactions__ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  border: 1px solid var(--w-rule-strong);
+  border-radius: var(--r-pill);
+  pointer-events: none;
+}
+
+/* The first placement never animates: a ring sliding in from the stack's
+   top-left corner on load is an entrance nobody asked for. `data-primed` is
+   set on the frame after that first placement has been painted. */
+.wactions[data-primed] .wactions__ring {
+  transition:
+    transform var(--dur-fast) var(--ease-settle),
+    width var(--dur-fast) var(--ease-settle),
+    height var(--dur-fast) var(--ease-settle);
+}
+
+/* The buttons sit over the ring, so a label is never drawn under a hairline. */
+.wactions[data-marked] .wbtn {
+  position: relative;
+  z-index: 1;
+  border-color: transparent;
+}
+
+/* Whatever the ring is on takes full ink. That is the whole of the rest of the
+   feedback: the outline is already saying which one it is, and saying it twice
+   is how a quiet control becomes a loud one. */
+.wactions[data-marked] .wbtn:is(:hover, :focus-visible) {
+  color: var(--w-text);
 }
 
 .wbtn {
@@ -408,10 +486,10 @@ html.app-page body {
   max-width: 100%;
   min-height: 48px;
   padding: 0 var(--space-5);
-  border: 1px solid var(--rule-strong);
+  border: 1px solid var(--w-rule-strong);
   border-radius: var(--r-pill);
   background: transparent;
-  color: var(--ink);
+  color: var(--w-text);
   font-family: var(--font-sans);
   font-size: 0.9375rem;
   font-weight: 500;
@@ -435,10 +513,14 @@ html.app-page body {
   height: 22px;
 }
 
+/* The lift and the wash belong to a button that is answering for itself. In a
+   marked stack the ring is doing that job, and a button that also lifted would
+   be the stack moving in two places at once. */
 @media (hover: hover) and (pointer: fine) {
-  .wbtn:not(:disabled):hover {
-    border-color: var(--ink);
-    background: var(--near-white);
+  .wactions:not([data-marked]) .wbtn:not(:disabled):hover,
+  :not(.wactions) > .wbtn:not(:disabled):hover {
+    border-color: var(--w-text);
+    background: var(--w-raised);
     transform: translateY(-2px);
   }
 }
@@ -460,21 +542,18 @@ html.app-page body {
   min-height: 44px;
   padding-inline: var(--space-3);
   border-color: transparent;
-  color: var(--ink-body);
+  color: var(--w-text-body);
   font-weight: 400;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .wbtn--quiet:not(:disabled):hover {
+  .wactions:not([data-marked]) .wbtn--quiet:not(:disabled):hover,
+  :not(.wactions) > .wbtn--quiet:not(:disabled):hover {
     border-color: transparent;
     background: transparent;
-    color: var(--ink);
+    color: var(--w-text);
     transform: none;
   }
-}
-
-.wbtn--quiet:not(:disabled):active {
-  transform: none;
 }
 
 .iconbtn {
@@ -485,7 +564,7 @@ html.app-page body {
   height: 44px;
   margin-inline: calc(var(--space-2) * -1);
   border-radius: var(--r-pill);
-  color: var(--ink-body);
+  color: var(--w-text-body);
   -webkit-tap-highlight-color: transparent;
   transition:
     color var(--dur-fast) var(--ease-settle),
@@ -500,8 +579,8 @@ html.app-page body {
 
 @media (hover: hover) and (pointer: fine) {
   .iconbtn:not(:disabled):hover {
-    background: var(--near-white);
-    color: var(--ink);
+    background: var(--w-raised);
+    color: var(--w-text);
     transform: translateY(-1px);
   }
 }
@@ -625,6 +704,8 @@ html.app-page body {
   }
 }
 
+.wbtn:not(:disabled):active [data-glyph],
+.iconbtn:not(:disabled):active [data-glyph],
 .wbtn:not(:disabled):focus-visible [data-glyph],
 .iconbtn:not(:disabled):focus-visible [data-glyph] {
   transform: var(--glyph-move);
@@ -658,13 +739,11 @@ html.app-page body {
   }
 }
 
+.wbtn:not(:disabled):active .readymark__spark,
 .wbtn:not(:disabled):focus-visible .readymark__spark {
   transform: var(--spark-move);
 }
 
-/* One switch for all of it. Setting the move to nothing is enough: every rule
-   above resolves through this property, so there is no second list to keep in
-   step with the first. */
 /* One switch for all of it. Setting the moves to nothing is enough: every
    rule above resolves through these two properties, so there is no second list
    to keep in step with the first — and no specificity race with the hover
@@ -690,7 +769,7 @@ html.reduced-motion .readymark__spark {
 
 .wlink {
   min-height: 36px;
-  color: var(--ink-secondary);
+  color: var(--w-text-secondary);
   font-size: 0.8125rem;
   text-decoration: underline;
   text-underline-offset: 0.18em;
@@ -698,12 +777,12 @@ html.reduced-motion .readymark__spark {
 
 @media (hover: hover) and (pointer: fine) {
   .wlink:hover {
-    color: var(--ink);
+    color: var(--w-text);
   }
 }
 
 .wref {
-  color: var(--ink-body);
+  color: var(--w-text-body);
   font-family: var(--font-mono);
   font-size: var(--size-micro);
   text-decoration: underline;
@@ -712,10 +791,16 @@ html.reduced-motion .readymark__spark {
 }
 
 /* Reduced motion keeps every change and drops every travel. Nothing on these
-   screens needs movement to be understood. */
+   screens needs movement to be understood.
+
+   The ring is the clearest case of that rule: taking its travel away does not
+   take away where it is. It still lands on the right button, that button still
+   goes to full ink, and the reader is told the same thing — they are simply not
+   shown the trip. */
 html.reduced-motion .screen,
 html.reduced-motion .wbtn,
 html.reduced-motion .iconbtn,
+html.reduced-motion .wactions__ring,
 html.reduced-motion .waiting__pulse {
   animation: none;
   transition: none;
@@ -732,6 +817,7 @@ html.reduced-motion .iconbtn:active {
   .screen,
   .wbtn,
   .iconbtn,
+  .wactions__ring,
   .waiting__pulse {
     animation: none;
     transition: none;
@@ -764,7 +850,7 @@ html.reduced-motion .iconbtn:active {
 }
 
 .wfield__hint {
-  color: var(--ink-secondary);
+  color: var(--w-text-secondary);
   font-size: 0.8125rem;
   line-height: 1.45;
 }
@@ -780,10 +866,10 @@ html.reduced-motion .iconbtn:active {
   width: 100%;
   min-height: 48px;
   padding: 12px 14px;
-  border: 1px solid var(--rule-strong);
+  border: 1px solid var(--w-rule-strong);
   border-radius: var(--r-card);
-  background: var(--white);
-  color: var(--ink);
+  background: var(--w-ground);
+  color: var(--w-text);
   font-family: var(--font-sans);
   font-size: 16px; /* Anything smaller makes iOS zoom the whole page. */
   line-height: 1.4;
@@ -813,7 +899,7 @@ html.reduced-motion .iconbtn:active {
   justify-content: space-between;
   gap: var(--space-4);
   padding-block: var(--space-3);
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--w-rule);
 }
 
 .wfacts__row:last-child {
@@ -821,7 +907,7 @@ html.reduced-motion .iconbtn:active {
 }
 
 .wfacts__row dt {
-  color: var(--ink-body);
+  color: var(--w-text-body);
   font-size: 0.875rem;
 }
 
@@ -840,7 +926,7 @@ html.reduced-motion .iconbtn:active {
 
 .wfacts__row[data-strong] dt,
 .wfacts__row[data-strong] .wfacts__value {
-  color: var(--ink);
+  color: var(--w-text);
   font-weight: 500;
 }
 
@@ -852,8 +938,8 @@ html.reduced-motion .iconbtn:active {
   gap: var(--space-3);
   max-width: none;
   padding: var(--space-3) var(--space-4);
-  border-left: 2px solid var(--ink);
-  background: var(--near-white);
+  border-left: 2px solid var(--w-text);
+  background: var(--w-raised);
   font-size: 0.875rem;
   line-height: 1.45;
 }
@@ -865,7 +951,7 @@ html.reduced-motion .iconbtn:active {
 .statusline__icon {
   display: inline-flex;
   flex: none;
-  color: var(--ink-body);
+  color: var(--w-text-body);
 }
 
 .statusline__icon svg {
@@ -907,7 +993,7 @@ html.reduced-motion .iconbtn > span[data-icon-motion="spin"] {
 }
 
 .wnote {
-  color: var(--ink-body);
+  color: var(--w-text-body);
   font-size: 0.875rem;
   line-height: 1.5;
 }
@@ -915,13 +1001,13 @@ html.reduced-motion .iconbtn > span[data-icon-motion="spin"] {
 .wnote[data-tone="caution"] {
   padding-left: var(--space-3);
   border-left: 2px solid var(--signal);
-  color: var(--ink);
+  color: var(--w-text);
 }
 
 
 .wlive {
   min-height: 1.1em;
-  color: var(--ink-secondary);
+  color: var(--w-text-secondary);
   font-family: var(--font-mono);
   font-size: var(--size-micro);
   text-align: center;
@@ -934,7 +1020,7 @@ html.reduced-motion .iconbtn > span[data-icon-motion="spin"] {
   align-items: center;
   justify-content: center;
   gap: var(--space-3);
-  color: var(--ink-body);
+  color: var(--w-text-body);
   font-size: 0.875rem;
 }
 
@@ -943,7 +1029,7 @@ html.reduced-motion .iconbtn > span[data-icon-motion="spin"] {
   height: 10px;
   flex: none;
   border-radius: 50%;
-  background: var(--ink);
+  background: var(--w-text);
   animation: waiting-pulse 1400ms var(--ease-settle) infinite;
 }
 
@@ -970,9 +1056,9 @@ html.reduced-motion .iconbtn > span[data-icon-motion="spin"] {
   width: 74px;
   height: 74px;
   margin: 0 auto;
-  border: 1px solid var(--rule-strong);
+  border: 1px solid var(--w-rule-strong);
   border-radius: 50%;
-  color: var(--ink);
+  color: var(--w-text);
 }
 
 .emblem svg {
@@ -997,7 +1083,7 @@ html.reduced-motion .iconbtn > span[data-icon-motion="spin"] {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin: 0;
   padding: 0;
-  border-top: 1px solid var(--rule);
+  border-top: 1px solid var(--w-rule);
   list-style: none;
 }
 
@@ -1007,15 +1093,15 @@ html.reduced-motion .iconbtn > span[data-icon-motion="spin"] {
   gap: var(--space-2);
   min-width: 0;
   padding: var(--space-3) var(--space-2);
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--w-rule);
 }
 
 .phrase__word:nth-child(odd) {
-  border-right: 1px solid var(--rule);
+  border-right: 1px solid var(--w-rule);
 }
 
 .phrase__index {
-  color: var(--ink-secondary);
+  color: var(--w-text-secondary);
   font-family: var(--font-mono);
   font-size: var(--size-micro);
 }
@@ -1044,7 +1130,7 @@ html.reduced-motion .iconbtn > span[data-icon-motion="spin"] {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--ink);
+  background: var(--w-text);
 }
 
 .countdown[data-live] .countdown__tick {
@@ -1062,11 +1148,11 @@ html.reduced-motion .iconbtn > span[data-icon-motion="spin"] {
   justify-content: space-between;
   gap: var(--space-4);
   padding-block: var(--space-2);
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--w-rule);
 }
 
 .txref__label {
-  color: var(--ink-body);
+  color: var(--w-text-body);
   font-size: 0.8125rem;
 }
 

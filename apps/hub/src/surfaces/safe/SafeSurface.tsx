@@ -279,7 +279,7 @@ function Home(props: {
             <ReadyWalletMark className="emblem__ready" />
           </Emblem>
           {props.error === null ? null : <Failure message={props.error} />}
-          <Actions>
+          <Actions stack>
             <Button
               icon={<ReadyWalletMark className="wbtn__ready" />}
               label="Recover reserve"
@@ -287,16 +287,12 @@ function Home(props: {
                 void actions.bringBack();
               }}
             />
-          </Actions>
-          <Actions>
             <Button
               icon={<KeyIcon />}
               label="Use recovery backup"
               onClick={() => navigate("/recover")}
               tone="quiet"
             />
-          </Actions>
-          <Actions>
             <Button
               icon={<SuitcaseRollingIcon />}
               label="Create a new safe"
@@ -318,7 +314,7 @@ function Home(props: {
             <FingerprintIcon />
           </Emblem>
           {home.reason === null ? null : <Failure message={home.reason} />}
-          <Actions>
+          <Actions stack>
             <Button
               icon={<KeyIcon />}
               label="Unlock"
@@ -326,8 +322,6 @@ function Home(props: {
                 void actions.unlock();
               }}
             />
-          </Actions>
-          <Actions>
             <Button
               icon={<ReadyWalletMark className="wbtn__ready" />}
               label="Recover reserve"
@@ -336,16 +330,12 @@ function Home(props: {
               }}
               tone="quiet"
             />
-          </Actions>
-          <Actions>
             <Button
               icon={<KeyIcon />}
               label="Use recovery backup"
               onClick={() => navigate("/recover")}
               tone="quiet"
             />
-          </Actions>
-          <Actions>
             <Button
               label="Forget this browser"
               onClick={() => {
@@ -631,7 +621,7 @@ function Home(props: {
           tone="alert"
         >
           <Failure message={home.reason} />
-          <Actions>
+          <Actions stack>
             <Button
               icon={<ReadyWalletMark className="wbtn__ready" />}
               label="Recover reserve"
@@ -639,16 +629,12 @@ function Home(props: {
                 void actions.bringBack();
               }}
             />
-          </Actions>
-          <Actions>
             <Button
               icon={<KeyIcon />}
               label="Use recovery backup"
               onClick={() => navigate("/recover")}
               tone="quiet"
             />
-          </Actions>
-          <Actions>
             <Button
               label="Forget this browser's safe"
               onClick={() => {

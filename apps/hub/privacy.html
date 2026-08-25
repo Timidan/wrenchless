@@ -22,6 +22,15 @@
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="color-scheme" content="light" />
+    <!-- The same one font file the app entry preloads; this page is served on
+         its own and would otherwise wait for the stylesheet to ask for it. -->
+    <link
+      rel="preload"
+      href="/fonts/hanken-grotesk-latin-var.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
     <link rel="canonical" href="%SITE_URL%/privacy.html" />
   </head>
   <body>
