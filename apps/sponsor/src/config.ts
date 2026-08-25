@@ -32,7 +32,7 @@ const sponsorEnvironmentSchema = z.object({
   WRENCHLESS_SPONSOR_ACCOUNT_PRIVATE_KEY: feltSchema,
   WRENCHLESS_SPONSOR_MAX_POOL_FEE_FRI: positiveDecimalSchema,
   WRENCHLESS_SPONSOR_MAX_TRANSACTION_FEE_FRI: positiveDecimalSchema.default(
-    "1000000000000000000",
+    "10000000000000000000",
   ),
   WRENCHLESS_SPONSOR_MAX_DAILY_FUND_SPEND_FRI: positiveDecimalSchema.default(
     "21000000000000000000",
