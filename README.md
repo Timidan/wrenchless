@@ -75,6 +75,22 @@ WRENCHLESS_ALLOW_REFILL_FUND_BROADCAST=true
 This switch does not replace the sponsor readiness, balance, fee-bound, budget,
 artifact, and onchain-state checks.
 
+## Mainnet evidence
+
+- Live app: [wrenchless.timidan.xyz](https://wrenchless.timidan.xyz)
+- Current Travel Safe helper:
+  [`0x018f...2844a`](https://voyager.online/contract/0x018f6925422c85da8c9e0c1572adf4316a9821ffabc4b29db37d11c6a0c2844a)
+- STRK20 pool:
+  [`0x0403...e812a`](https://voyager.online/contract/0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a)
+- Proven FUND on the current helper:
+  [`0x05a9...6e01d`](https://voyager.online/tx/0x05a9458404b7c44510f712de9f59140e10106801eb0d79e49603451de706e01d)
+- Proven FUND and CLAIM lifecycle on the original helper:
+  [`0x0c4f...13a6`](https://voyager.online/tx/0x0c4fbacb5ee5fd3a65f09d7a724ad585387ba642e570a11ed79f9be8ac013a6)
+  and
+  [`0x02e9...888e`](https://voyager.online/tx/0x02e969f712d5ff8f3091bd42b06978c285c8ad221081da5f575afbc72f87888e)
+
+The machine-readable version of this evidence is in `strk20.json`.
+
 ## Development
 
 Install and run the hub:
