@@ -89,11 +89,19 @@ function makePreparedFundCall(
       contract_address: POOL,
       entry_point: "apply_actions",
       calldata: [
-        "0x2",
+        "0x3",
         "0x3",
         withdrawalRecipient,
         withdrawal.token,
         withdrawal.amount,
+        // A withdrawal compiles to both TransferTo and EmitWithdrawal.
+        "0x5",
+        "0x1",
+        withdrawalRecipient,
+        withdrawal.token,
+        withdrawal.amount,
+        "0x1",
+        "0x2",
         "0xa",
         invoke.contract,
         `0x${invoke.calldata.length.toString(16)}`,
@@ -225,16 +233,18 @@ describe("refill FUND preparation", () => {
     ).rejects.toThrow("withdrawal recipient does not match");
   });
 
-  it("rejects a FUND proof with an extra server action", async () => {
+  it("rejects a FUND proof with an extra withdrawal", async () => {
     const wallet: RefillPrepareWallet = {
       async strk20PrepareInvoke(actions) {
         const prepared = makePreparedFundCall(actions);
         const calldata = prepared.call.calldata ?? [];
         prepared.call.calldata = [
-          "0x3",
+          "0x4",
           ...calldata.slice(1, -1),
-          "0x9",
-          "0x0",
+          "0x3",
+          "0x999",
+          TOKEN,
+          "0x1",
           calldata.at(-1) ?? "0x1",
         ];
         return prepared;
@@ -255,7 +265,7 @@ describe("refill FUND preparation", () => {
         amount: AMOUNT,
         expiry: EXPIRY,
       }),
-    ).rejects.toThrow("exactly two actions");
+    ).rejects.toThrow("exactly one helper withdrawal");
   });
 });
 

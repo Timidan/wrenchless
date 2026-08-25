@@ -215,7 +215,6 @@ type TransferToServerAction = {
 };
 
 type ParsedServerActions = {
-  actionCount: number;
   invokes: InvokeServerAction[];
   transfersTo: TransferToServerAction[];
   screening: "None" | "Some";
@@ -367,7 +366,7 @@ function readServerActions(
   }
 
   if (!reader.hasRemaining() && allowMissingScreening) {
-    return { actionCount, invokes, screening: "None", transfersTo };
+    return { invokes, screening: "None", transfersTo };
   }
 
   const screeningDiscriminant = reader.read("screening option");
@@ -381,7 +380,7 @@ function readServerActions(
     throw new Error("invalid screening option");
   }
   reader.assertFinished();
-  return { actionCount, invokes, screening, transfersTo };
+  return { invokes, screening, transfersTo };
 }
 
 function buildFundActions(
@@ -547,14 +546,11 @@ function assertPreparedFund(
   ) {
     throw new Error("recovery commitment does not match the Ready account");
   }
-  const { actionCount, invokes, screening, transfersTo } = readPreparedServerActions(
+  const { invokes, screening, transfersTo } = readPreparedServerActions(
     prepared,
     input.poolAddress,
   );
 
-  if (actionCount !== 2) {
-    throw new Error("prepared FUND must contain exactly two actions");
-  }
   if (screening !== "None") {
     throw new Error("prepared FUND must not include a screening attestation");
   }
