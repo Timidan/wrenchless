@@ -6,7 +6,7 @@ export const WRENCHLESS_MAINNET = {
   helperAddress:
     "0x018f6925422c85da8c9e0c1572adf4316a9821ffabc4b29db37d11c6a0c2844a",
   strkTokenAddress:
-    "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+    "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
 } as const;
 
 function serviceUrl(name: string, configured: string | undefined, developmentUrl: string): string {
