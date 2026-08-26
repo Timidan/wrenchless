@@ -24,7 +24,10 @@ import type {
   RefillFundFinalityEvidence,
   RefillFundFinalityRequest,
 } from "./refill-inspect.js";
-import { RefillFundFinalityUnknownError } from "./refill-inspect.js";
+import {
+  RefillFundExecutionFailedError,
+  RefillFundFinalityUnknownError,
+} from "./refill-inspect.js";
 import type {
   RegistrationCanaryClient,
   RegistrationFinalityEvidence,
@@ -838,6 +841,25 @@ export class StarknetRegistrationCanaryClient
     }
     const receiptValue = providerJson(receipt);
     const receiptRecord = requireRecord(receiptValue, "transaction receipt");
+    if (receiptRecord.execution_status === "REVERTED") {
+      if (
+        !sameFelt(
+          receiptRecord.transaction_hash,
+          request.transactionHash,
+          "receipt transaction hash",
+        )
+      ) {
+        throw new Error("receipt transaction hash does not match submission");
+      }
+      const fee = requireRecord(receiptRecord.actual_fee, "receipt actual fee");
+      if (fee.unit !== "FRI") {
+        throw new Error("refill FUND fee is not denominated in FRI");
+      }
+      throw new RefillFundExecutionFailedError(
+        request.transactionHash,
+        requireFelt(fee.amount, "receipt actual fee amount").toString(),
+      );
+    }
     const blockNumber = requireFinalizedBlockNumber(receiptRecord);
     const [transaction, stateResult, liabilityResult, helperBalanceResult] =
       await Promise.all([

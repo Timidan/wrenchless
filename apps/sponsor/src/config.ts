@@ -35,7 +35,7 @@ const sponsorEnvironmentSchema = z.object({
     "10000000000000000000",
   ),
   WRENCHLESS_SPONSOR_MAX_DAILY_FUND_SPEND_FRI: positiveDecimalSchema.default(
-    "21000000000000000000",
+    "1000000000000000000000",
   ),
   WRENCHLESS_SPONSOR_MIN_FUND_AMOUNT_FRI: positiveDecimalSchema.default(
     "1000000000000000000",

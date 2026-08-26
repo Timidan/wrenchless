@@ -7,6 +7,7 @@ import {
 import type { RelayCanaryConfig } from "@wrenchless/relay-canary/config";
 import {
   inspectRefillFund,
+  RefillFundExecutionFailedError,
   type RefillFundFinalityEvidence,
   type RefillFundInspectionSummary,
 } from "@wrenchless/relay-canary/refill-relay";
@@ -149,6 +150,7 @@ export class RefillFundRelay {
     client: StarknetRegistrationCanaryClient,
     artifact: RefillFundArtifact,
     transactionHash: string,
+    poolFeeFri: bigint,
   ): void {
     void client
       .waitForRefillFundFinality({
@@ -162,6 +164,20 @@ export class RefillFundRelay {
         tokenAddress: artifact.tokenAddress,
         amountFri: artifact.amountFri,
         expiry: artifact.expiry,
+      })
+      .then((receipt) =>
+        this.budget.settle(
+          artifact.stateId,
+          poolFeeFri + BigInt(receipt.actualFeeFri),
+        ),
+      )
+      .catch(async (cause: unknown) => {
+        if (cause instanceof RefillFundExecutionFailedError) {
+          await this.budget.settle(
+            artifact.stateId,
+            BigInt(cause.actualFeeFri),
+          );
+        }
       })
       .catch(() => undefined)
       .finally(() => {
@@ -246,7 +262,7 @@ export class RefillFundRelay {
             stateId: artifact.stateId,
             recoverySalt: artifact.recoverySalt,
           });
-          await this.budget.reserve(maximumSpendFri);
+          await this.budget.reserve(artifact.stateId, maximumSpendFri);
         },
       });
       if (result.transactionHash === undefined) {
@@ -254,13 +270,22 @@ export class RefillFundRelay {
       }
       if (result.receipt === undefined) {
         finalityContinuesInBackground = true;
-        this.releaseAfterFinality(client, artifact, result.transactionHash);
+        this.releaseAfterFinality(
+          client,
+          artifact,
+          result.transactionHash,
+          BigInt(result.summary.poolFeeFri),
+        );
         return {
           status: "submitted",
           summary: result.summary,
           transactionHash: result.transactionHash,
         };
       }
+      await this.budget.settle(
+        artifact.stateId,
+        BigInt(result.summary.poolFeeFri) + BigInt(result.receipt.actualFeeFri),
+      );
       return {
         status: "finalized",
         summary: result.summary,

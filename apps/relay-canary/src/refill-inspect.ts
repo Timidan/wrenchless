@@ -51,6 +51,16 @@ export class RefillFundFinalityUnknownError extends Error {
   }
 }
 
+export class RefillFundExecutionFailedError extends Error {
+  constructor(
+    readonly transactionHash: string,
+    readonly actualFeeFri: string,
+  ) {
+    super("refill FUND transaction reverted");
+    this.name = "RefillFundExecutionFailedError";
+  }
+}
+
 export type RefillFundClient = {
   assertPoolInterface(poolAddress: string): Promise<{
     chainId: "SN_MAIN";

@@ -6,6 +6,7 @@ import {
   assertRegistrationFinality,
   StarknetRegistrationCanaryClient,
 } from "./starknet-client.js";
+import { RefillFundExecutionFailedError } from "./refill-inspect.js";
 
 const POOL =
   "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a";
@@ -327,6 +328,46 @@ describe("assertRefillFundFinality", () => {
 });
 
 describe("StarknetRegistrationCanaryClient.waitForRefillFundFinality", () => {
+  it("preserves the actual network fee when a submitted FUND reverts", async () => {
+    const provider = {
+      waitForTransaction: async () => ({
+        transaction_hash: TRANSACTION_HASH,
+        execution_status: "REVERTED",
+        finality_status: "ACCEPTED_ON_L2",
+        block_number: 12_345,
+        actual_fee: { amount: "0x64", unit: "FRI" },
+        events: [],
+      }),
+    };
+    const client = new StarknetRegistrationCanaryClient(
+      "https://rpc.example.test",
+      RELAY,
+      // SAFETY: this test double implements the only provider call reached by a reverted receipt.
+      provider as never,
+    );
+
+    await expect(
+      client.waitForRefillFundFinality({
+        transactionHash: TRANSACTION_HASH,
+        poolAddress: POOL,
+        helperAddress: "0x456",
+        relayAddress: RELAY,
+        stateId: "0x111",
+        claimCommitment: "0x222",
+        recoveryCommitment: "0x333",
+        tokenAddress: "0x4718",
+        amountFri: "1000",
+        expiry: "1800003600",
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining<Partial<RefillFundExecutionFailedError>>({
+        name: "RefillFundExecutionFailedError",
+        transactionHash: TRANSACTION_HASH,
+        actualFeeFri: "100",
+      }),
+    );
+  });
+
   it("bounds finality polling and preserves the submitted hash on timeout", async () => {
     let options: { retries?: number; retryInterval?: number } | undefined;
     const provider = {
