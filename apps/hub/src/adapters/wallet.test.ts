@@ -29,27 +29,36 @@ afterEach(() => {
 
 describe("requestWalletAccount", () => {
   it.each([
-    [
-      "Android",
-      "Mozilla/5.0 (Linux; Android 15)",
-      "https://play.google.com/store/apps/details?id=com.ready.wallet",
-    ],
-    [
-      "iPhone",
-      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
-      "https://apps.apple.com/us/app/ready-x/id6744935604",
-    ],
-  ])("offers the official %s install page when no wallet is available", async (
+    ["Android", "Mozilla/5.0 (Linux; Android 15)"],
+    ["iPhone", "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)"],
+  ])("does not send %s users into an install-retry loop", async (
     _platform,
     userAgent,
-    installHref,
   ) => {
     vi.stubGlobal("window", {});
 
     await expect(
       requestWalletAccount({ discoverWallets: async () => [], userAgent }),
     ).rejects.toMatchObject({
-      install: { href: installHref, label: "Install Ready" },
+      resolution: { kind: "desktop_required" },
+    });
+  });
+
+  it("offers the Ready extension when a desktop browser has no wallet", async () => {
+    vi.stubGlobal("window", {});
+
+    await expect(
+      requestWalletAccount({
+        discoverWallets: async () => [],
+        userAgent: "Mozilla/5.0 Chrome/140.0.0.0 Safari/537.36",
+      }),
+    ).rejects.toMatchObject({
+      resolution: {
+        href:
+          "https://chromewebstore.google.com/detail/argent-x/dlcobpjiigpikoobohmabehhmhfoodbb",
+        kind: "install_extension",
+        label: "Install Ready",
+      },
     });
   });
 

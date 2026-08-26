@@ -721,11 +721,25 @@ function CreateFlow(props: {
 
   switch (model.createStep) {
     case "connect":
-      if (model.walletInstall !== null) {
+      if (model.walletResolution?.kind === "desktop_required") {
         return (
           <Screen
             center
-            lede="Install it, then return here."
+            lede="Private parking needs the Ready browser extension."
+            onBack={actions.closeCreate}
+            title="Continue on desktop"
+          >
+            <Emblem>
+              <ReadyWalletMark className="emblem__ready" />
+            </Emblem>
+          </Screen>
+        );
+      }
+      if (model.walletResolution?.kind === "install_extension") {
+        return (
+          <Screen
+            center
+            lede="Install the extension, then return here."
             onBack={actions.closeCreate}
             title="Get Ready Wallet"
           >
@@ -735,14 +749,14 @@ function CreateFlow(props: {
             <Actions>
               <a
                 className="wbtn"
-                href={model.walletInstall.href}
+                href={model.walletResolution.href}
                 rel="noreferrer noopener"
                 target="_blank"
               >
                 <span aria-hidden="true" className="wbtn__icon">
                   <ReadyWalletMark className="wbtn__ready" />
                 </span>
-                <span>{model.walletInstall.label}</span>
+                <span>{model.walletResolution.label}</span>
               </a>
               <Button
                 icon={<ArrowsClockwiseIcon />}

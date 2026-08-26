@@ -18,18 +18,21 @@ export type DiscoverableWallet = {
 
 type WalletRequest = DiscoverableWallet["request"];
 
-export type WalletInstallTarget = {
-  href: string;
-  label: "Install Ready";
-};
+export type WalletUnavailableResolution =
+  | { kind: "desktop_required" }
+  | {
+      href: string;
+      kind: "install_extension";
+      label: "Install Ready";
+    };
 
 export class WalletUnavailableError extends Error {
-  readonly install: WalletInstallTarget;
+  readonly resolution: WalletUnavailableResolution;
 
-  constructor(install: WalletInstallTarget) {
+  constructor(resolution: WalletUnavailableResolution) {
     super("No compatible wallet was found");
     this.name = "WalletUnavailableError";
-    this.install = install;
+    this.resolution = resolution;
   }
 }
 
@@ -47,11 +50,9 @@ declare global {
 }
 
 const READY_INSTALL = {
-  android: "https://play.google.com/store/apps/details?id=com.ready.wallet",
   chrome:
     "https://chromewebstore.google.com/detail/argent-x/dlcobpjiigpikoobohmabehhmhfoodbb",
   firefox: "https://addons.mozilla.org/en-GB/firefox/addon/argent-x/",
-  ios: "https://apps.apple.com/us/app/ready-x/id6744935604",
   other:
     "https://help.wallet.ready.co/hc/en-us/articles/28313046540829-What-is-Ready-X",
 } as const;
@@ -74,15 +75,18 @@ const injectedProviderSchema = z
   })
   .passthrough();
 
-function installTarget(userAgent: string): WalletInstallTarget {
+function unavailableResolution(
+  userAgent: string,
+): WalletUnavailableResolution {
+  if (/android|iphone|ipad|ipod|mobile/i.test(userAgent)) {
+    return { kind: "desktop_required" };
+  }
   let href: string = READY_INSTALL.other;
-  if (/android/i.test(userAgent)) href = READY_INSTALL.android;
-  else if (/iphone|ipad|ipod/i.test(userAgent)) href = READY_INSTALL.ios;
-  else if (/firefox|fxios/i.test(userAgent)) href = READY_INSTALL.firefox;
+  if (/firefox/i.test(userAgent)) href = READY_INSTALL.firefox;
   else if (/chrome|chromium|crios|edg\//i.test(userAgent)) {
     href = READY_INSTALL.chrome;
   }
-  return { href, label: "Install Ready" };
+  return { href, kind: "install_extension", label: "Install Ready" };
 }
 
 function readyCandidate(
@@ -235,7 +239,7 @@ export async function requestWalletAccount(
   const wallet = readyCandidate(wallets) ?? wallets[0];
   if (wallet === undefined) {
     throw new WalletUnavailableError(
-      installTarget(options.userAgent ?? browserUserAgent()),
+      unavailableResolution(options.userAgent ?? browserUserAgent()),
     );
   }
 
