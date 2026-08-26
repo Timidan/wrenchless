@@ -1,6 +1,8 @@
 import { getWallets } from "@wallet-standard/app";
 import { z } from "zod";
 
+import type { ReadyMobileClientFactory } from "./ready-mobile-wallet";
+
 /** The wallet surface used after an account has been selected. */
 export type BrowserWallet = {
   id?: string;
@@ -18,13 +20,11 @@ export type DiscoverableWallet = {
 
 type WalletRequest = DiscoverableWallet["request"];
 
-export type WalletUnavailableResolution =
-  | { kind: "desktop_required" }
-  | {
-      href: string;
-      kind: "install_extension";
-      label: "Install Ready";
-    };
+export type WalletUnavailableResolution = {
+  href: string;
+  kind: "install_extension";
+  label: "Install Ready";
+};
 
 export class WalletUnavailableError extends Error {
   readonly resolution: WalletUnavailableResolution;
@@ -37,8 +37,11 @@ export class WalletUnavailableError extends Error {
 }
 
 type RequestWalletAccountOptions = {
+  createMobileClient?: ReadyMobileClientFactory;
   discoverWallets?: () => Promise<readonly DiscoverableWallet[]>;
+  openMobileUrl?: (url: string) => void;
   userAgent?: string;
+  walletConnectProjectId?: string;
 };
 
 declare global {
@@ -78,15 +81,30 @@ const injectedProviderSchema = z
 function unavailableResolution(
   userAgent: string,
 ): WalletUnavailableResolution {
-  if (/android|iphone|ipad|ipod|mobile/i.test(userAgent)) {
-    return { kind: "desktop_required" };
-  }
   let href: string = READY_INSTALL.other;
   if (/firefox/i.test(userAgent)) href = READY_INSTALL.firefox;
   else if (/chrome|chromium|crios|edg\//i.test(userAgent)) {
     href = READY_INSTALL.chrome;
   }
   return { href, kind: "install_extension", label: "Install Ready" };
+}
+
+function mobileBrowser(userAgent: string): boolean {
+  return /android|iphone|ipad|ipod|mobile/i.test(userAgent);
+}
+
+function applicationUrl(): string {
+  const configured = import.meta.env.VITE_SITE_URL?.trim();
+  if (configured) return configured;
+  const parsed = z
+    .object({ location: z.object({ origin: z.string().url() }) })
+    .safeParse(globalThis.window);
+  if (parsed.success) return parsed.data.location.origin;
+  throw new Error("Wrenchless public URL is not configured");
+}
+
+function openMobileUrl(url: string): void {
+  globalThis.location.assign(url);
 }
 
 function readyCandidate(
@@ -238,8 +256,24 @@ export async function requestWalletAccount(
   ]);
   const wallet = readyCandidate(wallets) ?? wallets[0];
   if (wallet === undefined) {
+    const userAgent = options.userAgent ?? browserUserAgent();
+    if (mobileBrowser(userAgent)) {
+      const { connectReadyMobileWallet } = await import("./ready-mobile-wallet");
+      const mobileInput: Parameters<typeof connectReadyMobileWallet>[0] = {
+        projectId:
+          options.walletConnectProjectId ??
+          import.meta.env.VITE_WALLETCONNECT_PROJECT_ID ??
+          "",
+        applicationUrl: applicationUrl(),
+        openUrl: options.openMobileUrl ?? openMobileUrl,
+      };
+      if (options.createMobileClient !== undefined) {
+        mobileInput.createClient = options.createMobileClient;
+      }
+      return connectReadyMobileWallet(mobileInput);
+    }
     throw new WalletUnavailableError(
-      unavailableResolution(options.userAgent ?? browserUserAgent()),
+      unavailableResolution(userAgent),
     );
   }
 

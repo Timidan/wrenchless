@@ -721,20 +721,6 @@ function CreateFlow(props: {
 
   switch (model.createStep) {
     case "connect":
-      if (model.walletResolution?.kind === "desktop_required") {
-        return (
-          <Screen
-            center
-            lede="Private parking needs the Ready browser extension."
-            onBack={actions.closeCreate}
-            title="Continue on desktop"
-          >
-            <Emblem>
-              <ReadyWalletMark className="emblem__ready" />
-            </Emblem>
-          </Screen>
-        );
-      }
       if (model.walletResolution?.kind === "install_extension") {
         return (
           <Screen
