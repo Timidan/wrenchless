@@ -721,6 +721,41 @@ function CreateFlow(props: {
 
   switch (model.createStep) {
     case "connect":
+      if (model.walletInstall !== null) {
+        return (
+          <Screen
+            center
+            lede="Install it, then return here."
+            onBack={actions.closeCreate}
+            title="Get Ready Wallet"
+          >
+            <Emblem>
+              <ReadyWalletMark className="emblem__ready" />
+            </Emblem>
+            <Actions>
+              <a
+                className="wbtn"
+                href={model.walletInstall.href}
+                rel="noreferrer noopener"
+                target="_blank"
+              >
+                <span aria-hidden="true" className="wbtn__icon">
+                  <ReadyWalletMark className="wbtn__ready" />
+                </span>
+                <span>{model.walletInstall.label}</span>
+              </a>
+              <Button
+                icon={<ArrowsClockwiseIcon />}
+                label="Try again"
+                onClick={() => {
+                  void actions.connect();
+                }}
+                tone="quiet"
+              />
+            </Actions>
+          </Screen>
+        );
+      }
       return (
         <Screen
           center

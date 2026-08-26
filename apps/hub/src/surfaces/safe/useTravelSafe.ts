@@ -18,7 +18,12 @@ import {
   parseStrkAmount,
   reasonFrom,
 } from "../../adapters/amount";
-import { requestWalletAccount, type BrowserWallet } from "../../adapters/wallet";
+import {
+  requestWalletAccount,
+  WalletUnavailableError,
+  type BrowserWallet,
+  type WalletInstallTarget,
+} from "../../adapters/wallet";
 import { readSettings, useSettings, writeSettings } from "../../adapters/settings";
 import { WRENCHLESS_MAINNET } from "../../lib/product-config";
 import {
@@ -103,6 +108,7 @@ export type TravelSafeViewModel = {
   amount: string;
   returnDateLocal: string;
   earlyRecoveryBackup: string | null;
+  walletInstall: WalletInstallTarget | null;
   error: string | null;
   live: string | null;
   elapsedSeconds: number;
@@ -368,6 +374,8 @@ export function useTravelSafe(): TravelSafeController {
   const [amount, setAmount] = useState("");
   const [returnDateLocal, setReturnDateLocal] = useState("");
   const [earlyRecoveryBackup, setEarlyRecoveryBackup] = useState<string | null>(null);
+  const [walletInstall, setWalletInstall] =
+    useState<WalletInstallTarget | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -538,6 +546,7 @@ export function useTravelSafe(): TravelSafeController {
 
   const connect = useCallback(async (): Promise<void> => {
     setError(null);
+    setWalletInstall(null);
     if (preflight !== "ready" && !(await runPreflight())) return;
     setLive("Connect your wallet");
     try {
@@ -571,7 +580,11 @@ export function useTravelSafe(): TravelSafeController {
       setPreparedFund(null);
       setLive(null);
     } catch (caught) {
-      setError(reasonFrom(caught));
+      if (caught instanceof WalletUnavailableError) {
+        setWalletInstall(caught.install);
+      } else {
+        setError(reasonFrom(caught));
+      }
       setLive(null);
     }
   }, [preflight, runPreflight]);
@@ -808,6 +821,7 @@ export function useTravelSafe(): TravelSafeController {
       amount,
       returnDateLocal,
       earlyRecoveryBackup,
+      walletInstall,
       error,
       live,
       elapsedSeconds,
@@ -828,6 +842,7 @@ export function useTravelSafe(): TravelSafeController {
     actions: {
       async startCreate() {
         setError(null);
+        setWalletInstall(null);
         setPreparedFund(null);
         setFundMoment(null);
         setCreateStep("connect");
@@ -841,6 +856,7 @@ export function useTravelSafe(): TravelSafeController {
         setCreateStep("closed");
         setPreflight("idle");
         setError(null);
+        setWalletInstall(null);
       },
       connect,
       setAmount,
