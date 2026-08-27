@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import type { TravelSafeToken } from "@wrenchless/canary-core";
+
 const READY_WALLET_API_VERSION = "0.10.3";
 const MAINNET_CHAIN_ID = "0x534e5f4d41494e";
 const MAINNET_RPC = "https://api.cartridge.gg/x/starknet/mainnet";
@@ -14,10 +16,12 @@ export type ReadyPrivateWallet = {
   selectedAddress?: string;
 };
 
-type ShieldedBalanceEntry = {
-  token: string;
-  balance: string;
-};
+const shieldedBalanceResponseSchema = z.array(
+  z.object({
+    token: z.string(),
+    balance: z.string(),
+  }),
+);
 
 const rpcResponseSchema = z.union([
   z.object({
@@ -105,38 +109,91 @@ async function readPoolFee(
   return parsed;
 }
 
-async function readShieldedBalance(
-  wallet: ReadyPrivateWallet,
-  tokenAddress: string,
-): Promise<bigint> {
-  const balances = await wallet.request<ShieldedBalanceEntry[]>({
+export async function readReadyShieldedBalances(input: {
+  wallet: ReadyPrivateWallet;
+  tokens: readonly TravelSafeToken[];
+}): Promise<
+  readonly {
+    token: TravelSafeToken;
+    shieldedBalanceBaseUnits: string;
+    available: boolean;
+  }[]
+> {
+  await assertReadyPrivateContext(input.wallet);
+  if (input.tokens.length === 0) {
+    throw new Error("Choose at least one private token");
+  }
+
+  const requested = input.tokens.map((token) => ({
+    token,
+    address: canonicalFelt(token.address, `${token.symbol} token address`),
+  }));
+  const requestedByValue = new Map<string, (typeof requested)[number]>();
+  for (const item of requested) {
+    const key = BigInt(item.address).toString();
+    if (requestedByValue.has(key)) {
+      throw new Error("Private token registry contains a duplicate address");
+    }
+    requestedByValue.set(key, item);
+  }
+
+  const response = await input.wallet.request<unknown>({
     type: "wallet_strk20Balances",
     params: {
-      tokens: [tokenAddress],
+      tokens: requested.map(({ address }) => address),
       api_version: READY_WALLET_API_VERSION,
     },
   });
-  const balance = balances.find(
-    (entry) => BigInt(entry.token) === BigInt(tokenAddress),
-  );
-  if (balance === undefined) return 0n;
-  const parsed = BigInt(balance.balance);
-  if (parsed < 0n || parsed > U128_MAX) {
-    throw new Error("Ready returned an invalid shielded balance");
+
+  const balances = shieldedBalanceResponseSchema.parse(response);
+  const balancesByToken = new Map<string, bigint>();
+  for (const entry of balances) {
+    const address = canonicalFelt(entry.token, "Ready balance token");
+    const key = BigInt(address).toString();
+    if (!requestedByValue.has(key)) {
+      throw new Error("Ready returned an unrequested private token");
+    }
+    if (balancesByToken.has(key)) {
+      throw new Error("Ready returned a duplicate private token balance");
+    }
+
+    let balance: bigint;
+    try {
+      balance = BigInt(entry.balance);
+    } catch {
+      throw new Error("Ready returned an invalid shielded balance");
+    }
+    if (balance < 0n || balance > U128_MAX) {
+      throw new Error("Ready returned an invalid shielded balance");
+    }
+    balancesByToken.set(key, balance);
   }
-  return parsed;
+
+  return requested.map(({ token, address }) => {
+    const balance = balancesByToken.get(BigInt(address).toString());
+    return {
+      token,
+      shieldedBalanceBaseUnits: (balance ?? 0n).toString(),
+      available: balance !== undefined,
+    };
+  });
 }
 
 export async function readReadyShieldedBalance(input: {
   wallet: ReadyPrivateWallet;
   tokenAddress: string;
 }): Promise<{ tokenAddress: string; shieldedBalanceFri: string }> {
-  await assertReadyPrivateContext(input.wallet);
   const tokenAddress = canonicalFelt(input.tokenAddress, "token address");
-  const balance = await readShieldedBalance(input.wallet, tokenAddress);
+  const [balance] = await readReadyShieldedBalances({
+    wallet: input.wallet,
+    tokens: [{ symbol: "STRK", decimals: 18, address: tokenAddress }],
+  });
+  if (balance === undefined) {
+    throw new Error("Ready did not return the STRK private balance");
+  }
   return {
     tokenAddress,
-    shieldedBalanceFri: balance.toString(),
+    shieldedBalanceFri: balance.shieldedBalanceBaseUnits,
   };
 }
 

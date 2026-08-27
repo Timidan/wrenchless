@@ -96,6 +96,15 @@ export {
 } from "./travel-safe.js";
 export type { TravelSafeSecrets } from "./travel-safe.js";
 export {
+  computeClaimableAllowance,
+  formatTokenAmount,
+  parseTokenAmount,
+} from "./travel-safe-v3.js";
+export type {
+  AllowanceSchedule,
+  TravelSafeToken,
+} from "./travel-safe-v3.js";
+export {
   buildRefillFundRelayPlan,
   buildRegistrationRelayPlan,
 } from "./relay-plan.js";
