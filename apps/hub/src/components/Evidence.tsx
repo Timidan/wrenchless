@@ -36,9 +36,9 @@ const STATIONS: readonly Station[] = [
     icon: "lock",
   },
   {
-    name: "Your passkey protects changes",
-    line: "Use it to release funds or extend the return date.",
-    note: "Passkey protected",
+    name: "Your device protects changes",
+    line: "Confirm with a passkey or your connected wallet.",
+    note: "Device confirmed",
     icon: "passkey",
   },
   {

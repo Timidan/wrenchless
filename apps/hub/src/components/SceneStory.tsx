@@ -70,7 +70,7 @@ const SCENES: readonly Scene[] = [
     width: 1280,
     height: 960,
     title: "Release what is available.",
-    line: "Use your passkey to move the available amount back to Ready Wallet.",
+    line: "Confirm on your device to move the available amount back to Ready Wallet.",
   },
   {
     id: "hallway",

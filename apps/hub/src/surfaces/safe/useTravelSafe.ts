@@ -8,9 +8,6 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  devicePasskeysAvailable,
-} from "../../adapters/device-passkey";
-import {
   formatStrkExact,
   parseStrkAmount,
   reasonFrom,
@@ -65,9 +62,8 @@ import {
   validateTravelSafeReturnDate,
 } from "../../lib/travel-safe";
 import {
-  createOrVerifyTravelSafePasskey,
-  travelSafePasskey,
-  unlockTravelSafeWithPasskey,
+  createOrVerifyTravelSafeDeviceAccess,
+  unlockTravelSafeDeviceAccess,
 } from "./travel-safe-device";
 
 const RETURN_RECEIPT_WINDOW_BLOCKS = 120n;
@@ -358,13 +354,6 @@ export function useTravelSafeV2(): TravelSafeController {
       setHome({ name: "no-local-safe" });
       return;
     }
-    if (!devicePasskeysAvailable()) {
-      setHome({
-        name: "device-locked",
-        reason: "Open Wrenchless over HTTPS on a device that supports passkeys",
-      });
-      return;
-    }
     setHome({ name: "device-locked", reason: null });
   }, [settings.activeSafeStateId]);
 
@@ -483,9 +472,6 @@ export function useTravelSafeV2(): TravelSafeController {
     setPreflight("checking");
     setLive("Checking Travel Safe");
     try {
-      if (!devicePasskeysAvailable()) {
-        throw new Error("Open Wrenchless over HTTPS on a device that supports passkeys");
-      }
       await inspectTravelSafePreflight({
         sponsorUrl: readSettings().sponsorUrl,
         rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
@@ -523,8 +509,11 @@ export function useTravelSafeV2(): TravelSafeController {
       if (!ready.canPark) {
         throw new Error("Add private STRK before creating a Travel Safe");
       }
-      setLive("Confirm your passkey");
-      await createOrVerifyTravelSafePasskey(ready.account);
+      setLive("Confirm on this device");
+      await createOrVerifyTravelSafeDeviceAccess({
+        wallet: connected.wallet,
+        account: ready.account,
+      });
       setWallet(connected.wallet);
       setWalletAccount(ready.account);
       setReadiness(ready);
@@ -678,9 +667,7 @@ export function useTravelSafeV2(): TravelSafeController {
   const unlock = useCallback(async (): Promise<void> => {
     setError(null);
     try {
-      const passkey = travelSafePasskey();
-      if (passkey === null) throw new Error("This device has no Wrenchless passkey");
-      await unlockTravelSafeWithPasskey(passkey);
+      await unlockTravelSafeDeviceAccess();
       await loadHome();
     } catch (caught) {
       setHome({ name: "device-locked", reason: reasonFrom(caught) });
@@ -731,9 +718,7 @@ export function useTravelSafeV2(): TravelSafeController {
         setLive(null);
         return;
       }
-      const passkey = travelSafePasskey();
-      if (passkey === null) throw new Error("This device has no Wrenchless passkey");
-      await unlockTravelSafeWithPasskey(passkey);
+      await unlockTravelSafeDeviceAccess(connected);
       const ticket = await readTravelSafeTicket(stateId);
       setHome({ name: "returning", ticket });
       await returnTravelSafe({
@@ -835,11 +820,7 @@ export function useTravelSafeV2(): TravelSafeController {
       async createEarlyRecoveryBackup() {
         setError(null);
         try {
-          const passkey = travelSafePasskey();
-          if (passkey === null) {
-            throw new Error("This device has no Wrenchless passkey");
-          }
-          await unlockTravelSafeWithPasskey(passkey);
+          await unlockTravelSafeDeviceAccess();
           const ticket = await readActiveTravelSafeTicket();
           if (ticket === null) throw new Error("No Travel Safe is active here");
           setEarlyRecoveryBackup(ticket.recoveryPhrase);

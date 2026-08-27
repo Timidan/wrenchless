@@ -14,6 +14,7 @@ const settingsSchema = z
     sponsorUrl: z.string().url(),
     devicePasskeyId: z.string().nullable(),
     devicePasskeyPublicKey: z.string().nullable(),
+    deviceWalletAccount: feltSchema.nullable().default(null),
     activeSafeStateId: feltSchema.nullable(),
   })
   .strict();
@@ -38,6 +39,7 @@ const EMPTY: HubSettings = {
   sponsorUrl: WRENCHLESS_SERVICES.sponsorUrl,
   devicePasskeyId: null,
   devicePasskeyPublicKey: null,
+  deviceWalletAccount: null,
   activeSafeStateId: null,
 };
 

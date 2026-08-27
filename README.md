@@ -19,7 +19,7 @@ early.
 
 - Private STRK
 - One amount and one return date
-- Passkey-protected local Safe ticket
+- Passkey or wallet-confirmed local Safe ticket
 - Twelve recovery words for early return or a replacement device
 - Live helper state and transaction status
 - Three verified STRK20 mainnet transactions
@@ -42,6 +42,11 @@ them to its server.
 
 Ready supplies the private balance, proof, and signature. The Wrenchless
 contract enforces the return date. Funds remain inside the STRK20 flow.
+
+Normal browsers use a passkey to open the encrypted local ticket. If an
+embedded wallet browser does not expose passkeys, Wrenchless asks that wallet
+for a fresh confirmation instead. The confirmation is never stored, but it is
+not an independent security factor from the wallet.
 
 ## Built next: Trip Allowance v3
 
@@ -86,7 +91,7 @@ lifecycle. Trip Allowance v3 has no mainnet deployment evidence yet.
 ## Architecture
 
 ```text
-Browser + passkey
+Browser + device confirmation
      ├─ Ready: private balance, proof, signature
      └─ Sponsor relay → Travel Safe helper → STRK20 pool
 ```
