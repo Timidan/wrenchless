@@ -1,10 +1,29 @@
+function optionalAddress(name: string, configured: string | undefined): string | null {
+  const value = configured?.trim();
+  if (!value) return null;
+  let parsed: bigint;
+  try {
+    parsed = BigInt(value);
+  } catch {
+    throw new Error(`${name} must be a Starknet address`);
+  }
+  if (parsed <= 0n) throw new Error(`${name} must be a non-zero Starknet address`);
+  return `0x${parsed.toString(16)}`;
+}
+
+const LEGACY_TRAVEL_SAFE_HELPER =
+  "0x018f6925422c85da8c9e0c1572adf4316a9821ffabc4b29db37d11c6a0c2844a";
+
 export const WRENCHLESS_MAINNET = {
   chainId: "0x534e5f4d41494e",
   rpcUrl: "https://api.cartridge.gg/x/starknet/mainnet",
   poolAddress:
     "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a",
-  helperAddress:
-    "0x018f6925422c85da8c9e0c1572adf4316a9821ffabc4b29db37d11c6a0c2844a",
+  legacyHelperAddress: LEGACY_TRAVEL_SAFE_HELPER,
+  tripAllowanceHelperAddress: optionalAddress(
+    "VITE_TRAVEL_SAFE_V3_HELPER_ADDRESS",
+    import.meta.env.VITE_TRAVEL_SAFE_V3_HELPER_ADDRESS,
+  ),
   strkTokenAddress:
     "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
 } as const;

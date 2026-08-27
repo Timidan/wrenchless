@@ -185,7 +185,7 @@ async function createOrVerifyPasskey(account: string): Promise<void> {
 
 async function readSafeSnapshot(stateId: string): Promise<RefillChainSnapshot> {
   return readRefillChainSnapshot({
-    helperAddress: WRENCHLESS_MAINNET.helperAddress,
+    helperAddress: WRENCHLESS_MAINNET.legacyHelperAddress,
     stateId,
     rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
   });
@@ -531,7 +531,7 @@ export function useTravelSafe(): TravelSafeController {
         sponsorUrl: readSettings().sponsorUrl,
         rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
         poolAddress: WRENCHLESS_MAINNET.poolAddress,
-        helperAddress: WRENCHLESS_MAINNET.helperAddress,
+        helperAddress: WRENCHLESS_MAINNET.legacyHelperAddress,
       });
       setPreflight("ready");
       setLive(null);
@@ -650,7 +650,7 @@ export function useTravelSafe(): TravelSafeController {
         readiness,
         ticket,
         poolAddress: WRENCHLESS_MAINNET.poolAddress,
-        helperAddress: WRENCHLESS_MAINNET.helperAddress,
+        helperAddress: WRENCHLESS_MAINNET.legacyHelperAddress,
         sponsorUrl: readSettings().sponsorUrl,
         rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
         onStage(stage) {
@@ -694,7 +694,7 @@ export function useTravelSafe(): TravelSafeController {
         readiness,
         ticket,
         prepared: preparedFund,
-        helperAddress: WRENCHLESS_MAINNET.helperAddress,
+        helperAddress: WRENCHLESS_MAINNET.legacyHelperAddress,
         sponsorUrl: readSettings().sponsorUrl,
         rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
       });
@@ -759,7 +759,7 @@ export function useTravelSafe(): TravelSafeController {
           stateId: locator.stateId,
           recoverySalt: locator.recoverySalt,
           poolAddress: WRENCHLESS_MAINNET.poolAddress,
-          helperAddress: WRENCHLESS_MAINNET.helperAddress,
+          helperAddress: WRENCHLESS_MAINNET.legacyHelperAddress,
           tokenAddress: WRENCHLESS_MAINNET.strkTokenAddress,
           rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
         });
@@ -782,7 +782,7 @@ export function useTravelSafe(): TravelSafeController {
         recipient: ready.account,
         ticket,
         poolAddress: WRENCHLESS_MAINNET.poolAddress,
-        helperAddress: WRENCHLESS_MAINNET.helperAddress,
+        helperAddress: WRENCHLESS_MAINNET.legacyHelperAddress,
         rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
       });
       setLive("Return submitted");
@@ -1029,7 +1029,7 @@ export function useTravelSafeRecovery(): TravelSafeRecoveryController {
         wallet: connected.wallet,
         recipient: ready.account,
         poolAddress: WRENCHLESS_MAINNET.poolAddress,
-        helperAddress: WRENCHLESS_MAINNET.helperAddress,
+        helperAddress: WRENCHLESS_MAINNET.legacyHelperAddress,
         tokenAddress: WRENCHLESS_MAINNET.strkTokenAddress,
         rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
       });

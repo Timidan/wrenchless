@@ -9,7 +9,8 @@ use crate::travel_safe_v3::{
     ClaimEarlyRequestV3, ExtendRequestV3, FundRequestV3, ITravelSafeHelperV3Dispatcher,
     ITravelSafeHelperV3DispatcherTrait, MAX_SAFE_DURATION_SECONDS, RefundRequestV3,
     ReleaseAllowanceRequestV3, SafeOperationV3, SafeStatusV3, TopUpRequestV3,
-    compute_v3_claim_commitment, compute_v3_device_commitment, compute_v3_recovery_commitment,
+    compute_v3_action_message_hash, compute_v3_claim_commitment, compute_v3_device_commitment,
+    compute_v3_recovery_commitment, compute_v3_safe_return_message_hash,
 };
 
 const NOW: u64 = 1_800_000_000;
@@ -169,6 +170,24 @@ fn refund_request(setup: Setup, state_id: felt252, note_id: felt252) -> RefundRe
         recovery_salt: setup.recovery_salt,
         signature: array![0x123],
     }
+}
+
+#[test]
+fn typescript_and_cairo_authorization_hashes_match() {
+    let helper = 0x123.try_into().unwrap();
+    let token = 0x789.try_into().unwrap();
+    assert(
+        compute_v3_action_message_hash(
+            'SN_MAIN', helper, 'RELEASE', 0x456, 2, token, 1_000, 100, 2_000, 3_000, 0x99,
+        ) == 0x4240cdd20f765fa3a55b61d6c13279a3c6f970474a620f8c760e72303b92243,
+        'ACTION_HASH_MISMATCH',
+    );
+    assert(
+        compute_v3_safe_return_message_hash(
+            'SN_MAIN', 0x55.try_into().unwrap(), helper, 0x456, 2, token, 1_000, 3_000, 0x99,
+        ) == 0x296be9d93ef34d9e45e526ae6efdf338406ec8a97d41048a168247d90271b57,
+        'RETURN_HASH_MISMATCH',
+    );
 }
 
 #[test]

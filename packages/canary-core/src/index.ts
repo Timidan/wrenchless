@@ -27,6 +27,7 @@ export {
 } from "./ready-artifact.js";
 export {
   assertPreparedRefillFund,
+  assertSubmittableProof,
   computeRefillClaimCommitment,
   computeRefillRecoveryCommitment,
   computeRefillRefundHash,
@@ -35,6 +36,7 @@ export {
   prepareRefillClaim,
   prepareRefillFund,
   prepareRefillRefund,
+  readPreparedHelperInvoke,
   signRefillClaim,
   submitRefillClaim,
   submitRefillRefund,
@@ -115,6 +117,34 @@ export type {
   AllowanceSchedule,
   TravelSafeToken,
 } from "./travel-safe-v3.js";
+export {
+  buildTravelSafeV3ClaimEarlyActions,
+  buildTravelSafeV3ExtendActions,
+  buildTravelSafeV3FundActions,
+  buildTravelSafeV3RefundActions,
+  buildTravelSafeV3ReleaseActions,
+  buildTravelSafeV3TopUpActions,
+  computeTravelSafeV3ActionHash,
+  computeTravelSafeV3ClaimCommitment,
+  computeTravelSafeV3DeviceCommitment,
+  computeTravelSafeV3RecoveryCommitment,
+  computeTravelSafeV3ReturnHash,
+  createTravelSafeV3ActionTypedData,
+  createTravelSafeV3ReturnTypedData,
+  deriveTravelSafeV3PublicKey,
+  signTravelSafeV3Action,
+  TRAVEL_SAFE_V3_OPEN_NOTE,
+} from "./travel-safe-actions-v3.js";
+export type {
+  TravelSafeV3Action,
+  TravelSafeV3ActionAuthorization,
+  TravelSafeV3InvokeAction,
+  TravelSafeV3ReturnAuthorization,
+  TravelSafeV3Signature,
+  TravelSafeV3StateAuthorization,
+  TravelSafeV3TransferAction,
+  TravelSafeV3WithdrawAction,
+} from "./travel-safe-actions-v3.js";
 export {
   buildRefillFundRelayPlan,
   buildRegistrationRelayPlan,

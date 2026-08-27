@@ -509,7 +509,7 @@ function readPreparedServerActions(
   return readServerActions(prepared.call.calldata, isSimulation);
 }
 
-function readPreparedHelperInvoke(
+export function readPreparedHelperInvoke(
   prepared: PreparedStrk20Call,
   poolAddress: string,
   helperAddress: string,
@@ -594,9 +594,9 @@ function assertPreparedFund(
   });
 }
 
-function assertSubmittableProof(
+export function assertSubmittableProof(
   prepared: PreparedStrk20Call,
-  operation: "FUND" | "CLAIM" | "REFUND",
+  operation: "FUND" | "TOP_UP" | "CLAIM" | "REFUND",
 ): void {
   if (
     prepared.proof.data.trim().length === 0 ||
