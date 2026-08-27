@@ -28,8 +28,8 @@ export function App(): JSX.Element {
 
   const page: JSX.Element = (
     <>
-      <a className="skip-link" href="#story">
-        Skip to the content
+      <a className="skip-link" href="#main">
+        Skip to main content
       </a>
       <Nav />
       <main className="page" id="main">

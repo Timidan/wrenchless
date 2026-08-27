@@ -133,23 +133,25 @@ export function SceneHero(): JSX.Element {
         <div className="bay hero__bay">
           <h1 className="hero__title">
             <span className="hero__line">
-              <span className="hero__line-in">Park most of your private balance.</span>
+              <span className="hero__line-in">
+                Keep most of your balance locked while you travel.
+              </span>
             </span>
             <span className="hero__line">
-              <span className="hero__line-in">Keep a daily allowance.</span>
+              <span className="hero__line-in">Release a set amount each day.</span>
             </span>
           </h1>
           <p className="hero__lede hero__step">
-            Choose a daily amount or one return date, in private STRK or USDC,
-            and bring it all home early with the words you saved.
+            Choose private STRK or USDC from Ready Wallet. Set the daily amount
+            and the date when the remaining balance can return.
           </p>
           <div className="hero__actions hero__step">
             <a className="btn btn--primary hero__magnet" href="/safe">
-              <span>Open Trip Allowance</span>
+              <span>Set up your allowance</span>
               <ArrowRoll />
             </a>
             <a className="btn btn--secondary" href="#story">
-              <span>See how it works</span>
+              <span>How it works</span>
               <ArrowRoll />
             </a>
           </div>

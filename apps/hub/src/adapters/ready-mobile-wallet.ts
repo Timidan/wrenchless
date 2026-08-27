@@ -164,7 +164,7 @@ export async function connectReadyMobileWallet(input: {
     projectId,
     metadata: {
       name: "Wrenchless",
-      description: "Private Travel Safe on Starknet",
+      description: "Private trip allowance for STRK and USDC on Starknet",
       url: applicationUrl,
       icons: [new URL("/favicon.svg", applicationUrl).toString()],
     },

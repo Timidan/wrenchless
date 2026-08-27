@@ -39,8 +39,8 @@ const SCENES: readonly Scene[] = [
     portal: "36% 38%",
     width: 922,
     height: 1152,
-    title: "Choose what stays home.",
-    line: "Pick a daily allowance or one return date, in private STRK or USDC.",
+    title: "Choose your plan.",
+    line: "Pick the token, amount, daily release, and return date. Or keep everything locked until one date.",
   },
   {
     id: "counter",
@@ -49,8 +49,8 @@ const SCENES: readonly Scene[] = [
     portal: "74% 48%",
     width: 1536,
     height: 1024,
-    title: "Ready prepares the move.",
-    line: "It signs a STRK20 proof — your wallet keys never leave it.",
+    title: "Approve it in Ready Wallet.",
+    line: "Ready Wallet signs the private transfer. Wrenchless never sees your wallet keys.",
   },
   {
     id: "pool",
@@ -59,8 +59,8 @@ const SCENES: readonly Scene[] = [
     portal: "64% 70%",
     width: 1536,
     height: 1024,
-    title: "The reserve waits.",
-    line: "Wrenchless parks it in the Travel Safe. Missed days accumulate; future days don't release early.",
+    title: "The schedule controls access.",
+    line: "Daily amounts become available on time. Skip a day and it carries over. Later amounts stay locked.",
   },
   {
     id: "vault",
@@ -69,8 +69,8 @@ const SCENES: readonly Scene[] = [
     portal: "58% 58%",
     width: 1280,
     height: 960,
-    title: "Use the daily allowance.",
-    line: "Release what's available today with your passkey, or bring the whole reserve back early with your saved recovery words.",
+    title: "Release what is available.",
+    line: "Use your passkey to move the available amount back to Ready Wallet.",
   },
   {
     id: "hallway",
@@ -79,8 +79,8 @@ const SCENES: readonly Scene[] = [
     portal: "64% 57%",
     width: 922,
     height: 1152,
-    title: "The dated return goes to Ready.",
-    line: "Extend the date or top up anytime, then return the remainder once it opens.",
+    title: "Return the remaining balance.",
+    line: "Move everything back on your return date. Recovery words can do this earlier from another compatible device.",
   },
 ];
 
@@ -369,7 +369,7 @@ export function SceneStory(): JSX.Element {
   return (
     <section className="section section--story" id="story" ref={root}>
       <h2 className="visually-hidden">
-        How a Wrenchless Travel Safe works, in five scenes.
+        How Wrenchless works, in five steps.
       </h2>
 
       <div className="story__stage" ref={stage}>

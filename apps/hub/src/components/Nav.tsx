@@ -18,7 +18,7 @@ export function Nav(): JSX.Element {
         <span>wrenchless</span>
       </a>
       <a className="btn btn--primary nav__cta" href="/safe">
-        <span>Open Safe</span>
+        <span>Open app</span>
         <ArrowRoll />
       </a>
     </HeaderMorph>
