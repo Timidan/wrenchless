@@ -8,10 +8,12 @@ import {
   buildTravelSafeV3TopUpActions,
   createTravelSafeV3ReturnTypedData,
   deriveTravelSafeV3PublicKey,
+  jsonValueSchema,
   readPreparedHelperInvoke,
   signTravelSafeV3Action,
   TRAVEL_SAFE_V3_OPEN_NOTE,
   type PreparedStrk20Call,
+  type JsonValue,
   type TravelSafeV3Action,
   type TravelSafeV3StateAuthorization,
 } from "@wrenchless/canary-core";
@@ -37,7 +39,7 @@ const transactionSchema = z.object({ transaction_hash: feltSchema });
 const signatureSchema = z.array(feltSchema).min(1);
 
 export type ReadyTravelSafeV3Wallet = {
-  request(request: { type: string; params?: unknown }): Promise<unknown>;
+  request(request: { type: string; params?: JsonValue }): Promise<JsonValue>;
 };
 
 export type ReadyTravelSafeV3State = TravelSafeV3StateAuthorization & {
@@ -363,14 +365,14 @@ export async function submitTravelSafeV3Refund(input: {
   const signature = signatureSchema.parse(
     await input.wallet.request({
       type: "wallet_signTypedData",
-      params: {
+      params: jsonValueSchema.parse({
         ...createTravelSafeV3ReturnTypedData({
           ...input.state,
           recoveryAccount: input.recoveryAccount,
           noteId,
         }),
         api_version: READY_WALLET_API_VERSION,
-      },
+      }),
     }),
   );
   return invoke(

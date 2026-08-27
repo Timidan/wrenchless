@@ -158,6 +158,12 @@ function assertStrk20ProofFacts(
   };
 }
 
+export function assertPreparedStrk20ProofFacts(
+  input: CommonProofFactsInput,
+): RegistrationProofFactsSummary {
+  return assertStrk20ProofFacts(input, "FUND call");
+}
+
 export function assertRegistrationProofFacts(
   input: ProofFactsInput,
 ): RegistrationProofFactsSummary {

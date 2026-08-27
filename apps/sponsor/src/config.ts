@@ -15,6 +15,45 @@ const positiveDecimalSchema = z
   .string()
   .regex(/^[1-9][0-9]*$/, "expected a positive canonical decimal integer");
 
+const travelSafeTokenPolicySchema = z
+  .object({
+    address: feltSchema,
+    symbol: z.string().regex(/^[A-Z0-9]{2,10}$/),
+    decimals: z.number().int().min(0).max(18),
+    minAmountBaseUnits: positiveDecimalSchema,
+    maxAmountBaseUnits: positiveDecimalSchema,
+  })
+  .strict()
+  .superRefine((policy, context) => {
+    if (BigInt(policy.minAmountBaseUnits) > BigInt(policy.maxAmountBaseUnits)) {
+      context.addIssue({
+        code: "custom",
+        message: "minimum amount exceeds maximum amount",
+        path: ["minAmountBaseUnits"],
+      });
+    }
+  });
+
+const travelSafeTokenPoliciesSchema = z
+  .array(travelSafeTokenPolicySchema)
+  .max(8)
+  .superRefine((policies, context) => {
+    const addresses = new Set<string>();
+    for (const [index, policy] of policies.entries()) {
+      const address = BigInt(policy.address).toString();
+      if (addresses.has(address)) {
+        context.addIssue({
+          code: "custom",
+          message: "duplicate token address",
+          path: [index, "address"],
+        });
+      }
+      addresses.add(address);
+    }
+  });
+
+export type TravelSafeTokenPolicy = z.infer<typeof travelSafeTokenPolicySchema>;
+
 const secretKeySchema = z
   .string()
   .regex(/^[0-9a-f]{64}$/, "expected 32 bytes of lowercase hexadecimal");
@@ -28,6 +67,10 @@ const sponsorEnvironmentSchema = z.object({
   WRENCHLESS_SPONSOR_POOL_ADDRESS: feltSchema,
   WRENCHLESS_SPONSOR_HELPER_ADDRESS: feltSchema,
   WRENCHLESS_SPONSOR_TOKEN_ADDRESS: feltSchema,
+  WRENCHLESS_SPONSOR_V3_HELPER_ADDRESS: z
+    .union([feltSchema, z.literal("").transform(() => undefined)])
+    .optional(),
+  WRENCHLESS_SPONSOR_TOKEN_POLICIES_JSON: z.string().default("[]"),
   WRENCHLESS_SPONSOR_ACCOUNT_ADDRESS: feltSchema,
   WRENCHLESS_SPONSOR_ACCOUNT_PRIVATE_KEY: feltSchema,
   WRENCHLESS_SPONSOR_MAX_POOL_FEE_FRI: positiveDecimalSchema,
@@ -61,6 +104,9 @@ const sponsorEnvironmentSchema = z.object({
   WRENCHLESS_ALLOW_REFILL_FUND_BROADCAST: z
     .enum(["true", "false"])
     .default("false"),
+  WRENCHLESS_ALLOW_TRAVEL_SAFE_V3_BROADCAST: z
+    .enum(["true", "false"])
+    .default("false"),
   WRENCHLESS_TRUST_PROXY: z.enum(["true", "false"]).default("false"),
 });
 
@@ -73,6 +119,8 @@ export type SponsorConfig = {
   poolAddress: string;
   helperAddress: string;
   tokenAddress: string;
+  travelSafeV3HelperAddress: string | undefined;
+  travelSafeTokenPolicies: readonly TravelSafeTokenPolicy[];
   accountAddress: string;
   accountPrivateKey: string;
   maxPoolFeeFri: bigint;
@@ -86,6 +134,7 @@ export type SponsorConfig = {
   recoveryIndexPath: string;
   recoveryIndexKeyPath: string;
   refillFundBroadcastEnabled: boolean;
+  travelSafeV3BroadcastEnabled: boolean;
   trustProxy: boolean;
 };
 
@@ -93,6 +142,29 @@ export function readSponsorConfig(
   environment: NodeJS.ProcessEnv = process.env,
 ): SponsorConfig {
   const value = sponsorEnvironmentSchema.parse(environment);
+  let policyInput: unknown;
+  try {
+    policyInput = JSON.parse(value.WRENCHLESS_SPONSOR_TOKEN_POLICIES_JSON);
+  } catch (cause) {
+    throw new Error("WRENCHLESS_SPONSOR_TOKEN_POLICIES_JSON is not valid JSON", {
+      cause,
+    });
+  }
+  const travelSafeTokenPolicies = travelSafeTokenPoliciesSchema.parse(policyInput);
+  const travelSafeV3BroadcastEnabled =
+    value.WRENCHLESS_ALLOW_TRAVEL_SAFE_V3_BROADCAST === "true";
+  if (travelSafeV3BroadcastEnabled) {
+    if (value.WRENCHLESS_SPONSOR_V3_HELPER_ADDRESS === undefined) {
+      throw new Error("Travel Safe v3 broadcast requires its helper address");
+    }
+    if (
+      !travelSafeTokenPolicies.some(
+        (policy) => BigInt(policy.address) === BigInt(value.WRENCHLESS_SPONSOR_TOKEN_ADDRESS),
+      )
+    ) {
+      throw new Error("Travel Safe v3 requires a STRK token policy");
+    }
+  }
   return {
     production: value.NODE_ENV === "production",
     bindHost: value.WRENCHLESS_SPONSOR_BIND_HOST,
@@ -102,6 +174,8 @@ export function readSponsorConfig(
     poolAddress: value.WRENCHLESS_SPONSOR_POOL_ADDRESS,
     helperAddress: value.WRENCHLESS_SPONSOR_HELPER_ADDRESS,
     tokenAddress: value.WRENCHLESS_SPONSOR_TOKEN_ADDRESS,
+    travelSafeV3HelperAddress: value.WRENCHLESS_SPONSOR_V3_HELPER_ADDRESS,
+    travelSafeTokenPolicies,
     accountAddress: value.WRENCHLESS_SPONSOR_ACCOUNT_ADDRESS,
     accountPrivateKey: value.WRENCHLESS_SPONSOR_ACCOUNT_PRIVATE_KEY,
     maxPoolFeeFri: BigInt(value.WRENCHLESS_SPONSOR_MAX_POOL_FEE_FRI),
@@ -124,6 +198,7 @@ export function readSponsorConfig(
     recoveryIndexKeyPath: value.WRENCHLESS_RECOVERY_INDEX_KEY_PATH,
     refillFundBroadcastEnabled:
       value.WRENCHLESS_ALLOW_REFILL_FUND_BROADCAST === "true",
+    travelSafeV3BroadcastEnabled,
     trustProxy: value.WRENCHLESS_TRUST_PROXY === "true",
   };
 }

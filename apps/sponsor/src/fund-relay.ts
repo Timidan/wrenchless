@@ -64,6 +64,20 @@ export function assertAcceptedMaximumSpend(
   }
 }
 
+export class SponsorRelayGate {
+  private locked = false;
+
+  tryLock(): boolean {
+    if (this.locked) return false;
+    this.locked = true;
+    return true;
+  }
+
+  unlock(): void {
+    this.locked = false;
+  }
+}
+
 /**
  * The consumer-facing bridge to the already hardened FUND relay path.
  *
@@ -75,18 +89,18 @@ export function assertAcceptedMaximumSpend(
  * transaction is broadcast.
  */
 export class RefillFundRelay {
-  private busy = false;
   private readonly budget: FundSpendBudget;
 
   constructor(
     private readonly config: SponsorConfig,
     private readonly recoveryIndex: RecoveryIndex,
     private readonly signatureVerifier: ReadyAccountSignatureVerifier,
+    budget?: FundSpendBudget,
+    private readonly gate = new SponsorRelayGate(),
   ) {
-    this.budget = new FundSpendBudget(
-      config.fundBudgetPath,
-      config.maxDailyFundSpendFri,
-    );
+    this.budget =
+      budget ??
+      new FundSpendBudget(config.fundBudgetPath, config.maxDailyFundSpendFri);
   }
 
   async canFundOneMaximumTransaction(): Promise<boolean> {
@@ -181,7 +195,7 @@ export class RefillFundRelay {
       })
       .catch(() => undefined)
       .finally(() => {
-        this.busy = false;
+        this.gate.unlock();
       });
   }
 
@@ -189,16 +203,14 @@ export class RefillFundRelay {
     if (!this.config.refillFundBroadcastEnabled) {
       throw new RefillFundRelayError("fund_broadcast_disabled");
     }
-    if (this.busy) throw new RefillFundRelayError("relay_busy");
-
     let artifact: RefillFundArtifact;
     try {
       artifact = parseRefillFundArtifact(value);
     } catch (cause) {
       throw new RefillFundRelayError("fund_rejected", { cause });
     }
+    if (!this.gate.tryLock()) throw new RefillFundRelayError("relay_busy");
 
-    this.busy = true;
     try {
       const client = new StarknetRegistrationCanaryClient(
         this.config.rpcUrl,
@@ -219,7 +231,7 @@ export class RefillFundRelay {
       if (cause instanceof RefillFundRelayError) throw cause;
       throw new RefillFundRelayError("fund_rejected", { cause });
     } finally {
-      this.busy = false;
+      this.gate.unlock();
     }
   }
 
@@ -230,17 +242,17 @@ export class RefillFundRelay {
     if (!this.config.refillFundBroadcastEnabled) {
       throw new RefillFundRelayError("fund_broadcast_disabled");
     }
-    if (this.busy) throw new RefillFundRelayError("relay_busy");
-
     let artifact: RefillFundArtifact;
     try {
       artifact = parseRefillFundArtifact(value);
     } catch (cause) {
       throw new RefillFundRelayError("fund_rejected", { cause });
     }
+    if (!this.gate.tryLock()) throw new RefillFundRelayError("relay_busy");
 
-    this.busy = true;
     let finalityContinuesInBackground = false;
+    let reservationMade = false;
+    let transactionHash: string | undefined;
     try {
       const client = new StarknetRegistrationCanaryClient(
         this.config.rpcUrl,
@@ -263,9 +275,11 @@ export class RefillFundRelay {
             recoverySalt: artifact.recoverySalt,
           });
           await this.budget.reserve(artifact.stateId, maximumSpendFri);
+          reservationMade = true;
         },
       });
-      if (result.transactionHash === undefined) {
+      transactionHash = result.transactionHash;
+      if (transactionHash === undefined) {
         throw new Error("FUND relay returned no transaction hash");
       }
       if (result.receipt === undefined) {
@@ -273,13 +287,13 @@ export class RefillFundRelay {
         this.releaseAfterFinality(
           client,
           artifact,
-          result.transactionHash,
+          transactionHash,
           BigInt(result.summary.poolFeeFri),
         );
         return {
           status: "submitted",
           summary: result.summary,
-          transactionHash: result.transactionHash,
+          transactionHash,
         };
       }
       await this.budget.settle(
@@ -289,10 +303,13 @@ export class RefillFundRelay {
       return {
         status: "finalized",
         summary: result.summary,
-        transactionHash: result.transactionHash,
+        transactionHash,
         receipt: result.receipt,
       };
     } catch (cause) {
+      if (reservationMade && transactionHash === undefined) {
+        await this.budget.settle(artifact.stateId, 0n).catch(() => undefined);
+      }
       if (cause instanceof RefillFundRelayError) throw cause;
       if (cause instanceof FundBudgetExceededError) {
         throw new RefillFundRelayError("daily_fund_budget_exhausted", {
@@ -301,7 +318,7 @@ export class RefillFundRelay {
       }
       throw new RefillFundRelayError("fund_rejected", { cause });
     } finally {
-      if (!finalityContinuesInBackground) this.busy = false;
+      if (!finalityContinuesInBackground) this.gate.unlock();
     }
   }
 }

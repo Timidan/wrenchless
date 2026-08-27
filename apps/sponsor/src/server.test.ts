@@ -9,6 +9,10 @@ import type {
 } from "./fund-relay.js";
 import type { RecoveryLookupService } from "./recovery-index.js";
 import { createSponsorServer } from "./server.js";
+import type {
+  TravelSafeV3Estimate,
+  TravelSafeV3Relay,
+} from "./travel-safe-v3-relay.js";
 
 const servers: ReturnType<typeof createSponsorServer>[] = [];
 
@@ -55,17 +59,20 @@ async function serve(relay: {
     value: JsonValue,
     acceptedMaxSpendFri: bigint,
   ): Promise<RefillFundSubmission>;
-}): Promise<string> {
+}, travelSafeV3Relay?: Pick<TravelSafeV3Relay, "estimate" | "submit">): Promise<string> {
+  const options = {
+    allowedOrigin: "https://wrenchless.test",
+    fundUnavailableReason: async () => undefined,
+    requireHttps: false,
+    trustProxy: false,
+  };
   const server = createSponsorServer(
     relay,
     // SAFETY: recovery routes are not called in these FUND-only server tests.
     {} as RecoveryLookupService,
-    {
-      allowedOrigin: "https://wrenchless.test",
-      fundUnavailableReason: async () => undefined,
-      requireHttps: false,
-      trustProxy: false,
-    },
+    travelSafeV3Relay === undefined
+      ? options
+      : { ...options, travelSafeV3Relay },
   );
   servers.push(server);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -129,5 +136,61 @@ describe("refill FUND cost boundary", () => {
 
     expect(response.status).toBe(202);
     expect(accepted).toBe(16_000_000_000_000_000_000n);
+  });
+});
+
+describe("Travel Safe v3 routes", () => {
+  it("keeps FUND and top-up estimates on distinct endpoints", async () => {
+    let operation: "FUND" | "TOP_UP" | undefined;
+    const v3Estimate: TravelSafeV3Estimate = {
+      status: "estimated",
+      summary: {
+        mode: "dry-run",
+        operation: "TOP_UP",
+        poolAddress: "0x1",
+        poolClassHash: "0x2",
+        poolVersion: "1",
+        helperAddress: "0x3",
+        helperClassHash: "0x4",
+        stateId: "0x5",
+        tokenAddress: "0x6",
+        tokenSymbol: "STRK",
+        amountBaseUnits: "100",
+        relayAddress: "0x7",
+        poolFeeFri: "8",
+        estimatedTransactionFeeFri: "9",
+        maxTransactionFeeFri: "10",
+        maxSpendFri: "18",
+        proofBaseBlock: "100",
+        proofExpiresAtBlock: "550",
+        proofRemainingBlocks: "450",
+      },
+    };
+    const base = await serve(
+      {
+        canFundOneMaximumTransaction: async () => true,
+        estimate: async () => estimate,
+        submit: async () => {
+          throw new Error("must not broadcast");
+        },
+      },
+      {
+        async estimate(_value, expectedOperation) {
+          operation = expectedOperation;
+          return v3Estimate;
+        },
+        async submit() {
+          throw new Error("must not broadcast");
+        },
+      },
+    );
+    const response = await fetch(`${base}/v3/top-up/estimate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operation: "TOP_UP" }),
+    });
+    expect(response.status).toBe(200);
+    expect(operation).toBe("TOP_UP");
+    expect(await response.json()).toEqual(v3Estimate);
   });
 });

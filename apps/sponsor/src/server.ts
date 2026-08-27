@@ -25,6 +25,12 @@ import {
   type RecoveryLocator,
   type RecoveryLookupService,
 } from "./recovery-index.js";
+import {
+  TravelSafeV3RelayError,
+  type TravelSafeV3Estimate,
+  type TravelSafeV3Relay,
+  type TravelSafeV3Submission,
+} from "./travel-safe-v3-relay.js";
 
 const MAX_FUND_BODY_BYTES = 8 * 1_024 * 1_024;
 const MAX_RECOVERY_BODY_BYTES = 16 * 1_024;
@@ -54,6 +60,7 @@ type SponsorServerOptions = {
   >;
   requireHttps: boolean;
   trustProxy: boolean;
+  travelSafeV3Relay?: Pick<TravelSafeV3Relay, "estimate" | "submit">;
 };
 
 type SponsorFundRelay = Pick<
@@ -96,6 +103,8 @@ class RateLimiter {
 type SponsorResponse =
   | RefillFundSubmission
   | RefillFundEstimate
+  | TravelSafeV3Estimate
+  | TravelSafeV3Submission
   | RecoveryChallenge
   | RecoveryLocator
   | { error: string; reason?: SponsorUnavailableReason }
@@ -185,6 +194,18 @@ function publicError(error: Error): PublicError {
     }
     return { status: 422, code: error.code };
   }
+  if (error instanceof TravelSafeV3RelayError) {
+    if (error.code === "relay_busy" || error.code === "travel_safe_cost_changed") {
+      return { status: 409, code: error.code };
+    }
+    if (
+      error.code === "travel_safe_v3_disabled" ||
+      error.code === "daily_fund_budget_exhausted"
+    ) {
+      return { status: 503, code: error.code };
+    }
+    return { status: 422, code: error.code };
+  }
   if (error instanceof ZodError || error instanceof SyntaxError) {
     return { status: 400, code: "invalid_request" };
   }
@@ -251,6 +272,58 @@ export function createSponsorServer(
               "daily_fund_budget_exhausted",
           });
         }
+        return;
+      }
+      const travelSafeRoute =
+        url.pathname === "/v3/fund" || url.pathname === "/v3/fund/estimate"
+          ? ("FUND" as const)
+          : url.pathname === "/v3/top-up" ||
+              url.pathname === "/v3/top-up/estimate"
+            ? ("TOP_UP" as const)
+            : null;
+      if (request.method === "POST" && travelSafeRoute !== null) {
+        if (options.travelSafeV3Relay === undefined) {
+          sendJson(response, 503, { error: "travel_safe_v3_disabled" });
+          return;
+        }
+        const fundUnavailableReason = await options.fundUnavailableReason();
+        if (fundUnavailableReason !== undefined) {
+          response.setHeader("Retry-After", "300");
+          sendJson(response, 503, {
+            error: "sponsor_unavailable",
+            reason: fundUnavailableReason,
+          });
+          return;
+        }
+        const estimating = url.pathname.endsWith("/estimate");
+        if (
+          !rates.allow(
+            rateBucket(
+              `${travelSafeRoute.toLowerCase()}-${estimating ? "estimate" : "submit"}`,
+              request,
+            ),
+            6,
+          )
+        ) {
+          response.setHeader("Retry-After", "3600");
+          sendJson(response, 429, { error: "rate_limited" });
+          return;
+        }
+        if (estimating) {
+          const estimate = await options.travelSafeV3Relay.estimate(
+            await readJsonBody(request),
+            travelSafeRoute,
+          );
+          sendJson(response, 200, estimate);
+          return;
+        }
+        const body = fundSubmissionSchema.parse(await readJsonBody(request));
+        const submission = await options.travelSafeV3Relay.submit(
+          body.artifact,
+          BigInt(body.acceptedMaxSpendFri),
+          travelSafeRoute,
+        );
+        sendJson(response, 202, submission);
         return;
       }
       if (request.method === "POST" && url.pathname === "/v1/refill-funds") {

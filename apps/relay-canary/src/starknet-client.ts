@@ -15,6 +15,7 @@ import {
   shortString,
   TransactionExecutionStatus,
   TransactionFinalityStatus,
+  type Call,
   type ResourceBoundsBN,
 } from "starknet";
 import { z } from "zod";
@@ -62,6 +63,34 @@ const boundedRpcFetch: typeof fetch = (input, init = {}) =>
   });
 
 type AbiRecord = JsonObject;
+
+export type PreparedStrk20RelayPlan = { calls: Call[] };
+export type PreparedStrk20Proof = {
+  proof: string;
+  proofFacts: string[];
+};
+
+export type TravelSafeV3StateSnapshot = {
+  claimCommitment: string;
+  deviceCommitment: string;
+  recoveryCommitment: string;
+  tokenAddress: string;
+  initialAmount: bigint;
+  remainingAmount: bigint;
+  releasedAmount: bigint;
+  dailyAmount: bigint;
+  firstReleaseAt: bigint;
+  returnAt: bigint;
+  maxReturnAt: bigint;
+  nonce: bigint;
+  status: "Funded" | "Claimed" | "Refunded";
+};
+
+export type SponsoredInvokeFinality = {
+  transactionHash: string;
+  actualFeeFri: string;
+  succeeded: boolean;
+};
 
 const jsonObjectSchema = z.record(z.string(), z.json());
 const stringSchema = z.string();
@@ -487,6 +516,71 @@ function parseRefillState(result: readonly string[]): RefillStateSnapshot {
   };
 }
 
+function parseTravelSafeV3State(
+  result: readonly string[],
+): TravelSafeV3StateSnapshot {
+  const parsed = z.tuple([
+    z.string(),
+    z.string(),
+    z.string(),
+    z.string(),
+    z.string(),
+    z.string(),
+    z.string(),
+    z.string(),
+    z.string(),
+    z.string(),
+    z.string(),
+    z.string(),
+    z.string(),
+  ]).safeParse(result);
+  if (!parsed.success) {
+    throw new Error("get_state returned an incompatible Travel Safe v3 state");
+  }
+  const [
+    claimCommitment,
+    deviceCommitment,
+    recoveryCommitment,
+    tokenAddress,
+    initialAmount,
+    remainingAmount,
+    releasedAmount,
+    dailyAmount,
+    firstReleaseAt,
+    returnAt,
+    maxReturnAt,
+    nonce,
+    status,
+  ] = parsed.data;
+  const statusValue = BigInt(status);
+  const statusName =
+    statusValue === 1n
+      ? "Funded"
+      : statusValue === 2n
+        ? "Claimed"
+        : statusValue === 3n
+          ? "Refunded"
+          : undefined;
+  if (statusName === undefined) {
+    throw new Error("get_state returned an invalid Travel Safe v3 status");
+  }
+  return {
+    claimCommitment,
+    deviceCommitment,
+    recoveryCommitment,
+    tokenAddress,
+    initialAmount: BigInt(initialAmount),
+    remainingAmount: BigInt(remainingAmount),
+    releasedAmount: BigInt(releasedAmount),
+    dailyAmount: BigInt(dailyAmount),
+    firstReleaseAt: BigInt(firstReleaseAt),
+    returnAt: BigInt(returnAt),
+    maxReturnAt: BigInt(maxReturnAt),
+    nonce: BigInt(nonce),
+    status: statusName,
+  };
+}
+
 export class StarknetRegistrationCanaryClient
   implements RegistrationCanaryClient
 {
@@ -554,6 +648,39 @@ export class StarknetRegistrationCanaryClient
       parseSingleFelt(configuredToken, "allowed_token") !== BigInt(tokenAddress)
     ) {
       throw new Error("refill helper is configured for a different token");
+    }
+    return { classHash };
+  }
+
+  async assertTravelSafeV3Helper(
+    helperAddress: string,
+    poolAddress: string,
+    tokenAddress: string,
+    expectedClassHash: string,
+  ): Promise<{ classHash: string }> {
+    const [classHash, configuredPool, tokenSupported] = await Promise.all([
+      this.provider.getClassHashAt(helperAddress, "latest"),
+      this.provider.callContract(
+        { contractAddress: helperAddress, entrypoint: "privacy_pool", calldata: [] },
+        "latest",
+      ),
+      this.provider.callContract(
+        {
+          contractAddress: helperAddress,
+          entrypoint: "is_supported_token",
+          calldata: [tokenAddress],
+        },
+        "latest",
+      ),
+    ]);
+    if (BigInt(classHash) !== BigInt(expectedClassHash)) {
+      throw new Error("Travel Safe v3 helper class does not match this build");
+    }
+    if (parseSingleFelt(configuredPool, "privacy_pool") !== BigInt(poolAddress)) {
+      throw new Error("Travel Safe v3 helper uses a different privacy pool");
+    }
+    if (parseSingleFelt(tokenSupported, "is_supported_token") !== 1n) {
+      throw new Error("Travel Safe v3 helper does not support this token");
     }
     return { classHash };
   }
@@ -712,6 +839,19 @@ export class StarknetRegistrationCanaryClient
     );
   }
 
+  async readTravelSafeV3State(
+    helperAddress: string,
+    stateId: string,
+  ): Promise<TravelSafeV3StateSnapshot | null> {
+    if (!(await this.readRefillStateExists(helperAddress, stateId))) return null;
+    return parseTravelSafeV3State(
+      await this.provider.callContract(
+        { contractAddress: helperAddress, entrypoint: "get_state", calldata: [stateId] },
+        "latest",
+      ),
+    );
+  }
+
   private makeAccount(signer: string): Account {
     return new Account({
       provider: this.provider,
@@ -721,8 +861,8 @@ export class StarknetRegistrationCanaryClient
   }
 
   private async estimate(
-    plan: RegistrationRelayPlan | RefillFundRelayPlan,
-    artifact: RegistrationCanaryArtifact | RefillFundArtifact,
+    plan: RegistrationRelayPlan | RefillFundRelayPlan | PreparedStrk20RelayPlan,
+    artifact: RegistrationCanaryArtifact | RefillFundArtifact | PreparedStrk20Proof,
     signer: string,
     skipValidate: boolean,
   ): Promise<RelayFeeEstimate> {
@@ -743,23 +883,23 @@ export class StarknetRegistrationCanaryClient
   }
 
   async estimateUnsigned(
-    plan: RegistrationRelayPlan | RefillFundRelayPlan,
-    artifact: RegistrationCanaryArtifact | RefillFundArtifact,
+    plan: RegistrationRelayPlan | RefillFundRelayPlan | PreparedStrk20RelayPlan,
+    artifact: RegistrationCanaryArtifact | RefillFundArtifact | PreparedStrk20Proof,
   ): Promise<RelayFeeEstimate> {
     return this.estimate(plan, artifact, DRY_RUN_SIGNER, true);
   }
 
   async estimateSigned(
-    plan: RegistrationRelayPlan | RefillFundRelayPlan,
-    artifact: RegistrationCanaryArtifact | RefillFundArtifact,
+    plan: RegistrationRelayPlan | RefillFundRelayPlan | PreparedStrk20RelayPlan,
+    artifact: RegistrationCanaryArtifact | RefillFundArtifact | PreparedStrk20Proof,
     privateKey: string,
   ): Promise<RelayFeeEstimate> {
     return this.estimate(plan, artifact, privateKey, false);
   }
 
   async broadcast(
-    plan: RegistrationRelayPlan | RefillFundRelayPlan,
-    artifact: RegistrationCanaryArtifact | RefillFundArtifact,
+    plan: RegistrationRelayPlan | RefillFundRelayPlan | PreparedStrk20RelayPlan,
+    artifact: RegistrationCanaryArtifact | RefillFundArtifact | PreparedStrk20Proof,
     privateKey: string,
     resourceBounds: ResourceBoundsBN,
   ): Promise<string> {
@@ -770,6 +910,40 @@ export class StarknetRegistrationCanaryClient
       resourceBounds,
     });
     return result.transaction_hash;
+  }
+
+  async waitForSponsoredInvokeFinality(
+    transactionHash: string,
+  ): Promise<SponsoredInvokeFinality> {
+    const receipt = await this.provider.waitForTransaction(transactionHash, {
+      retries: 20,
+      retryInterval: 2_500,
+      successStates: [
+        TransactionFinalityStatus.ACCEPTED_ON_L2,
+        TransactionFinalityStatus.ACCEPTED_ON_L1,
+      ],
+      errorStates: [TransactionExecutionStatus.REVERTED],
+    });
+    const value = requireRecord(providerJson(receipt), "transaction receipt");
+    if (!sameFelt(value.transaction_hash, transactionHash, "receipt transaction hash")) {
+      throw new Error("receipt transaction hash does not match submission");
+    }
+    const fee = requireRecord(value.actual_fee, "receipt actual fee");
+    if (fee.unit !== "FRI") {
+      throw new Error("sponsored transaction fee is not denominated in FRI");
+    }
+    const transaction = requireRecord(
+      providerJson(await this.provider.getTransactionByHash(transactionHash)),
+      "transaction",
+    );
+    if (!sameFelt(transaction.sender_address, this.relayAddress, "transaction sender")) {
+      throw new Error("sponsored transaction sender does not match the relay");
+    }
+    return {
+      transactionHash,
+      actualFeeFri: requireFelt(fee.amount, "receipt actual fee amount").toString(),
+      succeeded: value.execution_status === "SUCCEEDED",
+    };
   }
 
   async waitForRegistrationFinality(

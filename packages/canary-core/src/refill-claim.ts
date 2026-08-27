@@ -200,21 +200,23 @@ export type PreparedRefillFund = {
   prepared: PreparedStrk20Call;
 };
 
-type InvokeServerAction = {
+export type InvokeServerAction = {
   actionIndex: number;
   discriminant: bigint;
   contractAddress: bigint;
   calldata: bigint[];
 };
 
-type TransferToServerAction = {
+export type TransferToServerAction = {
   actionIndex: number;
   recipient: bigint;
   token: bigint;
   amount: bigint;
 };
 
-type ParsedServerActions = {
+export type ParsedServerActions = {
+  actionCount: number;
+  discriminants: bigint[];
   invokes: InvokeServerAction[];
   transfersTo: TransferToServerAction[];
   screening: "None" | "Some";
@@ -313,9 +315,11 @@ function readServerActions(
   const actionCount = reader.readCount("server action count");
   const invokes: InvokeServerAction[] = [];
   const transfersTo: TransferToServerAction[] = [];
+  const discriminants: bigint[] = [];
 
   for (let index = 0; index < actionCount; index += 1) {
     const discriminant = reader.read(`server action ${index} discriminant`);
+    discriminants.push(discriminant);
     switch (discriminant) {
       case 0n:
         reader.read(`server action ${index} storage address`);
@@ -366,7 +370,7 @@ function readServerActions(
   }
 
   if (!reader.hasRemaining() && allowMissingScreening) {
-    return { invokes, screening: "None", transfersTo };
+    return { actionCount, discriminants, invokes, screening: "None", transfersTo };
   }
 
   const screeningDiscriminant = reader.read("screening option");
@@ -380,7 +384,7 @@ function readServerActions(
     throw new Error("invalid screening option");
   }
   reader.assertFinished();
-  return { invokes, screening, transfersTo };
+  return { actionCount, discriminants, invokes, screening, transfersTo };
 }
 
 function buildFundActions(
@@ -488,7 +492,7 @@ function buildRefundActions(
   ];
 }
 
-function readPreparedServerActions(
+export function readPreparedServerActions(
   prepared: PreparedStrk20Call,
   poolAddress: string,
 ): ParsedServerActions {
@@ -546,7 +550,7 @@ function assertPreparedFund(
   ) {
     throw new Error("recovery commitment does not match the Ready account");
   }
-  const { invokes, screening, transfersTo } = readPreparedServerActions(
+  const { actionCount, discriminants, invokes, screening, transfersTo } = readPreparedServerActions(
     prepared,
     input.poolAddress,
   );
@@ -558,6 +562,13 @@ function assertPreparedFund(
   const transfer = transfersTo[0];
   if (transfersTo.length !== 1 || transfer === undefined) {
     throw new Error("prepared FUND must contain exactly one helper withdrawal");
+  }
+  if (actionCount !== 2 && actionCount !== 3) {
+    throw new Error("prepared FUND contains unexpected server actions");
+  }
+  const expectedDiscriminants = actionCount === 2 ? [3n, 10n] : [3n, 5n, 10n];
+  if (discriminants.some((value, index) => value !== expectedDiscriminants[index])) {
+    throw new Error("prepared FUND contains unexpected server actions");
   }
   assertSameFelt(transfer.recipient, helper, "withdrawal recipient");
   assertSameFelt(transfer.token, token, "withdrawal token");

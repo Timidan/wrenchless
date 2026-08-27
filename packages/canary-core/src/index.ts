@@ -14,6 +14,7 @@ export { assertRegistrationOnly } from "./pool-call.js";
 export type { RegistrationActionSummary } from "./pool-call.js";
 export {
   assertRefillFundProofFacts,
+  assertPreparedStrk20ProofFacts,
   assertRegistrationProofFacts,
   STRK20_SUPPORTED_PROOF_VERSIONS,
 } from "./proof-facts.js";
@@ -37,6 +38,7 @@ export {
   prepareRefillFund,
   prepareRefillRefund,
   readPreparedHelperInvoke,
+  readPreparedServerActions,
   signRefillClaim,
   submitRefillClaim,
   submitRefillRefund,
@@ -61,6 +63,9 @@ export type {
   RefillReleaseSignature,
   RefillTransferAction,
   RefillWithdrawAction,
+  InvokeServerAction,
+  ParsedServerActions,
+  TransferToServerAction,
   SubmitRefillClaimInput,
   SubmitRefillRefundInput,
   SubmittedRefillClaim,

@@ -3,6 +3,8 @@ import { assertSponsorNodeVersion, readSponsorConfig } from "./config.js";
 import { loadSponsorEnvironment } from "./environment.js";
 import { createSponsorServer } from "./server.js";
 import { RefillFundRelay } from "./fund-relay.js";
+import { SponsorRelayGate } from "./fund-relay.js";
+import { FundSpendBudget } from "./fund-budget.js";
 import { inspectFundSponsorReadiness } from "./fund-readiness.js";
 import {
   readOrCreateRecoveryIndexKey,
@@ -10,6 +12,7 @@ import {
   RecoveryIndex,
   RecoveryLookupService,
 } from "./recovery-index.js";
+import { TravelSafeV3Relay } from "./travel-safe-v3-relay.js";
 
 assertSponsorNodeVersion();
 loadSponsorEnvironment();
@@ -40,16 +43,29 @@ const recoveryLookup = new RecoveryLookupService(
   recoveryIndexKey,
   signatureVerifier,
 );
+const fundBudget = new FundSpendBudget(
+  config.fundBudgetPath,
+  config.maxDailyFundSpendFri,
+);
+const relayGate = new SponsorRelayGate();
 const fundRelay = new RefillFundRelay(
   config,
   recoveryIndex,
   signatureVerifier,
+  fundBudget,
+  relayGate,
+);
+const travelSafeV3Relay = new TravelSafeV3Relay(
+  config,
+  fundBudget,
+  relayGate,
 );
 const server = createSponsorServer(fundRelay, recoveryLookup, {
   allowedOrigin: config.allowedOrigin,
   fundUnavailableReason: liveFundUnavailableReason,
   requireHttps: config.production,
   trustProxy: config.trustProxy,
+  travelSafeV3Relay,
 });
 
 server.listen(config.port, config.bindHost, () => {
