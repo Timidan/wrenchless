@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="apps/hub/public/og.png" alt="Wrenchless — a Travel Safe for private assets" width="900" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="apps/hub/public/logos/wrenchless-wordmark-dark.png" />
+    <img src="apps/hub/public/logos/wrenchless-wordmark.png" alt="Wrenchless" width="276" />
+  </picture>
 </p>
 
 # Wrenchless
