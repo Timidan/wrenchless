@@ -42,6 +42,7 @@ import {
   readTransactionReceiptStatus,
 } from "../../lib/refill-state";
 import {
+  clearTravelSafeTicket,
   readActiveAnyTravelSafeTicket,
   storeNewTravelSafeTicketV3,
   transitionStoredTravelSafeTicketV3,
@@ -78,6 +79,7 @@ import type {
 
 const MAINNET_CHAIN_ID = "0x534e5f4d41494e";
 const AMBIGUOUS_ACTION_WINDOW_MILLISECONDS = 5 * 60 * 1_000;
+const MAXIMUM_SAFE_DURATION_SECONDS = 180n * 86_400n;
 const EMPTY_PLAN: SafePlanDraft = {
   tokenAddress: TRAVEL_SAFE_TOKENS[0].address,
   parkAmount: "",
@@ -134,6 +136,25 @@ function localSeconds(value: string, label: string): string {
 
 function actionWindowExpired(updatedAt: string): boolean {
   return Date.now() - Date.parse(updatedAt) >= AMBIGUOUS_ACTION_WINDOW_MILLISECONDS;
+}
+
+function nextReleaseTime(
+  snapshot: TravelSafeV3Controller["model"]["snapshot"],
+): string | null {
+  if (snapshot === null || snapshot.state === null) {
+    return null;
+  }
+  const state = snapshot.state;
+  if (BigInt(state.dailyAmount) === 0n) {
+    return null;
+  }
+  const chainTime = BigInt(snapshot.chainTimeSeconds);
+  const firstRelease = BigInt(state.firstReleaseAt);
+  const returnAt = BigInt(state.returnAt);
+  if (chainTime > returnAt) return null;
+  if (chainTime < firstRelease) return firstRelease.toString();
+  const next = firstRelease + (1n + (chainTime - firstRelease) / 86_400n) * 86_400n;
+  return next <= returnAt ? next.toString() : null;
 }
 
 function stateAuthorization(ticket: TravelSafeTicketV3, state: TravelSafeV3ChainState) {
@@ -215,6 +236,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
   const pending = useRef<PendingAction | null>(null);
 
   const selectedToken = useMemo(() => tokenFor(plan.tokenAddress), [plan.tokenAddress]);
+  const nextReleaseAt = useMemo(() => nextReleaseTime(snapshot), [snapshot]);
 
   const refreshBalances = useCallback(async (currentWallet: BrowserWallet) => {
     const [balances, fee] = await Promise.all([
@@ -407,10 +429,20 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       await createOrVerifyTravelSafePasskey(context.account);
       wallet.current = connected.wallet;
       setAccount(context.account);
-      prepared.current = retainPreparedForAccount(prepared.current, context.account);
+      const retained = retainPreparedForAccount(prepared.current, context.account);
+      prepared.current = retained;
+      if (retained === null) setQuote(null);
       await refreshBalances(connected.wallet);
       setAction({ name: "idle" });
-      setPhase(ticket === null ? "plan" : "active");
+      setPhase(
+        ticket === null
+          ? "plan"
+          : ticket.status === "READY"
+            ? "review"
+            : ticket.status === "TERMINAL"
+              ? "terminal"
+              : "active",
+      );
     } catch (cause) {
       setAction({ name: "failed", message: reasonFrom(cause), retryable: true });
       setError(reasonFrom(cause));
@@ -418,10 +450,18 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
   }, [refreshBalances, ticket]);
 
   const unlock = useCallback(async (): Promise<void> => {
-    const passkey = travelSafePasskey();
-    if (passkey === null) throw new Error("This device has no Travel Safe passkey");
-    await unlockTravelSafeWithPasskey(passkey);
-    await refresh();
+    setError(null);
+    setAction({ name: "wallet", label: "Verify passkey" });
+    try {
+      const passkey = travelSafePasskey();
+      if (passkey === null) throw new Error("This device has no Travel Safe passkey");
+      await unlockTravelSafeWithPasskey(passkey);
+      setAction({ name: "idle" });
+      await refresh();
+    } catch (cause) {
+      setError(reasonFrom(cause));
+      setAction({ name: "failed", message: reasonFrom(cause), retryable: true });
+    }
   }, [refresh]);
 
   useEffect(() => {
@@ -453,8 +493,12 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
     const amount = parseTokenAmount(plan.parkAmount, selectedToken.decimals);
     if (amount <= 0n) throw new Error("Enter an amount to park");
     const returnAt = localSeconds(plan.returnDateLocal, "a return date");
-    if (BigInt(returnAt) <= BigInt(Math.floor(Date.now() / 1_000))) {
+    const now = BigInt(Math.floor(Date.now() / 1_000));
+    if (BigInt(returnAt) <= now) {
       throw new Error("Choose a future return date");
+    }
+    if (BigInt(returnAt) > now + MAXIMUM_SAFE_DURATION_SECONDS) {
+      throw new Error("Choose a return date within 180 days");
     }
     if (plan.mode === "daily") {
       const daily = parseTokenAmount(plan.dailyAmount, selectedToken.decimals);
@@ -462,7 +506,6 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
         throw new Error("Choose a valid daily amount");
       }
       const firstReleaseAt = localSeconds(plan.firstReleaseLocal, "a first release date");
-      const now = BigInt(Math.floor(Date.now() / 1_000));
       if (BigInt(firstReleaseAt) < now || BigInt(firstReleaseAt) > BigInt(returnAt)) {
         throw new Error("Choose a first release before the return date");
       }
@@ -535,39 +578,41 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
   }, [account, plan, recoveryWords, selectedToken]);
 
   const prepareFund = useCallback(async (): Promise<void> => {
-    if (wallet.current === null || account === null || ticket === null) {
-      throw new Error("Connect your wallet");
-    }
-    if (setup.current === null) {
-      if (recoveryWords === null) {
-        throw new Error("Enter the confirmed recovery words again");
-      }
-      const recovery = await deriveTravelSafeSecrets(recoveryWords);
-      if (
-        BigInt(recovery.stateId) !== BigInt(ticket.stateId) ||
-        BigInt(recovery.recoverySalt) !== BigInt(ticket.recoverySalt)
-      ) {
-        throw new Error("Those recovery words do not match this Safe");
-      }
-      setup.current = {
-        claimCommitment: computeTravelSafeV3ClaimCommitment(
-          recovery.stateId,
-          recovery.claimPublicKey,
-        ),
-        deviceCommitment: computeTravelSafeV3DeviceCommitment(
-          recovery.stateId,
-          deriveTravelSafeV3PublicKey(ticket.devicePrivateKey),
-        ),
-        recoveryCommitment: computeTravelSafeV3RecoveryCommitment(
-          recovery.stateId,
-          ticket.recoveryAccount,
-          recovery.recoverySalt,
-        ),
-      };
-    }
     setError(null);
+    prepared.current = null;
+    setQuote(null);
     setAction({ name: "preparing", label: "Preparing private proof" });
     try {
+      if (wallet.current === null || account === null || ticket === null) {
+        throw new Error("Connect your wallet");
+      }
+      if (setup.current === null) {
+        if (recoveryWords === null) {
+          throw new Error("Enter the confirmed recovery words again");
+        }
+        const recovery = await deriveTravelSafeSecrets(recoveryWords);
+        if (
+          BigInt(recovery.stateId) !== BigInt(ticket.stateId) ||
+          BigInt(recovery.recoverySalt) !== BigInt(ticket.recoverySalt)
+        ) {
+          throw new Error("Those recovery words do not match this Safe");
+        }
+        setup.current = {
+          claimCommitment: computeTravelSafeV3ClaimCommitment(
+            recovery.stateId,
+            recovery.claimPublicKey,
+          ),
+          deviceCommitment: computeTravelSafeV3DeviceCommitment(
+            recovery.stateId,
+            deriveTravelSafeV3PublicKey(ticket.devicePrivateKey),
+          ),
+          recoveryCommitment: computeTravelSafeV3RecoveryCommitment(
+            recovery.stateId,
+            ticket.recoveryAccount,
+            recovery.recoverySalt,
+          ),
+        };
+      }
       const additionalStrk = ticket.tokenSymbol === "STRK" ? ticket.amountBaseUnits : "0";
       const fresh = await assertFreshReserve(additionalStrk);
       const selected = fresh.balances.find(
@@ -602,25 +647,30 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
   }, [account, assertFreshReserve, recoveryWords, ticket]);
 
   const submitFund = useCallback(async (): Promise<void> => {
-    if (wallet.current === null || account === null || ticket === null) {
-      throw new Error("Connect your wallet");
-    }
-    const current = retainPreparedForAccount(prepared.current, account);
-    if (current === null || current.artifact.operation !== "FUND") {
-      throw new Error("Prepare this Safe again");
-    }
-    assertSelectedWalletAccount(wallet.current, account);
-    setAction({ name: "preparing", label: "Sending" });
-    await transitionStoredTravelSafeTicketV3(ticket.stateId, "FUND_SUBMITTING", {
-      pendingAction: { operation: "FUND" },
-    });
+    let staged = false;
+    let activeTicket: TravelSafeTicketV3 | null = null;
     try {
+      if (wallet.current === null || account === null || ticket === null) {
+        throw new Error("Connect your wallet");
+      }
+      activeTicket = ticket;
+      const current = retainPreparedForAccount(prepared.current, account);
+      if (current === null || current.artifact.operation !== "FUND") {
+        throw new Error("Prepare this Safe again");
+      }
+      assertSelectedWalletAccount(wallet.current, account);
+      setError(null);
+      setAction({ name: "preparing", label: "Sending" });
+      await transitionStoredTravelSafeTicketV3(activeTicket.stateId, "FUND_SUBMITTING", {
+        pendingAction: { operation: "FUND" },
+      });
+      staged = true;
       const result = await submitPreparedTravelSafeV3Relay({
         prepared: current,
         sponsorUrl: WRENCHLESS_SERVICES.sponsorUrl,
       });
       const updated = await transitionStoredTravelSafeTicketV3(
-        ticket.stateId,
+        activeTicket.stateId,
         "FUND_SUBMITTING",
         { fundTransactionHash: result.transactionHash },
       );
@@ -633,20 +683,51 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       await refresh();
     } catch (cause) {
       setError(reasonFrom(cause));
-      if (cause instanceof TravelSafeV3SponsorError && !cause.ambiguous) {
+      if (!staged || activeTicket === null) {
+        setAction({ name: "failed", message: reasonFrom(cause), retryable: true });
+      } else if (cause instanceof TravelSafeV3SponsorError && !cause.ambiguous) {
+        prepared.current = null;
+        setQuote(null);
         setTicket(
-          await transitionStoredTravelSafeTicketV3(ticket.stateId, "READY", {
+          await transitionStoredTravelSafeTicketV3(activeTicket.stateId, "READY", {
             fundTransactionHash: null,
             pendingAction: null,
           }),
         );
         setAction({ name: "failed", message: reasonFrom(cause), retryable: true });
+        setPhase("review");
       } else {
         setAction({ name: "preparing", label: "Checking Starknet" });
       }
       await refresh();
     }
   }, [account, refresh, ticket]);
+
+  const clearTerminal = useCallback(async (): Promise<void> => {
+    if (ticket === null || ticket.status !== "TERMINAL") return;
+    setError(null);
+    try {
+      await clearTravelSafeTicket(ticket.stateId);
+      wallet.current = null;
+      setup.current = null;
+      prepared.current = null;
+      pending.current = null;
+      setAccount(null);
+      setAssets([]);
+      setPlan(EMPTY_PLAN);
+      setTicket(null);
+      setSnapshot(null);
+      setAction({ name: "idle" });
+      updateRecoveryWords(null);
+      setQuote(null);
+      setLive(null);
+      setPhase("empty");
+    } catch (cause) {
+      const reason = reasonFrom(cause);
+      setError(reason);
+      setAction({ name: "failed", message: reason, retryable: true });
+    }
+  }, [ticket]);
 
   const activeState = useCallback((): ActiveTravelSafeV3State => {
     if (ticket === null || snapshot?.state === null || snapshot === null) {
@@ -665,6 +746,8 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
     const active = activeState();
     if (wallet.current === null || account === null) throw new Error("Connect your wallet");
     assertSelectedWalletAccount(wallet.current, account);
+    setError(null);
+    setAction({ name: "preparing", label: "Checking fee reserve" });
     await assertFreshReserve();
     setAction({ name: "wallet", label: "Approve private action" });
     return { wallet: wallet.current, account, ...active };
@@ -710,8 +793,11 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
 
   const releaseAvailable = useCallback(async (): Promise<void> => {
     try {
+      const current = activeState();
+      if (BigInt(current.state.claimableAmount) <= 0n) {
+        throw new Error("No allowance is ready yet");
+      }
       const active = await beginDirectAction();
-      if (BigInt(active.state.claimableAmount) <= 0n) throw new Error("No allowance is ready yet");
       const target: TravelSafeActionTarget = {
         operation: "RELEASE",
         previousNonce: active.state.nonce,
@@ -741,7 +827,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       await resetUnsentAction();
       await refresh();
     }
-  }, [beginDirectAction, recordDirectAction, refresh, resetUnsentAction]);
+  }, [activeState, beginDirectAction, recordDirectAction, refresh, resetUnsentAction]);
 
   const prepareTopUp = useCallback(async (amount: string): Promise<void> => {
     try {
@@ -752,6 +838,11 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
         amount,
         tokenFor(active.ticket.tokenAddress).decimals,
       ).toString();
+      if (BigInt(amountBaseUnits) <= 0n) throw new Error("Enter an amount to add");
+      setError(null);
+      prepared.current = null;
+      setQuote(null);
+      setAction({ name: "preparing", label: "Checking top-up" });
       const additionalStrk = active.ticket.tokenSymbol === "STRK" ? amountBaseUnits : "0";
       const fresh = await assertFreshReserve(additionalStrk);
       const selected = fresh.balances.find(
@@ -760,7 +851,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       if (selected === undefined || !selected.available || BigInt(selected.shieldedBalanceBaseUnits) < BigInt(amountBaseUnits)) {
         throw new Error(`${active.ticket.tokenSymbol} private balance is too low`);
       }
-      setAction({ name: "preparing", label: "Preparing top-up" });
+      setAction({ name: "preparing", label: "Preparing private proof" });
       const next = await prepareTravelSafeV3TopUpRelay({
         wallet: readyWallet(wallet.current),
         account,
@@ -781,23 +872,27 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
   }, [account, activeState, assertFreshReserve]);
 
   const submitTopUp = useCallback(async (): Promise<void> => {
-    if (account === null || ticket === null) throw new Error("Connect your wallet");
-    const current = retainPreparedForAccount(prepared.current, account);
-    if (current === null || current.artifact.operation !== "TOP_UP") {
-      throw new Error("Prepare the top-up again");
-    }
-    const state = activeState().state;
-    const target: TravelSafeActionTarget = {
-      operation: "TOP_UP",
-      previousNonce: state.nonce,
-      minimumRemaining: (
-        BigInt(state.remainingAmount) + BigInt(current.artifact.amountBaseUnits)
-      ).toString(),
-    };
-    await transitionStoredTravelSafeTicketV3(ticket.stateId, "ACTION_SUBMITTING", {
-      pendingAction: target,
-    });
+    let staged = false;
     try {
+      if (account === null || ticket === null) throw new Error("Connect your wallet");
+      const current = retainPreparedForAccount(prepared.current, account);
+      if (current === null || current.artifact.operation !== "TOP_UP") {
+        throw new Error("Prepare the top-up again");
+      }
+      const state = activeState().state;
+      const target: TravelSafeActionTarget = {
+        operation: "TOP_UP",
+        previousNonce: state.nonce,
+        minimumRemaining: (
+          BigInt(state.remainingAmount) + BigInt(current.artifact.amountBaseUnits)
+        ).toString(),
+      };
+      setError(null);
+      setAction({ name: "preparing", label: "Sending top-up" });
+      await transitionStoredTravelSafeTicketV3(ticket.stateId, "ACTION_SUBMITTING", {
+        pendingAction: target,
+      });
+      staged = true;
       const result = await submitPreparedTravelSafeV3Relay({
         prepared: current,
         sponsorUrl: WRENCHLESS_SERVICES.sponsorUrl,
@@ -809,7 +904,11 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       });
     } catch (cause) {
       setError(reasonFrom(cause));
-      if (cause instanceof TravelSafeV3SponsorError && !cause.ambiguous) {
+      if (!staged) {
+        setAction({ name: "failed", message: reasonFrom(cause), retryable: true });
+      } else if (cause instanceof TravelSafeV3SponsorError && !cause.ambiguous) {
+        prepared.current = null;
+        setQuote(null);
         await resetUnsentAction(true);
         setAction({ name: "failed", message: reasonFrom(cause), retryable: true });
       } else {
@@ -821,11 +920,12 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
 
   const extendReturnDate = useCallback(async (localDate: string): Promise<void> => {
     try {
-      const active = await beginDirectAction();
+      const current = activeState();
       const returnAt = localSeconds(localDate, "a new return date");
-      if (BigInt(returnAt) <= BigInt(active.state.returnAt) || BigInt(returnAt) > BigInt(active.state.maxReturnAt)) {
+      if (BigInt(returnAt) <= BigInt(current.state.returnAt) || BigInt(returnAt) > BigInt(current.state.maxReturnAt)) {
         throw new Error("Choose a later date within this Safe's limit");
       }
+      const active = await beginDirectAction();
       const target: TravelSafeActionTarget = {
         operation: "EXTEND",
         previousNonce: active.state.nonce,
@@ -851,15 +951,16 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       await resetUnsentAction();
       await refresh();
     }
-  }, [beginDirectAction, recordDirectAction, refresh, resetUnsentAction]);
+  }, [activeState, beginDirectAction, recordDirectAction, refresh, resetUnsentAction]);
 
   const bringBackEarly = useCallback(async (words: string): Promise<void> => {
     try {
-      const active = await beginDirectAction();
+      const current = activeState();
       const secrets = await deriveTravelSafeSecrets(words);
-      if (BigInt(secrets.stateId) !== BigInt(active.ticket.stateId)) {
+      if (BigInt(secrets.stateId) !== BigInt(current.ticket.stateId)) {
         throw new Error("Those recovery words do not match this Safe");
       }
+      const active = await beginDirectAction();
       const target: TravelSafeActionTarget = {
         operation: "TERMINAL",
         previousNonce: active.state.nonce,
@@ -885,17 +986,18 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       await resetUnsentAction();
       await refresh();
     }
-  }, [beginDirectAction, recordDirectAction, refresh, resetUnsentAction]);
+  }, [activeState, beginDirectAction, recordDirectAction, refresh, resetUnsentAction]);
 
   const returnNow = useCallback(async (): Promise<void> => {
     try {
-      const active = await beginDirectAction();
-      if (BigInt(snapshot?.chainTimeSeconds ?? "0") <= BigInt(active.state.returnAt)) {
+      const current = activeState();
+      if (BigInt(snapshot?.chainTimeSeconds ?? "0") <= BigInt(current.state.returnAt)) {
         throw new Error("Return is not open yet");
       }
-      if (BigInt(active.ticket.recoveryAccount) !== BigInt(active.account)) {
+      if (account === null || BigInt(current.ticket.recoveryAccount) !== BigInt(account)) {
         throw new Error("Use the recovery account chosen for this Safe");
       }
+      const active = await beginDirectAction();
       const target: TravelSafeActionTarget = {
         operation: "TERMINAL",
         previousNonce: active.state.nonce,
@@ -921,7 +1023,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       await resetUnsentAction();
       await refresh();
     }
-  }, [beginDirectAction, recordDirectAction, refresh, resetUnsentAction, snapshot?.chainTimeSeconds]);
+  }, [account, activeState, beginDirectAction, recordDirectAction, refresh, resetUnsentAction, snapshot?.chainTimeSeconds]);
 
   return {
     model: {
@@ -932,6 +1034,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       plan,
       ticket,
       snapshot,
+      nextReleaseAt,
       action,
       recoveryWords,
       quote,
@@ -944,7 +1047,15 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
         setPhase(WRENCHLESS_MAINNET.tripAllowanceHelperAddress === null ? "unavailable" : "connect");
       },
       closeCreate() {
-        setPhase(ticket === null ? "empty" : "active");
+        setPhase(
+          ticket === null
+            ? "empty"
+            : ticket.status === "READY"
+              ? "review"
+              : ticket.status === "TERMINAL"
+                ? "terminal"
+                : "active",
+        );
       },
       connect,
       selectAsset(tokenAddress) {
@@ -1022,6 +1133,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
         if (ticket === null) return;
         calendarFile(ticket);
       },
+      clearTerminal,
       unlock,
       refresh,
     },

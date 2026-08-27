@@ -51,6 +51,7 @@ export type TravelSafeV3Model = {
   plan: SafePlanDraft;
   ticket: TravelSafeTicketV3 | null;
   snapshot: TravelSafeV3Snapshot | null;
+  nextReleaseAt: string | null;
   action: SafeActionState;
   recoveryWords: string | null;
   quote: {
@@ -84,6 +85,7 @@ export type TravelSafeV3Actions = {
   bringBackEarly(words: string): Promise<void>;
   returnNow(): Promise<void>;
   downloadReturnCalendarEvent(): void;
+  clearTerminal(): Promise<void>;
   unlock(): Promise<void>;
   refresh(): Promise<void>;
 };

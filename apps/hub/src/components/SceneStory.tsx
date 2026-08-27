@@ -40,7 +40,7 @@ const SCENES: readonly Scene[] = [
     width: 922,
     height: 1152,
     title: "Choose what stays home.",
-    line: "Pick the private STRK amount and your return date.",
+    line: "Pick a daily allowance or one return date, in private STRK or USDC.",
   },
   {
     id: "counter",
@@ -50,7 +50,7 @@ const SCENES: readonly Scene[] = [
     width: 1536,
     height: 1024,
     title: "Ready prepares the move.",
-    line: "Ready signs a STRK20 proof. Your wallet keys never leave Ready.",
+    line: "It signs a STRK20 proof — your wallet keys never leave it.",
   },
   {
     id: "pool",
@@ -60,7 +60,7 @@ const SCENES: readonly Scene[] = [
     width: 1536,
     height: 1024,
     title: "The reserve waits.",
-    line: "Wrenchless parks it in the Travel Safe, outside your spendable balance.",
+    line: "Wrenchless parks it in the Travel Safe. Missed days accumulate; future days don't release early.",
   },
   {
     id: "vault",
@@ -69,8 +69,8 @@ const SCENES: readonly Scene[] = [
     portal: "58% 58%",
     width: 1280,
     height: 960,
-    title: "Come home early.",
-    line: "Your passkey can bring the reserve back early on this device.",
+    title: "Use the daily allowance.",
+    line: "Release what's available today with your passkey, or bring the whole reserve back early with your saved recovery words.",
   },
   {
     id: "hallway",
@@ -79,8 +79,8 @@ const SCENES: readonly Scene[] = [
     portal: "64% 57%",
     width: 922,
     height: 1152,
-    title: "Ready handles the dated return.",
-    line: "After the return date, reopen this Safe and return it to Ready. No backup is required.",
+    title: "The dated return goes to Ready.",
+    line: "Extend the date or top up anytime, then return the remainder once it opens.",
   },
 ];
 

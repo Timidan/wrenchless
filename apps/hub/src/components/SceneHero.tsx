@@ -133,19 +133,19 @@ export function SceneHero(): JSX.Element {
         <div className="bay hero__bay">
           <h1 className="hero__title">
             <span className="hero__line">
-              <span className="hero__line-in">Leave private STRK at home.</span>
+              <span className="hero__line-in">Park most of your private balance.</span>
             </span>
             <span className="hero__line">
-              <span className="hero__line-in">Take your wallet.</span>
+              <span className="hero__line-in">Keep a daily allowance.</span>
             </span>
           </h1>
           <p className="hero__lede hero__step">
-            Pick an amount and your return date. Your passkey can bring it back
-            early on this device. Ready handles the dated return here.
+            Choose a daily amount or one return date, in private STRK or USDC,
+            and bring it all home early with the words you saved.
           </p>
           <div className="hero__actions hero__step">
             <a className="btn btn--primary hero__magnet" href="/safe">
-              <span>Open Travel Safe</span>
+              <span>Open Trip Allowance</span>
               <ArrowRoll />
             </a>
             <a className="btn btn--secondary" href="#story">

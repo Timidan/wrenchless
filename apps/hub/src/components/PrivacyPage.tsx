@@ -29,69 +29,58 @@ export function PrivacyPage(): JSX.Element {
               <h2>On this device</h2>
               <p>
                 Wrenchless stores the passkey reference, the active Safe ID, and
-                one encrypted Travel Safe ticket. The ticket contains the amount,
-                return date, known transaction hashes, and early-recovery
-                material. A key derived from your passkey encrypts it at rest and
-                is kept only for the current unlocked session.
+                one encrypted Travel Safe ticket. The ticket holds the amount,
+                the schedule, known transaction hashes, and the device action
+                key. A key derived from your passkey encrypts it at rest and is
+                kept only for the current unlocked session.
               </p>
               <p>
-                The passkey unlocks the ticket, early return, and backup reveal.
-                Malware running after you unlock the app can still read what the
-                app can read.
+                The passkey unlocks the local ticket and protects the release and
+                extend controls. Malware running after you unlock the app can
+                still read what the app can read.
               </p>
             </section>
 
             <section className="document__section">
-              <h2>Optional early-recovery backup</h2>
+              <h2>Your recovery words</h2>
               <p>
-                No recovery phrase is required. Early-recovery material stays in
-                the encrypted local ticket, so your passkey can reveal an
-                optional backup later. The backup can return the Safe early from
-                another device. It is not a seed for a new wallet.
+                Recovery words are generated when you set a Safe up and shown
+                once. They stay in the page&rsquo;s memory only until the setup
+                funding is sent. They are never written into the ticket and never
+                sent to the sponsor, so only you can save them.
               </p>
               <p>
-                The backup is never sent to the sponsor. Before the return date,
-                another device needs it. After that date, a fresh browser can
-                recover by reconnecting the same Ready account.
+                Saved recovery words authorise returning the whole reserve early.
+                They are not a seed for a new wallet, and nobody can reissue them
+                for you.
               </p>
             </section>
 
             <section className="document__section">
               <h2>Ready and the sponsor</h2>
               <p>
-                Ready reads your selected account, private registration,
-                shielded STRK balance, and live pool fee. Ready prepares private
-                FUND, early-return, and dated-return actions and asks for your
-                approval where its Wallet API requires it.
+                Ready holds your account keys. It prepares and signs the STRK20
+                actions a Travel Safe needs and asks for your approval where its
+                Wallet API requires it.
               </p>
               <p>
-                The sponsor receives a short-lived prepared FUND proof and may
-                broadcast it from an unrelated account. During setup it can see
-                the selected Ready account, Safe details, and your network
-                address. It never receives the recovery backup.
-              </p>
-              <p>
-                For dated recovery, the sponsor retains an HMAC account tag and
-                an encrypted locator containing only the Safe ID and recovery
-                salt. A new Travel Safe replaces the previous locator. It does
-                not retain the amount, return date, backup, balance, or wallet
-                history.
+                The sponsor receives short-lived prepared FUND or TOP_UP material
+                and the exact public Safe inputs it needs to verify and broadcast
+                the action. It never receives your recovery words.
               </p>
             </section>
 
             <section className="document__section">
               <h2>What Starknet publishes</h2>
               <p>
-                The helper publishes the Safe ID, token, amount, return date,
-                and timing. CLAIM and REFUND publish their terminal result.
-                Distinctive amounts or closely timed shielding and funding can
-                make activity easier to correlate.
+                The helper publishes the Safe ID, token, amount, schedule, timing,
+                and status. Distinctive amounts or closely timed shielding and
+                funding can make activity easier to correlate.
               </p>
               <p>
-                The helper does not record which Ready account funded the Safe,
-                and no destination is chosen until CLAIM or REFUND creates the
-                private note. That narrows the public link; it does not make a
-                person untraceable.
+                The helper does not record which Ready account funded the Safe.
+                That narrows the link to an account; it does not hide the facts
+                above.
               </p>
             </section>
 
@@ -105,16 +94,23 @@ export function PrivacyPage(): JSX.Element {
             </section>
 
             <section className="document__section">
-              <h2>Fixed limits</h2>
+              <h2>Current limits</h2>
               <p>
-                A return date cannot be extended on the deployed helper. The
-                destination Ready account must already support Shielded
-                Starknet and retain the live private fee reserve. After the date,
-                the same Ready account can recover from a fresh browser.
+                A Travel Safe holds STRK or USDC for up to 180 days, on a daily
+                or single-date schedule. One Safe is active per browser at a
+                time. You can top up and extend within that lifetime.
               </p>
             </section>
 
-            <p className="document__meta">Last revised 25 August 2026.</p>
+            <section className="document__section">
+              <h2>Legacy Safes</h2>
+              <p>
+                Backup and recovery for existing v2 Safes remains available at{" "}
+                <a href="/recover">/recover</a>.
+              </p>
+            </section>
+
+            <p className="document__meta">Last revised 27 August 2026.</p>
           </div>
         </article>
       </main>

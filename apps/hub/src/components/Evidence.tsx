@@ -30,26 +30,26 @@ const STATIONS: readonly Station[] = [
     icon: "ready",
   },
   {
-    name: "Parked means unavailable",
-    line: "The reserve cannot be spent from the Ready Wallet you carry.",
+    name: "Only the allowance is spendable",
+    line: "Release what's available today; the rest stays parked until it is.",
     note: "Time locked",
     icon: "lock",
   },
   {
-    name: "Your passkey brings it home",
-    line: "Return it early from this device without exposing another secret.",
-    note: "Early return",
+    name: "Your passkey guards the controls",
+    line: "Verify on this device to release today's amount or extend the date.",
+    note: "Device check",
     icon: "passkey",
   },
   {
-    name: "Backup is optional",
-    line: "Create one only if you want early recovery from another device.",
-    note: "Not required",
+    name: "Recovery words bring it home early",
+    line: "Save them at setup — nothing else returns the whole reserve before the date.",
+    note: "Save once",
     icon: "phrase",
   },
   {
     name: "Public limits stay visible",
-    line: "The helper reveals the amount, return date and transaction timing.",
+    line: "The helper reveals the token, amount, schedule and transaction timing.",
     note: "No anonymity claim",
     icon: "public",
   },
@@ -194,10 +194,10 @@ export function Evidence(): JSX.Element {
               <span className="evidence__token" aria-hidden="true">
                 <StrkTokenMark className="evidence__token-mark" />
               </span>
-              <h2>A temporary boundary, not another wallet.</h2>
+              <h2>A daily allowance, not another wallet.</h2>
               <p className="evidence__intro">
-                Wrenchless adds one time lock to the Ready Wallet you already
-                use. No second account, device or recovery phrase is required.
+                Wrenchless adds a private trip allowance to the Ready Wallet
+                you already use. No second account or device is required.
               </p>
             </div>
           </div>

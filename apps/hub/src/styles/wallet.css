@@ -635,6 +635,11 @@ html.app-page body {
 [data-glyph="clock-counter-clockwise"] {
   --glyph-move: rotate(-45deg);
 }
+/* Turns the other way round the same clock face: pushing a date further out
+   rather than winding it back. */
+[data-glyph="clock-clockwise"] {
+  --glyph-move: rotate(30deg);
+}
 /* A whole half-turn, because that is the only gesture an hourglass has. */
 [data-glyph="hourglass"] {
   --glyph-move: rotate(180deg);
@@ -686,7 +691,9 @@ html.app-page body {
 [data-glyph="shield-check"],
 [data-glyph="user-circle"],
 [data-glyph="qr-code"],
-[data-glyph="pause"] {
+[data-glyph="pause"],
+[data-glyph="calendar-plus"],
+[data-glyph="plus-circle"] {
   --glyph-move: scale(1.06);
 }
 
@@ -828,6 +835,131 @@ html.reduced-motion .iconbtn:active {
   .iconbtn:hover,
   .iconbtn:active {
     transform: none;
+  }
+}
+
+/* ---------- asset and schedule pickers (Trip Allowance setup) ----------
+
+   Two more choices than the v2 flow ever asked for — which asset, which
+   schedule — and neither gets the pill-button treatment: a schedule is
+   answered once and lived with, not clicked like an action. A segmented row
+   says "one of these is already true" rather than "press one of these". */
+
+.wsegment {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.wsegment__option {
+  display: inline-flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 48px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--w-rule-strong);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--w-text-body);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition:
+    border-color var(--dur-fast) var(--ease-settle),
+    background-color var(--dur-fast) var(--ease-settle),
+    color var(--dur-fast) var(--ease-settle);
+}
+
+.wsegment__option[aria-pressed="true"] {
+  border-color: var(--w-text);
+  background: var(--w-raised);
+  color: var(--w-text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .wsegment__option:not([aria-pressed="true"]):not(:disabled):hover {
+    border-color: var(--w-text);
+  }
+}
+
+.wsegment__option:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.wsegment__icon {
+  display: inline-flex;
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+.wsegment__icon svg,
+.wsegment__icon img {
+  width: 100%;
+  height: 100%;
+}
+
+/* Lock Most's percent presets. Quiet chips rather than the segment's stronger
+   pressed state, because choosing one only fills in a field it never locks:
+   the amount underneath stays a plain, editable number. */
+.wchips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.wchip {
+  min-height: 40px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--w-rule-strong);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--w-text-body);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  transition:
+    border-color var(--dur-fast) var(--ease-settle),
+    color var(--dur-fast) var(--ease-settle),
+    transform var(--dur-press) var(--ease-settle);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .wchip:not(:disabled):hover {
+    border-color: var(--w-text);
+    color: var(--w-text);
+  }
+}
+
+.wchip:not(:disabled):active {
+  transform: translateY(1px) scale(0.97);
+}
+
+.wchip:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+/* A quiet divider between the one primary action on an active Safe and the
+   secondary controls under it — top up, extend, early return, calendar — so
+   the screen reads as one decision and a shelf of lesser ones, not a settings
+   list of six equal rows. */
+.wshelf {
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--w-rule);
+}
+
+html.reduced-motion .wsegment__option,
+html.reduced-motion .wchip {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wsegment__option,
+  .wchip {
+    transition: none;
   }
 }
 

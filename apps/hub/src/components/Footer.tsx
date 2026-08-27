@@ -41,14 +41,14 @@ export function Footer(): JSX.Element {
             Carry your wallet. Leave part of the balance behind.
           </h2>
           <p className="footer__honest">
-            Ready keeps the keys. Your passkey can return it early here. After
-            the chosen date, reopen this Safe and return it to Ready.
+            Ready keeps your wallet keys. Your passkey protects the regular
+            controls here. The recovery words you saved at setup return the
+            whole reserve early.
           </p>
           <div className="footer__meta">
             <nav className="footer__links" aria-label="Footer">
               <a href="/#story">How it works</a>
               <a href="/#evidence">What it does</a>
-              <a href="/recover">Use early backup</a>
               <a href="/privacy.html">Privacy</a>
             </nav>
             <span className="footer__credit">
