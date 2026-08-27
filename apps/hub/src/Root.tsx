@@ -11,6 +11,7 @@ import {
   subscribeToRoute,
 } from "./routes";
 import { RecoverSurface } from "./surfaces/safe/RecoverSurface";
+import { RescueSurfaceV3 } from "./surfaces/safe/RescueSurfaceV3";
 import { SafeSurface } from "./surfaces/safe/SafeSurface";
 
 export function Root(): JSX.Element {
@@ -31,6 +32,7 @@ export function Root(): JSX.Element {
   if (route === "/") return <App />;
   if (route === "/safe") return <SafeSurface />;
   if (route === "/recover") return <RecoverSurface />;
+  if (route === "/rescue") return <RescueSurfaceV3 />;
 
   return (
     <main className="notfound" id="surface-main">

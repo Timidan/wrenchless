@@ -59,10 +59,13 @@ async function serve(relay: {
     value: JsonValue,
     acceptedMaxSpendFri: bigint,
   ): Promise<RefillFundSubmission>;
-}, travelSafeV3Relay?: Pick<TravelSafeV3Relay, "estimate" | "submit">): Promise<string> {
+}, travelSafeV3Relay?: Pick<TravelSafeV3Relay, "ready" | "estimate" | "submit">,
+fundUnavailableReason: () => Promise<"fund_broadcast_disabled" | undefined> =
+  async () => undefined,
+): Promise<string> {
   const options = {
     allowedOrigin: "https://wrenchless.test",
-    fundUnavailableReason: async () => undefined,
+    fundUnavailableReason,
     requireHttps: false,
     trustProxy: false,
   };
@@ -175,6 +178,7 @@ describe("Travel Safe v3 routes", () => {
         },
       },
       {
+        ready: async () => true,
         async estimate(_value, expectedOperation) {
           operation = expectedOperation;
           return v3Estimate;
@@ -192,5 +196,32 @@ describe("Travel Safe v3 routes", () => {
     expect(response.status).toBe(200);
     expect(operation).toBe("TOP_UP");
     expect(await response.json()).toEqual(v3Estimate);
+  });
+
+  it("reports v3 readiness independently from the legacy relay", async () => {
+    const base = await serve(
+      {
+        canFundOneMaximumTransaction: async () => false,
+        estimate: async () => estimate,
+        submit: async () => {
+          throw new Error("must not broadcast");
+        },
+      },
+      {
+        ready: async () => true,
+        estimate: async () => {
+          throw new Error("must not estimate");
+        },
+        submit: async () => {
+          throw new Error("must not broadcast");
+        },
+      },
+      async () => "fund_broadcast_disabled",
+    );
+
+    const response = await fetch(`${base}/v3/readyz`);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ status: "ready" });
   });
 });

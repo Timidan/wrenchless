@@ -30,11 +30,30 @@ export type SafeActionState =
   | { name: "confirmed"; transactionHash: string | null; label?: string }
   | { name: "failed"; message: string; retryable: boolean };
 
+export type SafeReadinessCheck = {
+  id: "wallet" | "passkey" | "relay" | "fee" | "balance";
+  label: string;
+  status: "checking" | "ready" | "blocked";
+  detail: string;
+};
+
+export type SafeReadiness = {
+  status: "checking" | "ready" | "blocked";
+  checks: readonly SafeReadinessCheck[];
+};
+
+export type SafeRecoveryDrill =
+  | { status: "idle" }
+  | { status: "checking" }
+  | { status: "valid" }
+  | { status: "invalid"; message: string };
+
 export type SafeV3Phase =
   | "loading"
   | "device-locked"
   | "empty"
   | "connect"
+  | "readiness"
   | "plan"
   | "recovery"
   | "review"
@@ -52,6 +71,8 @@ export type TravelSafeV3Model = {
   ticket: TravelSafeTicketV3 | null;
   snapshot: TravelSafeV3Snapshot | null;
   nextReleaseAt: string | null;
+  readiness: SafeReadiness | null;
+  recoveryDrill: SafeRecoveryDrill;
   action: SafeActionState;
   recoveryWords: string | null;
   quote: {
@@ -67,6 +88,8 @@ export type TravelSafeV3Actions = {
   startCreate(): void;
   closeCreate(): void;
   connect(): Promise<void>;
+  checkReadiness(): Promise<void>;
+  continueFromReadiness(): void;
   selectAsset(tokenAddress: string): void;
   applyLockPreset(percent: 25 | 50 | 75 | 100): void;
   setPlanField<Field extends keyof SafePlanDraft>(
@@ -83,6 +106,8 @@ export type TravelSafeV3Actions = {
   submitTopUp(): Promise<void>;
   extendReturnDate(localDate: string): Promise<void>;
   bringBackEarly(words: string): Promise<void>;
+  drillRecoveryWords(words: string): Promise<void>;
+  resetRecoveryDrill(): void;
   returnNow(): Promise<void>;
   downloadReturnCalendarEvent(): void;
   clearTerminal(): Promise<void>;

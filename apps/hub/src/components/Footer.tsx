@@ -49,6 +49,7 @@ export function Footer(): JSX.Element {
             <nav className="footer__links" aria-label="Footer">
               <a href="/#story">How it works</a>
               <a href="/#evidence">What it does</a>
+              <a href="/rescue">Rescue a Safe</a>
               <a href="/privacy.html">Privacy</a>
             </nav>
             <span className="footer__credit">

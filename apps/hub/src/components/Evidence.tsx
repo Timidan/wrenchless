@@ -43,7 +43,7 @@ const STATIONS: readonly Station[] = [
   },
   {
     name: "Recovery words bring it home early",
-    line: "Save them at setup — nothing else returns the whole reserve before the date.",
+    line: "Save them at setup. On a replacement phone, Rescue Mode returns the whole reserve to a wallet you connect.",
     note: "Save once",
     icon: "phrase",
   },

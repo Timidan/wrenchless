@@ -61,6 +61,7 @@ import {
   submitPreparedTravelSafeV3Relay,
   type PreparedTravelSafeV3Relay,
 } from "../../lib/travel-safe-v3-operations";
+import { inspectTravelSafeV3Sponsor } from "../../lib/travel-safe-v3-readiness";
 import {
   readTravelSafeV3Snapshot,
   type TravelSafeV3ChainState,
@@ -74,6 +75,7 @@ import {
 import type {
   SafeAssetView,
   SafePlanDraft,
+  SafeReadinessCheck,
   TravelSafeV3Controller,
 } from "./travel-safe-model";
 
@@ -225,6 +227,8 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
   const [plan, setPlan] = useState<SafePlanDraft>(EMPTY_PLAN);
   const [ticket, setTicket] = useState<TravelSafeTicketV3 | null>(null);
   const [snapshot, setSnapshot] = useState<TravelSafeV3Controller["model"]["snapshot"]>(null);
+  const [readiness, setReadiness] = useState<TravelSafeV3Controller["model"]["readiness"]>(null);
+  const [recoveryDrill, setRecoveryDrill] = useState<TravelSafeV3Controller["model"]["recoveryDrill"]>({ status: "idle" });
   const [action, setAction] = useState<TravelSafeV3Controller["model"]["action"]>({ name: "idle" });
   const [recoveryWords, updateRecoveryWords] = useState<string | null>(null);
   const [quote, setQuote] = useState<TravelSafeV3Controller["model"]["quote"]>(null);
@@ -234,6 +238,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
   const setup = useRef<SetupSecrets | null>(null);
   const prepared = useRef<PreparedTravelSafeV3Relay | null>(null);
   const pending = useRef<PendingAction | null>(null);
+  const passkeyVerified = useRef(false);
 
   const selectedToken = useMemo(() => tokenFor(plan.tokenAddress), [plan.tokenAddress]);
   const nextReleaseAt = useMemo(() => nextReleaseTime(snapshot), [snapshot]);
@@ -269,6 +274,125 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
     setAssets(views);
     return { balances, poolFeeFri: fee.poolFeeFri };
   }, []);
+
+  const runReadiness = useCallback(async (
+    currentWallet: BrowserWallet,
+    expectedAccount: string,
+  ): Promise<void> => {
+    const checking: SafeReadinessCheck[] = [
+      { id: "wallet", label: "Private wallet", status: "ready", detail: "Mainnet account connected" },
+      { id: "passkey", label: "Passkey", status: "checking", detail: "Checking this device" },
+      { id: "relay", label: "Private relay", status: "checking", detail: "Checking availability" },
+      { id: "fee", label: "Action reserve", status: "checking", detail: "Reading the live fee" },
+      { id: "balance", label: "Private balance", status: "checking", detail: "Reading STRK and USDC" },
+    ];
+    setPhase("readiness");
+    setError(null);
+    setAction({ name: "preparing", label: "Checking trip readiness" });
+    setReadiness({ status: "checking", checks: checking });
+    try {
+      assertSelectedWalletAccount(currentWallet, expectedAccount);
+    } catch (cause) {
+      const detail = reasonFrom(cause);
+      setReadiness({
+        status: "blocked",
+        checks: checking.map((check) =>
+          check.id === "wallet"
+            ? { ...check, status: "blocked", detail }
+            : { ...check, status: "blocked", detail: "Reconnect the wallet first" },
+        ),
+      });
+      setError(detail);
+      setAction({ name: "idle" });
+      return;
+    }
+
+    let passkeyError: string | null = null;
+    try {
+      if (!passkeyVerified.current) {
+        await createOrVerifyTravelSafePasskey(expectedAccount);
+        passkeyVerified.current = true;
+      }
+    } catch (cause) {
+      passkeyError = reasonFrom(cause);
+    }
+
+    const [relayResult, balanceResult] = await Promise.allSettled([
+      WRENCHLESS_MAINNET.tripAllowanceHelperAddress === null
+        ? Promise.reject(new Error("Trip Allowance is not available yet"))
+        : inspectTravelSafeV3Sponsor({
+            sponsorUrl: WRENCHLESS_SERVICES.sponsorUrl,
+          }),
+      refreshBalances(currentWallet),
+    ]);
+    const checks: SafeReadinessCheck[] = [
+      checking[0]!,
+      passkeyError === null
+        ? { id: "passkey", label: "Passkey", status: "ready", detail: "Protected on this device" }
+        : { id: "passkey", label: "Passkey", status: "blocked", detail: passkeyError },
+      relayResult.status === "fulfilled"
+        ? { id: "relay", label: "Private relay", status: "ready", detail: "Available" }
+        : { id: "relay", label: "Private relay", status: "blocked", detail: reasonFrom(relayResult.reason) },
+    ];
+    if (balanceResult.status === "rejected") {
+      const detail = reasonFrom(balanceResult.reason);
+      checks.push(
+        { id: "fee", label: "Action reserve", status: "blocked", detail },
+        { id: "balance", label: "Private balance", status: "blocked", detail },
+      );
+    } else {
+      const strk = balanceResult.value.balances.find(
+        (balance) => balance.token.symbol === "STRK",
+      );
+      const hasFeeReserve =
+        strk !== undefined &&
+        strk.available &&
+        BigInt(strk.shieldedBalanceBaseUnits) >=
+          BigInt(balanceResult.value.poolFeeFri);
+      checks.push(
+        hasFeeReserve
+          ? {
+              id: "fee",
+              label: "Action reserve",
+              status: "ready",
+              detail: `${formatTokenAmount(BigInt(balanceResult.value.poolFeeFri), 18)} STRK kept for actions`,
+            }
+          : {
+              id: "fee",
+              label: "Action reserve",
+              status: "blocked",
+              detail: "Add enough private STRK for one action fee",
+            },
+      );
+      const funded = balanceResult.value.balances.filter((balance) => {
+        if (!balance.available) return false;
+        const amount = BigInt(balance.shieldedBalanceBaseUnits);
+        return balance.token.symbol === "STRK"
+          ? amount > BigInt(balanceResult.value.poolFeeFri)
+          : amount > 0n;
+      });
+      checks.push(
+        funded.length > 0
+          ? {
+              id: "balance",
+              label: "Private balance",
+              status: "ready",
+              detail: `${funded.map((balance) => balance.token.symbol).join(" and ")} available`,
+            }
+          : {
+              id: "balance",
+              label: "Private balance",
+              status: "blocked",
+              detail: "Add private STRK or USDC to park",
+            },
+      );
+    }
+    const ready = checks.every((check) => check.status === "ready");
+    const blocked = checks.find((check) => check.status === "blocked");
+    setReadiness({ status: ready ? "ready" : "blocked", checks });
+    setError(blocked?.detail ?? null);
+    setAction({ name: "idle" });
+  }, [refreshBalances]);
 
   const assertFreshReserve = useCallback(async (additionalStrk = "0") => {
     if (wallet.current === null) throw new Error("Connect your wallet");
@@ -426,28 +550,31 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
     try {
       const connected = await requestWalletAccount();
       const context = await assertReadyPrivateContext(connected.wallet);
-      await createOrVerifyTravelSafePasskey(context.account);
       wallet.current = connected.wallet;
       setAccount(context.account);
       const retained = retainPreparedForAccount(prepared.current, context.account);
       prepared.current = retained;
       if (retained === null) setQuote(null);
-      await refreshBalances(connected.wallet);
-      setAction({ name: "idle" });
-      setPhase(
-        ticket === null
-          ? "plan"
-          : ticket.status === "READY"
+      if (ticket === null) {
+        await runReadiness(connected.wallet, context.account);
+      } else {
+        await createOrVerifyTravelSafePasskey(context.account);
+        passkeyVerified.current = true;
+        await refreshBalances(connected.wallet);
+        setAction({ name: "idle" });
+        setPhase(
+          ticket.status === "READY"
             ? "review"
             : ticket.status === "TERMINAL"
               ? "terminal"
               : "active",
-      );
+        );
+      }
     } catch (cause) {
       setAction({ name: "failed", message: reasonFrom(cause), retryable: true });
       setError(reasonFrom(cause));
     }
-  }, [refreshBalances, ticket]);
+  }, [refreshBalances, runReadiness, ticket]);
 
   const unlock = useCallback(async (): Promise<void> => {
     setError(null);
@@ -721,6 +848,9 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       updateRecoveryWords(null);
       setQuote(null);
       setLive(null);
+      setReadiness(null);
+      setRecoveryDrill({ status: "idle" });
+      passkeyVerified.current = false;
       setPhase("empty");
     } catch (cause) {
       const reason = reasonFrom(cause);
@@ -988,6 +1118,32 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
     }
   }, [activeState, beginDirectAction, recordDirectAction, refresh, resetUnsentAction]);
 
+  const drillRecoveryWords = useCallback(async (words: string): Promise<void> => {
+    setRecoveryDrill({ status: "checking" });
+    try {
+      if (snapshot?.state === null || snapshot === null || ticket === null) {
+        throw new Error("This Trip Allowance is not ready for a recovery check");
+      }
+      const secrets = await deriveTravelSafeSecrets(words);
+      const commitment = computeTravelSafeV3ClaimCommitment(
+        secrets.stateId,
+        secrets.claimPublicKey,
+      );
+      if (
+        BigInt(secrets.stateId) !== BigInt(ticket.stateId) ||
+        BigInt(commitment) !== BigInt(snapshot.state.claimCommitment)
+      ) {
+        throw new Error("Those words do not match this Trip Allowance");
+      }
+      setRecoveryDrill({ status: "valid" });
+    } catch {
+      setRecoveryDrill({
+        status: "invalid",
+        message: "Those words do not match this Trip Allowance",
+      });
+    }
+  }, [snapshot, ticket]);
+
   const returnNow = useCallback(async (): Promise<void> => {
     try {
       const current = activeState();
@@ -1035,6 +1191,8 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       ticket,
       snapshot,
       nextReleaseAt,
+      readiness,
+      recoveryDrill,
       action,
       recoveryWords,
       quote,
@@ -1044,9 +1202,18 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
     actions: {
       startCreate() {
         setError(null);
+        setReadiness(null);
         setPhase(WRENCHLESS_MAINNET.tripAllowanceHelperAddress === null ? "unavailable" : "connect");
       },
       closeCreate() {
+        if (ticket === null && phase === "plan") {
+          setPhase("readiness");
+          return;
+        }
+        if (ticket === null && phase === "recovery") {
+          setPhase("plan");
+          return;
+        }
         setPhase(
           ticket === null
             ? "empty"
@@ -1058,6 +1225,18 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
         );
       },
       connect,
+      async checkReadiness() {
+        if (wallet.current === null || account === null) {
+          await connect();
+          return;
+        }
+        await runReadiness(wallet.current, account);
+      },
+      continueFromReadiness() {
+        if (readiness?.status !== "ready") return;
+        setError(null);
+        setPhase("plan");
+      },
       selectAsset(tokenAddress) {
         tokenFor(tokenAddress);
         setPlan((current) => ({ ...current, tokenAddress, parkAmount: "", keepAmount: "", dailyAmount: "" }));
@@ -1128,6 +1307,10 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       submitTopUp,
       extendReturnDate,
       bringBackEarly,
+      drillRecoveryWords,
+      resetRecoveryDrill() {
+        setRecoveryDrill({ status: "idle" });
+      },
       returnNow,
       downloadReturnCalendarEvent() {
         if (ticket === null) return;

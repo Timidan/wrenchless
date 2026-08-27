@@ -17,7 +17,9 @@ the return date.
 - Shielded STRK and USDC
 - Daily or single-release plans
 - Top-ups and return-date extensions
-- Passkey protection and recovery words
+- One trip-readiness check before setup
+- Local recovery-word drills
+- Replacement-phone Rescue Mode
 
 | Park most | Use the allowance | Bring back the rest |
 | --- | --- | --- |
@@ -26,9 +28,14 @@ the return date.
 ## How it works
 
 1. Connect Ready.
-2. Choose an asset, allowance, and return date.
-3. Save the recovery words and confirm the private transaction.
-4. Release what is available or return the remainder when the trip ends.
+2. Check the passkey, relay, private balance, and action reserve once.
+3. Choose an asset, allowance, and return date.
+4. Save the recovery words and confirm the private transaction.
+5. Release what is available or return the remainder when the trip ends.
+
+If the original device is lost, Rescue Mode can return a still-locked reserve
+to another Ready account before the return date. Recovery words remain in page
+memory and are never sent to the server.
 
 Ready supplies the private balance, proof, and signature. The Wrenchless
 contract enforces the schedule. Funds remain inside the STRK20 flow.

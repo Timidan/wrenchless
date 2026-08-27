@@ -24,6 +24,7 @@ import {
   LockKeyOpenIcon,
   LockSimpleIcon,
   PlusCircleIcon,
+  ShieldCheckIcon,
   SuitcaseRollingIcon,
   WarningCircleIcon,
 } from "../../../components/icons";
@@ -46,6 +47,7 @@ import {
 import type {
   SafeActionState,
   SafeAssetView,
+  SafeReadinessCheck,
   SafeV3Phase,
   TravelSafeV3Actions,
   TravelSafeV3Model,
@@ -66,6 +68,7 @@ import { safeActionBusy, SafeActionProgress } from "./SafeActionProgress";
 
 const CREATE_STEPS: readonly SafeV3Phase[] = [
   "connect",
+  "readiness",
   "plan",
   "recovery",
   "review",
@@ -270,6 +273,9 @@ function Phase(props: {
         </Screen>
       );
 
+    case "readiness":
+      return <ReadinessScreen actions={actions} model={model} />;
+
     case "plan":
       return <PlanScreen actions={actions} model={model} />;
 
@@ -288,6 +294,93 @@ function Phase(props: {
     case "terminal":
       return <TerminalScreen actions={actions} model={model} />;
   }
+}
+
+const READINESS_ICONS = {
+  checking: ArrowsClockwiseIcon,
+  ready: CheckCircleIcon,
+  blocked: WarningCircleIcon,
+} satisfies Record<SafeReadinessCheck["status"], typeof ArrowsClockwiseIcon>;
+
+const READINESS_WORDS = {
+  checking: "Checking",
+  ready: "Ready",
+  blocked: "Not ready",
+} satisfies Record<SafeReadinessCheck["status"], string>;
+
+function ReadinessRow(props: { check: SafeReadinessCheck }): JSX.Element {
+  const { check } = props;
+  const spinning = check.status === "checking";
+  const Icon = READINESS_ICONS[check.status];
+  return (
+    <li className="wcheck" data-status={check.status}>
+      <span
+        aria-hidden="true"
+        className="wcheck__icon"
+        data-icon-motion={spinning ? "spin" : undefined}
+      >
+        <Icon />
+      </span>
+      <span className="wcheck__body">
+        <span className="wcheck__label">{check.label}</span>
+        <span className="visually-hidden">{READINESS_WORDS[check.status]}</span>
+        <span className="wcheck__detail">{check.detail}</span>
+      </span>
+    </li>
+  );
+}
+
+function ReadinessScreen(props: {
+  model: TravelSafeV3Model;
+  actions: TravelSafeV3Actions;
+}): JSX.Element {
+  const { actions, model } = props;
+  const readiness = model.readiness;
+  const busy = safeActionBusy(model.action);
+
+  return (
+    <Screen
+      lede="A few checks before the plan, so nothing stops halfway."
+      onBack={actions.closeCreate}
+      title="Trip readiness"
+    >
+      {readiness === null ? (
+        <StatusLine icon={<ArrowsClockwiseIcon />} iconMotion="spin">
+          Checking this trip
+        </StatusLine>
+      ) : (
+        <ul aria-busy={readiness.status === "checking" ? "true" : undefined} className="wchecks">
+          {readiness.checks.map((check) => (
+            <ReadinessRow check={check} key={check.id} />
+          ))}
+        </ul>
+      )}
+      {readiness?.status === "ready" ? (
+        <Actions>
+          <Button
+            disabled={busy}
+            icon={<ShieldCheckIcon />}
+            label="Continue"
+            onClick={actions.continueFromReadiness}
+          />
+        </Actions>
+      ) : null}
+      {readiness?.status === "blocked" ? (
+        <Actions>
+          <Button
+            disabled={busy}
+            icon={<ArrowsClockwiseIcon />}
+            iconMotion={busy ? "spin" : undefined}
+            label="Check again"
+            onClick={() => {
+              void actions.checkReadiness();
+            }}
+          />
+        </Actions>
+      ) : null}
+      <Note>The exact cost comes after the plan.</Note>
+    </Screen>
+  );
 }
 
 /**
@@ -757,7 +850,7 @@ function QuoteScreen(props: {
   );
 }
 
-type ActiveSubview = "none" | "topup" | "extend" | "early";
+type ActiveSubview = "none" | "topup" | "extend" | "early" | "drill";
 
 function ActiveHome(props: {
   model: TravelSafeV3Model;
@@ -805,6 +898,18 @@ function ActiveHome(props: {
         actions={actions}
         model={model}
         onBack={() => setSubview("none")}
+      />
+    );
+  }
+  if (subview === "drill") {
+    return (
+      <DrillSubview
+        actions={actions}
+        model={model}
+        onBack={() => {
+          actions.resetRecoveryDrill();
+          setSubview("none");
+        }}
       />
     );
   }
@@ -900,6 +1005,13 @@ function ActiveHome(props: {
             icon={<KeyIcon />}
             label="Bring it all back early"
             onClick={() => setSubview("early")}
+            tone="quiet"
+          />
+          <Button
+            disabled={busy}
+            icon={<ShieldCheckIcon />}
+            label="Check recovery words"
+            onClick={() => setSubview("drill")}
             tone="quiet"
           />
           {canReturnNow ? (
@@ -1083,6 +1195,74 @@ function EarlySubview(props: {
       <Note tone="caution">
         This returns the whole remaining reserve, not just today's allowance.
       </Note>
+    </Screen>
+  );
+}
+
+function DrillSubview(props: {
+  model: TravelSafeV3Model;
+  actions: TravelSafeV3Actions;
+  onBack: () => void;
+}): JSX.Element {
+  const { actions, model } = props;
+  const [words, setWords] = useState("");
+  const drill = model.recoveryDrill;
+  const checking = drill.status === "checking";
+
+  async function handleCheck(): Promise<void> {
+    await actions.drillRecoveryWords(words);
+    setWords("");
+  }
+
+  return (
+    <Screen
+      lede="Confirm the words you saved still match this allowance."
+      onBack={props.onBack}
+      title="Check recovery words"
+    >
+      <div className="wform">
+        <WalletField label="Recovery words">
+          {({ inputId, describedBy }) => (
+            <textarea
+              aria-describedby={describedBy}
+              autoCapitalize="none"
+              autoCorrect="off"
+              className="winput winput--paste"
+              id={inputId}
+              onChange={(event) => {
+                setWords(event.target.value);
+                if (drill.status !== "idle") actions.resetRecoveryDrill();
+              }}
+              rows={3}
+              spellCheck={false}
+              value={words}
+            />
+          )}
+        </WalletField>
+      </div>
+      {checking ? (
+        <StatusLine icon={<ArrowsClockwiseIcon />} iconMotion="spin">
+          Checking on this device
+        </StatusLine>
+      ) : null}
+      {drill.status === "valid" ? (
+        <StatusLine announce icon={<CheckCircleIcon />}>
+          These words match this Trip Allowance
+        </StatusLine>
+      ) : null}
+      {drill.status === "invalid" ? <Failure message={drill.message} /> : null}
+      <Actions>
+        <Button
+          disabled={checking || words.trim() === ""}
+          icon={<ShieldCheckIcon />}
+          iconMotion={checking ? "spin" : undefined}
+          label="Check words"
+          onClick={() => {
+            void handleCheck();
+          }}
+        />
+      </Actions>
+      <Note>The check stays on this device. Nothing is sent and nothing is signed.</Note>
     </Screen>
   );
 }

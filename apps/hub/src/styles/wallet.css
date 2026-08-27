@@ -963,6 +963,68 @@ html.reduced-motion .wchip {
   }
 }
 
+/* ---------- readiness checks ---------- */
+
+.wchecks {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wcheck {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding-block: var(--space-3);
+  border-bottom: 1px solid var(--w-rule);
+}
+
+.wcheck:last-child {
+  border-bottom: 0;
+}
+
+.wcheck__icon {
+  display: inline-flex;
+  flex: none;
+  margin-top: 1px;
+  color: var(--w-text-secondary);
+}
+
+.wcheck__icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.wcheck[data-status="ready"] .wcheck__icon {
+  color: var(--w-text);
+}
+
+.wcheck[data-status="blocked"] .wcheck__icon {
+  color: var(--signal);
+}
+
+.wcheck__body {
+  display: grid;
+  gap: 2px;
+}
+
+.wcheck__label {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.wcheck__detail {
+  color: var(--w-text-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.wcheck[data-status="blocked"] .wcheck__detail {
+  color: var(--w-text-body);
+}
+
 /* ---------- forms ---------- */
 
 .wform {
@@ -1193,6 +1255,7 @@ html.reduced-motion .fund-progress__marker {
 
 .statusline__icon[data-icon-motion="spin"],
 .wbtn__icon[data-icon-motion="spin"],
+.wcheck__icon[data-icon-motion="spin"],
 .iconbtn > span[data-icon-motion="spin"] {
   animation: processing-spin var(--dur-spin) linear infinite;
   transform-origin: center;
@@ -1203,6 +1266,7 @@ html.reduced-motion .fund-progress__marker {
    motion is requested, mid-animation or not. */
 html.reduced-motion .statusline__icon[data-icon-motion="spin"],
 html.reduced-motion .wbtn__icon[data-icon-motion="spin"],
+html.reduced-motion .wcheck__icon[data-icon-motion="spin"],
 html.reduced-motion .iconbtn > span[data-icon-motion="spin"] {
   animation: none;
 }
@@ -1210,6 +1274,7 @@ html.reduced-motion .iconbtn > span[data-icon-motion="spin"] {
 @media (prefers-reduced-motion: reduce) {
   .statusline__icon[data-icon-motion="spin"],
   .wbtn__icon[data-icon-motion="spin"],
+  .wcheck__icon[data-icon-motion="spin"],
   .iconbtn > span[data-icon-motion="spin"] {
     animation: none;
   }

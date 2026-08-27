@@ -127,6 +127,49 @@ export class TravelSafeV3Relay {
     }
   }
 
+  async ready(): Promise<boolean> {
+    try {
+      this.assertEnabled();
+      const helperAddress = this.config.travelSafeV3HelperAddress!;
+      if (this.config.travelSafeTokenPolicies.length === 0) return false;
+      const client = new StarknetRegistrationCanaryClient(
+        this.config.rpcUrl,
+        this.config.accountAddress,
+      );
+      await Promise.all([
+        client.assertPoolInterface(this.config.poolAddress),
+        ...this.config.travelSafeTokenPolicies.map((policy) =>
+          client.assertTravelSafeV3Helper(
+            helperAddress,
+            this.config.poolAddress,
+            policy.address,
+            TRAVEL_SAFE_V3_CLASS_HASH,
+          ),
+        ),
+      ]);
+      const [paused, poolFeeFri, relayBalanceFri, remainingBudgetFri] =
+        await Promise.all([
+          client.readPoolPaused(this.config.poolAddress),
+          client.readPoolFeeFri(this.config.poolAddress),
+          client.readRelayBalanceFri(
+            this.config.tokenAddress,
+            this.config.accountAddress,
+          ),
+          this.budget.remainingFri(),
+        ]);
+      const maximumSpendFri = poolFeeFri + this.config.maxTransactionFeeFri;
+      return (
+        !paused &&
+        poolFeeFri > 0n &&
+        poolFeeFri <= this.config.maxPoolFeeFri &&
+        relayBalanceFri >= maximumSpendFri &&
+        remainingBudgetFri >= maximumSpendFri
+      );
+    } catch {
+      return false;
+    }
+  }
+
   private async inspect(
     artifact: TravelSafeV3RelayArtifact,
     tokenSymbol: string,
@@ -182,6 +225,9 @@ export class TravelSafeV3Relay {
     const maximumSpendFri = poolFeeFri + this.config.maxTransactionFeeFri;
     if (relayBalanceFri < maximumSpendFri) {
       throw new Error("relay balance is below the maximum fee");
+    }
+    if ((await this.budget.remainingFri()) < maximumSpendFri) {
+      throw new TravelSafeV3RelayError("daily_fund_budget_exhausted");
     }
 
     if (artifact.operation === "FUND") {

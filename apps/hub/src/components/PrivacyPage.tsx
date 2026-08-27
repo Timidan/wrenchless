@@ -57,6 +57,20 @@ export function PrivacyPage(): JSX.Element {
             </section>
 
             <section className="document__section">
+              <h2>Rescue Mode</h2>
+              <p>
+                Rescue derives the return authority from your words in this
+                page&rsquo;s memory. The words are never sent anywhere, and
+                Wrenchless never stores them.
+              </p>
+              <p>
+                A rescue sends the remaining reserve to the Ready account you
+                connect at that moment, and only before the return date. That
+                account needs enough private STRK for the action fee.
+              </p>
+            </section>
+
+            <section className="document__section">
               <h2>Ready and the sponsor</h2>
               <p>
                 Ready holds your account keys. It prepares and signs the STRK20

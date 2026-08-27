@@ -1,4 +1,4 @@
-export const ROUTES = ["/", "/safe", "/recover"] as const;
+export const ROUTES = ["/", "/safe", "/recover", "/rescue"] as const;
 
 export type Route = (typeof ROUTES)[number];
 

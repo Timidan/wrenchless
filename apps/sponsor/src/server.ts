@@ -60,7 +60,7 @@ type SponsorServerOptions = {
   >;
   requireHttps: boolean;
   trustProxy: boolean;
-  travelSafeV3Relay?: Pick<TravelSafeV3Relay, "estimate" | "submit">;
+  travelSafeV3Relay?: Pick<TravelSafeV3Relay, "ready" | "estimate" | "submit">;
 };
 
 type SponsorFundRelay = Pick<
@@ -274,6 +274,18 @@ export function createSponsorServer(
         }
         return;
       }
+      if (request.method === "GET" && url.pathname === "/v3/readyz") {
+        const ready =
+          options.travelSafeV3Relay !== undefined &&
+          (await options.travelSafeV3Relay.ready());
+        if (ready) {
+          sendJson(response, 200, { status: "ready" });
+        } else {
+          response.setHeader("Retry-After", "300");
+          sendJson(response, 503, { error: "sponsor_unavailable" });
+        }
+        return;
+      }
       const travelSafeRoute =
         url.pathname === "/v3/fund" || url.pathname === "/v3/fund/estimate"
           ? ("FUND" as const)
@@ -284,15 +296,6 @@ export function createSponsorServer(
       if (request.method === "POST" && travelSafeRoute !== null) {
         if (options.travelSafeV3Relay === undefined) {
           sendJson(response, 503, { error: "travel_safe_v3_disabled" });
-          return;
-        }
-        const fundUnavailableReason = await options.fundUnavailableReason();
-        if (fundUnavailableReason !== undefined) {
-          response.setHeader("Retry-After", "300");
-          sendJson(response, 503, {
-            error: "sponsor_unavailable",
-            reason: fundUnavailableReason,
-          });
           return;
         }
         const estimating = url.pathname.endsWith("/estimate");
