@@ -4,6 +4,7 @@ import {
   type JsonValue,
 } from "@wrenchless/canary-core";
 import {
+  broadcastOutcomeIsUncertain,
   StarknetRegistrationCanaryClient,
   type PreparedStrk20RelayPlan,
 } from "@wrenchless/relay-canary/starknet-client";
@@ -71,6 +72,7 @@ export type TravelSafeV3Submission = {
 export type TravelSafeV3RelayErrorCode =
   | "travel_safe_v3_disabled"
   | "travel_safe_v3_rejected"
+  | "travel_safe_submission_uncertain"
   | "travel_safe_cost_changed"
   | "daily_fund_budget_exhausted"
   | "relay_busy";
@@ -311,6 +313,12 @@ export class TravelSafeV3Relay {
           estimate.resourceBounds,
         );
       } catch (cause) {
+        if (broadcastOutcomeIsUncertain(cause)) {
+          await this.budget.settleMaximum(reservationId).catch(() => undefined);
+          throw new TravelSafeV3RelayError("travel_safe_submission_uncertain", {
+            cause,
+          });
+        }
         await this.budget.settle(reservationId, 0n).catch(() => undefined);
         throw cause;
       }
@@ -418,6 +426,7 @@ export class TravelSafeV3Relay {
               (receipt.succeeded ? result.poolFeeFri : 0n),
           ),
         )
+        .catch(() => this.budget.settleMaximum(result.reservationId))
         .catch(() => undefined)
         .finally(() => this.gate.unlock());
       return {

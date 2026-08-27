@@ -116,7 +116,7 @@ async function rpc<Result>(input: {
 
 function positiveInteger(value: RpcInteger, label: string): bigint {
   const parsed = BigInt(value);
-  if (parsed <= 0n) {
+  if (parsed <= 0n || parsed > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new Error(`The latest block returned an invalid ${label}`);
   }
   return parsed;

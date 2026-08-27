@@ -283,175 +283,252 @@ html.reduced-motion .hero {
   display: none;
 }
 
-@media (min-width: 64rem) {
-  html.motion-on .section--story {
-    padding-block: 0;
-  }
+/* ---------- the dive ----------
 
-  html.motion-on .story__stage {
-    /* Where column two of the page grid begins. The frames are full-bleed
-       boxes rather than grid children, so the caption takes its left edge
-       from this rather than from a column it cannot sit in. */
-    --bay-start: calc(
-      var(--edge) + (100% - 2 * var(--edge) - 11 * var(--gap)) / 12 +
-        var(--gap)
-    );
-    --story-ink: var(--paper);
-    --story-body: var(--paper-body);
-    --story-emphasis: var(--signal);
+   Unconditional, where this used to start at 64rem. The choreography in
+   `SceneStory.tsx` never had an opinion about the shape of the window; it
+   was this layout that did, and specifically the caption bay below, a
+   column of 34vw that is unreadable on a phone. Portrait answers the bay
+   at the end of this section.                                          */
 
-    position: relative;
-    display: block;
-    height: 100svh;
-    padding-inline: 0;
-    /* The frame scales to 2.2 inside this box and must not escape it. */
-    overflow: clip;
-    isolation: isolate;
-    background: var(--black);
-  }
+html.motion-on .section--story {
+  padding-block: 0;
+}
 
-  /* Every frame occupies the whole box. The stacking order is written on the
-     element, front to back, so a frame fading out uncovers the next one
-     rather than being covered by it. */
-  html.motion-on .story__scene {
-    position: absolute;
-    inset: 0;
-    display: block;
-    gap: 0;
-  }
+html.motion-on .story__stage {
+  /* Where column two of the page grid begins. The frames are full-bleed
+     boxes rather than grid children, so the caption takes its left edge
+     from this rather than from a column it cannot sit in. */
+  --bay-start: calc(
+    var(--edge) + (100% - 2 * var(--edge) - 11 * var(--gap)) / 12 +
+      var(--gap)
+  );
+  --story-ink: var(--paper);
+  --story-body: var(--paper-body);
+  --story-emphasis: var(--signal);
 
-  html.motion-on .story__media {
-    position: absolute;
-    inset: 0;
-    border-radius: 0;
-    will-change: opacity;
-  }
+  position: relative;
+  display: block;
+  height: 100svh;
+  padding-inline: 0;
+  /* The frame scales to 2.2 inside this box and must not escape it. */
+  overflow: clip;
+  isolation: isolate;
+  background: var(--black);
+}
 
-  html.motion-on .story__image {
-    width: 100%;
-    height: 100%;
-    max-height: none;
-    aspect-ratio: auto;
-    will-change: transform;
-    backface-visibility: hidden;
-  }
+/* Every frame occupies the whole box. The stacking order is written on the
+   element, front to back, so a frame fading out uncovers the next one
+   rather than being covered by it. */
+html.motion-on .story__scene {
+  position: absolute;
+  inset: 0;
+  display: block;
+  gap: 0;
+}
 
-  /* The negative space the frames were composed with, made reliable.
-     Four of the five photographs are already almost black down their left
-     third and would carry the caption on their own. The counter room is not:
-     its lamp throws a blown-out patch of floor across the middle of the frame,
-     and measured on the rendered frame the caption there fell to 4.09:1 for
-     the heading and 2.87:1 for the line. The stops below hold every frame at
-     9:1 or better, and the last stop is far enough right that the portal each
-     scene is diving into is untouched. */
-  html.motion-on .story__scrim {
-    display: block;
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background:
-      linear-gradient(rgba(15, 14, 13, 0.2), rgba(15, 14, 13, 0.2)),
-      linear-gradient(
-        to right,
-        rgba(15, 14, 13, 0.93) 0%,
-        rgba(15, 14, 13, 0.86) 28%,
-        rgba(15, 14, 13, 0.62) 48%,
-        rgba(15, 14, 13, 0.22) 66%,
-        rgba(15, 14, 13, 0) 82%
-      );
-  }
+html.motion-on .story__media {
+  position: absolute;
+  inset: 0;
+  border-radius: 0;
+  will-change: opacity;
+}
 
-  /* One frame still needs more than the shared wash. The sealed envelope in
-     the hallway is lit across the whole width of the plate rather than down
-     its right side, so the caption band sits on lit paper rather than on
-     cloth, and it is the one red word on the page that pays for it: the
-     signal is a mid-lightness red, so unlike the white caption above it, it
-     loses contrast as the ground gets lighter. Re-measured against the 8K
-     plate across six window shapes, the shared wash alone leaves it between
-     4.26:1 and 5.30:1, under the figure at 1280x720 where the crop band
-     lands squarely on the brightest fold, while the stops below hold it
-     between 5.23:1 and 5.56:1 everywhere. The special case stays. It lets go
-     earlier on the right than the shared wash does, so the wax seal this
-     scene settles onto is left no darker than before. */
-  /* The 8K ascii plates (street, vault) are about two stops darker than the
-     photographic scenes. Under the shared wash they read as near-empty black
-     frames, while their captions measured 13.5:1 and better, which is
-     headroom to spend. These two scenes drop the flat wash and run a lighter,
-     narrower band so the artwork carries the frame. The hallway keeps its
-     stronger special case below, because its plate is lit right across the
-     caption band. */
-  html.motion-on .story__scene[data-scene="street"] .story__scrim,
-  html.motion-on .story__scene[data-scene="vault"] .story__scrim {
-    background: linear-gradient(
+html.motion-on .story__image {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  aspect-ratio: auto;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+/* The negative space the frames were composed with, made reliable.
+   Four of the five photographs are already almost black down their left
+   third and would carry the caption on their own. The counter room is not:
+   its lamp throws a blown-out patch of floor across the middle of the frame,
+   and measured on the rendered frame the caption there fell to 4.09:1 for
+   the heading and 2.87:1 for the line. The stops below hold every frame at
+   9:1 or better, and the last stop is far enough right that the portal each
+   scene is diving into is untouched. */
+html.motion-on .story__scrim {
+  display: block;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(rgba(15, 14, 13, 0.2), rgba(15, 14, 13, 0.2)),
+    linear-gradient(
       to right,
-      rgba(15, 14, 13, 0.72) 0%,
-      rgba(15, 14, 13, 0.55) 30%,
-      rgba(15, 14, 13, 0.25) 52%,
-      rgba(15, 14, 13, 0) 70%
+      rgba(15, 14, 13, 0.93) 0%,
+      rgba(15, 14, 13, 0.86) 28%,
+      rgba(15, 14, 13, 0.62) 48%,
+      rgba(15, 14, 13, 0.22) 66%,
+      rgba(15, 14, 13, 0) 82%
     );
-  }
+}
 
-  html.motion-on .story__scene[data-scene="hallway"] .story__scrim {
-    background:
-      linear-gradient(rgba(15, 14, 13, 0.2), rgba(15, 14, 13, 0.2)),
-      linear-gradient(
-        to right,
-        rgba(15, 14, 13, 0.96) 0%,
-        rgba(15, 14, 13, 0.94) 30%,
-        rgba(15, 14, 13, 0.88) 46%,
-        rgba(15, 14, 13, 0.3) 58%,
-        rgba(15, 14, 13, 0.05) 70%,
-        rgba(15, 14, 13, 0) 80%
-      );
-  }
+/* One frame still needs more than the shared wash. The sealed envelope in
+   the hallway is lit across the whole width of the plate rather than down
+   its right side, so the caption band sits on lit paper rather than on
+   cloth, and it is the one red word on the page that pays for it: the
+   signal is a mid-lightness red, so unlike the white caption above it, it
+   loses contrast as the ground gets lighter. Re-measured against the 8K
+   plate across six window shapes, the shared wash alone leaves it between
+   4.26:1 and 5.30:1, under the figure at 1280x720 where the crop band
+   lands squarely on the brightest fold, while the stops below hold it
+   between 5.23:1 and 5.56:1 everywhere. The special case stays. It lets go
+   earlier on the right than the shared wash does, so the wax seal this
+   scene settles onto is left no darker than before. */
+/* The 8K ascii plates (street, vault) are about two stops darker than the
+   photographic scenes. Under the shared wash they read as near-empty black
+   frames, while their captions measured 13.5:1 and better, which is
+   headroom to spend. These two scenes drop the flat wash and run a lighter,
+   narrower band so the artwork carries the frame. The hallway keeps its
+   stronger special case below, because its plate is lit right across the
+   caption band. */
+html.motion-on .story__scene[data-scene="street"] .story__scrim,
+html.motion-on .story__scene[data-scene="vault"] .story__scrim {
+  background: linear-gradient(
+    to right,
+    rgba(15, 14, 13, 0.72) 0%,
+    rgba(15, 14, 13, 0.55) 30%,
+    rgba(15, 14, 13, 0.25) 52%,
+    rgba(15, 14, 13, 0) 70%
+  );
+}
 
+html.motion-on .story__scene[data-scene="hallway"] .story__scrim {
+  background:
+    linear-gradient(rgba(15, 14, 13, 0.2), rgba(15, 14, 13, 0.2)),
+    linear-gradient(
+      to right,
+      rgba(15, 14, 13, 0.96) 0%,
+      rgba(15, 14, 13, 0.94) 30%,
+      rgba(15, 14, 13, 0.88) 46%,
+      rgba(15, 14, 13, 0.3) 58%,
+      rgba(15, 14, 13, 0.05) 70%,
+      rgba(15, 14, 13, 0) 80%
+    );
+}
+
+html.motion-on .story__caption {
+  position: absolute;
+  inset: 0 auto 0 var(--bay-start);
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-4);
+  width: min(31rem, 34vw);
+  /* Five captions share one box and four of them are invisible at any
+     moment. Without this a drag selects the wrong scene's sentence. */
+  pointer-events: none;
+}
+
+html.motion-on .story__line {
+  max-width: none;
+}
+
+/* Where the reader is, and nothing else. Not a control: there is nothing
+   here to press, so there is nothing here to tab to. */
+html.motion-on .story__count {
+  position: absolute;
+  z-index: 2;
+  left: var(--bay-start);
+  bottom: clamp(28px, 5vh, 56px);
+  display: flex;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-family: var(--font-mono);
+  font-size: var(--size-micro);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+}
+
+html.motion-on .story__count-item {
+  transition: color var(--dur-mid) var(--ease-settle);
+}
+
+html.motion-on .story__count[data-scene="0"] .story__count-item:nth-child(1),
+html.motion-on .story__count[data-scene="1"] .story__count-item:nth-child(2),
+html.motion-on .story__count[data-scene="2"] .story__count-item:nth-child(3),
+html.motion-on .story__count[data-scene="3"] .story__count-item:nth-child(4),
+html.motion-on .story__count[data-scene="4"] .story__count-item:nth-child(5) {
+  color: var(--paper);
+}
+
+/* ---------- the dive, in portrait ----------
+
+   Where the words go, decided by measuring the plates rather than by taste.
+   Cropped to 390x844 the top third of every frame is darker than the bottom —
+   by 18x on the pool and 13x on the counter, because the light in these
+   compositions falls low. So the caption band goes at the top. It also has to:
+   the portals sit between 38% and 70% down the frame, and a caption at the
+   foot of the picture would be lying across the very thing the scene dives
+   into.
+
+   The wash is 0.5 at the top edge and gone by 40%, which clears the highest
+   portal. Measured on the five plates at the 99th percentile of the band, that
+   holds paper-white at 10.0:1 on the worst frame — the pool, whose lit water
+   reaches up into the band — and between 11.3:1 and 19.2:1 on the other four.
+   Bare, the pool would be 4.5:1. The left-to-right stops the wide window uses
+   are measured for a side bay and say nothing about this one, so they are
+   replaced outright rather than adjusted.                                   */
+
+@media (max-width: 63.99rem) {
   html.motion-on .story__caption {
-    position: absolute;
-    inset: 0 auto 0 var(--bay-start);
-    z-index: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: var(--space-4);
-    width: min(31rem, 34vw);
-    /* Five captions share one box and four of them are invisible at any
-       moment. Without this a drag selects the wrong scene's sentence. */
-    pointer-events: none;
+    inset: 0 0 auto 0;
+    justify-content: flex-start;
+    width: auto;
+    gap: var(--space-3);
+    padding: calc(clamp(72px, 13vh, 112px) + env(safe-area-inset-top, 0px))
+      max(var(--edge), env(safe-area-inset-right, 0px)) 0
+      max(var(--edge), env(safe-area-inset-left, 0px));
+  }
+
+  html.motion-on .story__title {
+    max-width: 16ch;
   }
 
   html.motion-on .story__line {
-    max-width: none;
+    max-width: 34ch;
   }
 
-  /* Where the reader is, and nothing else. Not a control: there is nothing
-     here to press, so there is nothing here to tab to. */
+  /* One wash for all five. The per-scene special cases above exist because a
+     side bay crosses a different part of each plate; the top band crosses the
+     same dark sky on every one of them, so there is nothing left to special
+     case. */
+  html.motion-on .story__scrim,
+  html.motion-on .story__scene[data-scene="street"] .story__scrim,
+  html.motion-on .story__scene[data-scene="vault"] .story__scrim,
+  html.motion-on .story__scene[data-scene="hallway"] .story__scrim {
+    background: linear-gradient(
+      to bottom,
+      rgba(15, 14, 13, 0.9) 0%,
+      rgba(15, 14, 13, 0.86) 16%,
+      rgba(15, 14, 13, 0.78) 26%,
+      rgba(15, 14, 13, 0.62) 32%,
+      rgba(15, 14, 13, 0.24) 36%,
+      rgba(15, 14, 13, 0) 40%
+    );
+  }
+
+  /* The counter sits under the caption, not beside it. */
   html.motion-on .story__count {
-    position: absolute;
-    z-index: 2;
-    left: var(--bay-start);
-    bottom: clamp(28px, 5vh, 56px);
-    display: flex;
-    gap: var(--space-3);
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    color: rgba(255, 255, 255, 0.5);
-    font-family: var(--font-mono);
-    font-size: var(--size-micro);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 0.08em;
+    left: max(var(--edge), env(safe-area-inset-left, 0px));
+    bottom: calc(clamp(20px, 4vh, 40px) + env(safe-area-inset-bottom, 0px));
   }
 
-  html.motion-on .story__count-item {
-    transition: color var(--dur-mid) var(--ease-settle);
-  }
-
-  html.motion-on .story__count[data-scene="0"] .story__count-item:nth-child(1),
-  html.motion-on .story__count[data-scene="1"] .story__count-item:nth-child(2),
-  html.motion-on .story__count[data-scene="2"] .story__count-item:nth-child(3),
-  html.motion-on .story__count[data-scene="3"] .story__count-item:nth-child(4),
-  html.motion-on .story__count[data-scene="4"] .story__count-item:nth-child(5) {
-    color: var(--paper);
+  /* Five full-bleed layers promoted at once is 60MB of texture on a phone at
+     DPR 3, for a hint that only buys a smoother first handoff. The two layers
+     that are actually moving get promoted by the animation itself. */
+  html.motion-on .story__media,
+  html.motion-on .story__image {
+    will-change: auto;
   }
 }
 

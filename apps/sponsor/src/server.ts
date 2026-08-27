@@ -156,7 +156,11 @@ async function readJsonBody(
     throw new Error("unsupported_media_type");
   }
   const declaredLength = Number(request.headers["content-length"] ?? 0);
-  if (!Number.isSafeInteger(declaredLength) || declaredLength > maximumBytes) {
+  if (
+    !Number.isSafeInteger(declaredLength) ||
+    declaredLength < 0 ||
+    declaredLength > maximumBytes
+  ) {
     throw new Error("body_too_large");
   }
   const chunks: Buffer[] = [];
@@ -176,6 +180,9 @@ function publicError(error: Error): PublicError {
     return { status: 401, code: "recovery_not_approved" };
   }
   if (error instanceof RefillFundRelayError) {
+    if (error.code === "fund_submission_uncertain") {
+      return { status: 503, code: error.code };
+    }
     if (error.code === "relay_busy") return { status: 409, code: error.code };
     if (error.code === "active_safe_exists") {
       return { status: 409, code: error.code };
@@ -195,6 +202,9 @@ function publicError(error: Error): PublicError {
     return { status: 422, code: error.code };
   }
   if (error instanceof TravelSafeV3RelayError) {
+    if (error.code === "travel_safe_submission_uncertain") {
+      return { status: 503, code: error.code };
+    }
     if (error.code === "relay_busy" || error.code === "travel_safe_cost_changed") {
       return { status: 409, code: error.code };
     }
@@ -330,15 +340,6 @@ export function createSponsorServer(
         return;
       }
       if (request.method === "POST" && url.pathname === "/v1/refill-funds") {
-        const fundUnavailableReason = await options.fundUnavailableReason();
-        if (fundUnavailableReason !== undefined) {
-          response.setHeader("Retry-After", "300");
-          sendJson(response, 503, {
-            error: "sponsor_unavailable",
-            reason: fundUnavailableReason,
-          });
-          return;
-        }
         if (
           !rates.allow(
             rateBucket("fund", request),
@@ -347,6 +348,15 @@ export function createSponsorServer(
         ) {
           response.setHeader("Retry-After", "3600");
           sendJson(response, 429, { error: "rate_limited" });
+          return;
+        }
+        const fundUnavailableReason = await options.fundUnavailableReason();
+        if (fundUnavailableReason !== undefined) {
+          response.setHeader("Retry-After", "300");
+          sendJson(response, 503, {
+            error: "sponsor_unavailable",
+            reason: fundUnavailableReason,
+          });
           return;
         }
         const body = fundSubmissionSchema.parse(await readJsonBody(request));
@@ -361,6 +371,11 @@ export function createSponsorServer(
         request.method === "POST" &&
         url.pathname === "/v1/refill-funds/estimate"
       ) {
+        if (!rates.allow(rateBucket("fund-estimate", request), 6)) {
+          response.setHeader("Retry-After", "3600");
+          sendJson(response, 429, { error: "rate_limited" });
+          return;
+        }
         const fundUnavailableReason = await options.fundUnavailableReason();
         if (fundUnavailableReason !== undefined) {
           response.setHeader("Retry-After", "300");
@@ -368,11 +383,6 @@ export function createSponsorServer(
             error: "sponsor_unavailable",
             reason: fundUnavailableReason,
           });
-          return;
-        }
-        if (!rates.allow(rateBucket("fund-estimate", request), 6)) {
-          response.setHeader("Retry-After", "3600");
-          sendJson(response, 429, { error: "rate_limited" });
           return;
         }
         const estimate: RefillFundEstimate = await fundRelay.estimate(

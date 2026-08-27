@@ -7,6 +7,7 @@ import {
 
 const MAINNET_CHAIN_ID = "0x534e5f4d41494e";
 const READY_WALLET_API_VERSION = "0.10.3";
+const STARK_FIELD_PRIME = (1n << 251n) + 17n * (1n << 192n) + 1n;
 const signatureSchema = z
   .array(z.string().regex(/^0x[0-9a-fA-F]+$/))
   .min(1);
@@ -24,7 +25,9 @@ function canonicalAccount(value: string): string {
   } catch {
     throw new Error("The wallet returned an invalid account");
   }
-  if (account <= 0n) throw new Error("The wallet returned an invalid account");
+  if (account <= 0n || account >= STARK_FIELD_PRIME) {
+    throw new Error("The wallet returned an invalid account");
+  }
   return `0x${account.toString(16)}`;
 }
 
@@ -54,7 +57,13 @@ export async function confirmTravelSafeWalletAccess(
   const chainId = await wallet.request<string>({
     type: "wallet_requestChainId",
   });
-  if (chainId !== MAINNET_CHAIN_ID) {
+  let onMainnet = false;
+  try {
+    onMainnet = BigInt(chainId) === BigInt(MAINNET_CHAIN_ID);
+  } catch {
+    // Invalid wallet output is handled as a network mismatch below.
+  }
+  if (!onMainnet) {
     throw new Error("Switch the wallet to Starknet mainnet");
   }
   signatureSchema.parse(

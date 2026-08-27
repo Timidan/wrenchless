@@ -3,8 +3,10 @@ wrenchless.timidan.xyz {
 	encode zstd gzip
 
 	header {
+		Content-Security-Policy "frame-ancestors 'none'; base-uri 'self'; object-src 'none'"
 		Strict-Transport-Security "max-age=15552000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
 	}
 

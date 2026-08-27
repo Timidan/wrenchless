@@ -102,6 +102,7 @@ describe("requestWalletAccount", () => {
       location: { origin: "https://wrenchless.timidan.xyz" },
     });
     const opened: string[] = [];
+    const requestOrder: string[] = [];
     const requests: MobileRequestInput[] = [];
     const client: ReadyMobileClient = {
       session: { getAll: () => [] },
@@ -128,6 +129,7 @@ describe("requestWalletAccount", () => {
         };
       },
       async request(input: MobileRequestInput) {
+        requestOrder.push("request");
         requests.push(input);
         if (input.request.method === "starknet_signTypedData") {
           return { signature: ["0x1", "0x2"] };
@@ -138,7 +140,10 @@ describe("requestWalletAccount", () => {
     const connected = await requestWalletAccount({
       createMobileClient: async () => client,
       discoverWallets: async () => [],
-      openMobileUrl: (url: string) => opened.push(url),
+      openMobileUrl: (url: string) => {
+        opened.push(url);
+        if (url === "ready://") requestOrder.push("open");
+      },
       userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
       walletConnectProjectId: "test-project",
     });
@@ -169,6 +174,7 @@ describe("requestWalletAccount", () => {
       "ready://",
       "ready://",
     ]);
+    expect(requestOrder).toEqual(["request", "open", "request", "open"]);
     expect(requests).toEqual([
       {
         topic: "private-session",

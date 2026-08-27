@@ -56,7 +56,13 @@ export async function assertReadyPrivateContext(
     wallet.request<string>({ type: "wallet_requestChainId" }),
     wallet.request<readonly string[]>({ type: "wallet_supportedWalletApi" }),
   ]);
-  if (BigInt(chainId) !== BigInt(MAINNET_CHAIN_ID)) {
+  let onMainnet = false;
+  try {
+    onMainnet = BigInt(chainId) === BigInt(MAINNET_CHAIN_ID);
+  } catch {
+    // Invalid wallet output is handled as a network mismatch below.
+  }
+  if (!onMainnet) {
     throw new Error("Ready must be connected to Starknet mainnet");
   }
   if (!versions.includes(READY_WALLET_API_VERSION)) {

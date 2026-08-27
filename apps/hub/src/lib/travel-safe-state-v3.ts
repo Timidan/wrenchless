@@ -26,6 +26,14 @@ const rpcErrorSchema = z.object({
   jsonrpc: z.literal("2.0"),
 });
 
+function safeRpcInteger(value: z.infer<typeof rpcIntegerSchema>, label: string): bigint {
+  const parsed = BigInt(value);
+  if (parsed > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error(`The latest block returned an invalid ${label}`);
+  }
+  return parsed;
+}
+
 export type TravelSafeV3ChainState = {
   stateId: string;
   claimCommitment: string;
@@ -154,8 +162,8 @@ export async function readTravelSafeV3Snapshot(input: {
     params: { block_id: "latest" },
     resultSchema: latestBlockSchema,
   });
-  const blockNumber = BigInt(block.block_number);
-  const chainTime = BigInt(block.timestamp);
+  const blockNumber = safeRpcInteger(block.block_number, "block number");
+  const chainTime = safeRpcInteger(block.timestamp, "timestamp");
 
   const exists = await call({
     contractAddress: helperAddress,

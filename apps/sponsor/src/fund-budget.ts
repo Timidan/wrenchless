@@ -161,4 +161,14 @@ export class FundSpendBudget {
       pending,
     });
   }
+
+  async settleMaximum(reservationId: string): Promise<void> {
+    assertReservationId(reservationId);
+    const ledger = await this.read();
+    const reserved = ledger.pending[reservationId];
+    if (reserved === undefined) {
+      throw new Error("FUND reservation does not exist");
+    }
+    await this.settle(reservationId, BigInt(reserved));
+  }
 }

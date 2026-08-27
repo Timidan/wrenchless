@@ -1,3 +1,5 @@
+const STARK_FIELD_PRIME = (1n << 251n) + 17n * (1n << 192n) + 1n;
+
 function optionalAddress(name: string, configured: string | undefined): string | null {
   const value = configured?.trim();
   if (!value) return null;
@@ -7,7 +9,9 @@ function optionalAddress(name: string, configured: string | undefined): string |
   } catch {
     throw new Error(`${name} must be a Starknet address`);
   }
-  if (parsed <= 0n) throw new Error(`${name} must be a non-zero Starknet address`);
+  if (parsed <= 0n || parsed >= STARK_FIELD_PRIME) {
+    throw new Error(`${name} must be a non-zero Starknet address`);
+  }
   return `0x${parsed.toString(16)}`;
 }
 

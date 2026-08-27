@@ -15,6 +15,8 @@ const boundedRpcFetch: typeof fetch = (input, init = {}) =>
 export type FundSponsorReadiness = {
   chainId: string;
   poolFeeFri: string;
+  poolFeeWithinLimit: boolean;
+  poolPaused: boolean;
   accountPublicBalanceFri: string;
   fundRelayMinimumBalanceFri: string;
   fundRelayBalanceReady: boolean;
@@ -47,12 +49,20 @@ export async function inspectFundSponsorReadiness(
   if (chainId !== constants.StarknetChainId.SN_MAIN) {
     throw new Error(`sponsor RPC is not Starknet mainnet: ${chainId}`);
   }
-  const [poolFee, helperClassHash, publicBalance, helperPool, helperToken] =
+  const [poolFee, poolPaused, helperClassHash, publicBalance, helperPool, helperToken] =
     await Promise.all([
       provider.callContract(
       {
         contractAddress: config.poolAddress,
         entrypoint: "get_fee_amount",
+        calldata: [],
+      },
+      "latest",
+    ),
+    provider.callContract(
+      {
+        contractAddress: config.poolAddress,
+        entrypoint: "is_paused",
         calldata: [],
       },
       "latest",
@@ -84,11 +94,18 @@ export async function inspectFundSponsorReadiness(
     ),
     ]);
   const poolFeeFri = parseSingleFelt(poolFee, "get_fee_amount");
+  const poolPausedValue = parseSingleFelt(poolPaused, "is_paused");
+  if (poolPausedValue !== 0n && poolPausedValue !== 1n) {
+    throw new Error("is_paused returned an incompatible value");
+  }
   const accountPublicBalanceFri = parseU256(publicBalance, "balance_of");
   const fundRelayMinimumBalanceFri = poolFeeFri + config.maxTransactionFeeFri;
   return {
     chainId,
     poolFeeFri: poolFeeFri.toString(),
+    poolFeeWithinLimit:
+      poolFeeFri > 0n && poolFeeFri <= config.maxPoolFeeFri,
+    poolPaused: poolPausedValue === 1n,
     accountPublicBalanceFri: accountPublicBalanceFri.toString(),
     fundRelayMinimumBalanceFri: fundRelayMinimumBalanceFri.toString(),
     fundRelayBalanceReady:

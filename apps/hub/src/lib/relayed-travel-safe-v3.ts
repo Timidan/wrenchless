@@ -155,9 +155,16 @@ export async function submitTravelSafeV3Relay(input: {
   const body = await readBody(response);
   if (!response.ok) {
     const error = errorSchema.safeParse(body);
+    const ambiguous =
+      error.success &&
+      error.data.error === "travel_safe_submission_uncertain";
     throw new TravelSafeV3SponsorError(
-      error.success ? message(error.data.error) : "The action was not sent.",
-      false,
+      ambiguous
+        ? "The action may still be landing. Checking the chain."
+        : error.success
+          ? message(error.data.error)
+          : "The action was not sent.",
+      ambiguous,
     );
   }
   const parsed = submissionSchema.safeParse(body);

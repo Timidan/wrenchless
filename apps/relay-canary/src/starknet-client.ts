@@ -11,6 +11,7 @@ import {
   Account,
   constants,
   hash,
+  RpcError,
   RpcProvider,
   shortString,
   TransactionExecutionStatus,
@@ -38,6 +39,7 @@ import type {
 
 const DRY_RUN_SIGNER = "0x1";
 const RPC_TIMEOUT_MILLISECONDS = 30_000;
+const STARK_FIELD_PRIME = (1n << 251n) + 17n * (1n << 192n) + 1n;
 const U128_SHIFT = 128n;
 const VIEWING_KEY_SET_SELECTOR = hash.getSelectorFromName("ViewingKeySet");
 const REFILL_FUNDED_SELECTOR = hash.getSelectorFromName("Funded");
@@ -55,6 +57,10 @@ const EXPECTED_SERVER_ACTION_VARIANTS = [
   "Invoke",
   "InvokeWithComputation",
 ] as const;
+
+export function broadcastOutcomeIsUncertain(cause: unknown): boolean {
+  return !(cause instanceof RpcError) || cause.isType("DUPLICATE_TX");
+}
 
 const boundedRpcFetch: typeof fetch = (input, init = {}) =>
   fetch(input, {
@@ -118,7 +124,9 @@ function requireString(value: JsonValue | undefined, label: string): string {
 function requireFelt(value: JsonValue | undefined, label: string): bigint {
   const felt = requireString(value, label);
   try {
-    return BigInt(felt);
+    const parsed = BigInt(felt);
+    if (parsed < 0n || parsed >= STARK_FIELD_PRIME) throw new Error();
+    return parsed;
   } catch (error) {
     throw new Error(`${label} is not a felt`, { cause: error });
   }
@@ -701,7 +709,11 @@ export class StarknetRegistrationCanaryClient
   }
 
   async readLatestBlockNumber(): Promise<bigint> {
-    return BigInt(await this.provider.getBlockNumber());
+    const blockNumber = await this.provider.getBlockNumber();
+    if (!Number.isSafeInteger(blockNumber) || blockNumber < 0) {
+      throw new Error("RPC returned an invalid latest block number");
+    }
+    return BigInt(blockNumber);
   }
 
   async readLatestBlockTimestamp(): Promise<bigint> {
@@ -730,7 +742,7 @@ export class StarknetRegistrationCanaryClient
   }
 
   async readBlockHash(blockNumber: bigint): Promise<string> {
-    if (blockNumber > BigInt(Number.MAX_SAFE_INTEGER)) {
+    if (blockNumber < 0n || blockNumber > BigInt(Number.MAX_SAFE_INTEGER)) {
       throw new Error("block number exceeds JavaScript's safe integer range");
     }
     const block = await this.provider.getBlock(Number(blockNumber));

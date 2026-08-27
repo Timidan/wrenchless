@@ -223,14 +223,15 @@ export async function connectReadyMobileWallet(input: {
       if (!session.namespaces.starknet.methods.includes(method)) {
         throw new Error(`Ready mobile did not approve ${request.type}`);
       }
-      input.openUrl("ready://");
       const remoteRequest: MobileRequestInput["request"] = { method };
       if (params !== undefined) remoteRequest.params = params;
-      const result = await client.request({
+      const pendingResult = client.request({
         topic: session.topic,
         chainId: STARKNET_MAINNET,
         request: remoteRequest,
       });
+      input.openUrl("ready://");
+      const result = await pendingResult;
       if (request.type === "wallet_signTypedData") {
         const signature = signatureResultSchema.parse(result);
         // SAFETY: wallet_signTypedData is specified to return the signature array.

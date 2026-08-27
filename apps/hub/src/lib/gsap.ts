@@ -15,6 +15,19 @@ import { useGSAP } from "@gsap/react";
 
 gsap.registerPlugin(useGSAP, ScrollTrigger, CustomEase);
 
+/**
+ * A phone's toolbar is not a resize.
+ *
+ * Mobile browsers grow and shrink the visual viewport by the height of their
+ * own chrome as the reader scrolls, and every one of those reports itself as a
+ * window resize. ScrollTrigger's default answer is to refresh, which
+ * re-measures every pinned section mid-scroll and jumps the page under the
+ * thumb. With this set it ignores a vertical-only resize on a touch device and
+ * keeps the measurements it took, which is the right answer while the only
+ * thing that changed is how much of the window the browser is covering.
+ */
+ScrollTrigger.config({ ignoreMobileResize: true });
+
 CustomEase.create("settle", "M0,0 C0.22,1 0.36,1 1,1");
 
 export { gsap, ScrollTrigger, useGSAP };

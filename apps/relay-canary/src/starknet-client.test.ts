@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { RpcError } from "starknet";
 
 import {
   assertPrivacyPoolAbi,
   assertRefillFundFinality,
   assertRegistrationFinality,
+  broadcastOutcomeIsUncertain,
   StarknetRegistrationCanaryClient,
 } from "./starknet-client.js";
 import { RefillFundExecutionFailedError } from "./refill-inspect.js";
@@ -18,6 +20,28 @@ const VIEWING_KEY_SET_SELECTOR =
   "0x1321a492485b4f19851fb787ab3800a0030b595332cba93cd5fe40dfb5a4daf";
 const REFILL_FUNDED_SELECTOR =
   "0x01d15bc8a081b7ee52a206bae640e41d99118e0266d5ad8efe94cb47d919de2a";
+
+describe("broadcast outcome classification", () => {
+  it("distinguishes a node rejection from a duplicate or lost response", () => {
+    const rejected = new RpcError(
+      { code: 55, message: "Account validation failed", data: "rejected" },
+      "starknet_addInvokeTransaction",
+      {},
+    );
+    const duplicate = new RpcError(
+      {
+        code: 59,
+        message: "A transaction with the same hash already exists in the mempool",
+      },
+      "starknet_addInvokeTransaction",
+      {},
+    );
+
+    expect(broadcastOutcomeIsUncertain(rejected)).toBe(false);
+    expect(broadcastOutcomeIsUncertain(duplicate)).toBe(true);
+    expect(broadcastOutcomeIsUncertain(new TypeError("fetch failed"))).toBe(true);
+  });
+});
 
 type AbiInput = { name: string };
 type AbiFunction = {
