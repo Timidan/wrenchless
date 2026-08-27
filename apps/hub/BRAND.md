@@ -1,6 +1,10 @@
 # Wrenchless brand assets
 
-Wrenchless is a passkey-protected trip allowance for private STRK and USDC. Its identity stays quiet, ordinary-looking, and precise: the product should feel like a small place to lock part of a balance, not a trading dashboard.
+Wrenchless keeps private travel funds locked until the owner returns. The live
+Travel Safe supports private STRK. The built but undeployed Trip Allowance adds
+private STRK and USDC with daily releases. Its identity stays quiet,
+ordinary-looking, and precise: the product should feel like a small place to
+lock part of a balance, not a trading dashboard.
 
 ## The mark
 
