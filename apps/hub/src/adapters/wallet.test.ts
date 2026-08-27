@@ -78,7 +78,9 @@ describe("requestWalletAccount", () => {
         walletConnectProjectId: "test-project",
       }),
     ).resolves.toMatchObject({ account: "0x123" });
-    expect(opened).toEqual(["ready://wc?uri=wc%3Apairing"]);
+    expect(opened).toEqual([
+      "intent://wc?uri=wc%3Apairing#Intent;scheme=ready;package=com.ready.wallet;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Dcom.ready.wallet;end",
+    ]);
     expect(connectInput).toEqual({
       requiredNamespaces: {
         starknet: {
@@ -142,9 +144,9 @@ describe("requestWalletAccount", () => {
       discoverWallets: async () => [],
       openMobileUrl: (url: string) => {
         opened.push(url);
-        if (url === "ready://") requestOrder.push("open");
+        if (url.startsWith("intent://#Intent;")) requestOrder.push("open");
       },
-      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
+      userAgent: "Mozilla/5.0 (Linux; Android 15) Mobile",
       walletConnectProjectId: "test-project",
     });
 
@@ -170,9 +172,9 @@ describe("requestWalletAccount", () => {
       }),
     ).resolves.toEqual(["0x1", "0x2"]);
     expect(opened).toEqual([
-      "ready://wc?uri=wc%3Aprivate",
-      "ready://",
-      "ready://",
+      "intent://wc?uri=wc%3Aprivate#Intent;scheme=ready;package=com.ready.wallet;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Dcom.ready.wallet;end",
+      "intent://#Intent;scheme=ready;package=com.ready.wallet;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Dcom.ready.wallet;end",
+      "intent://#Intent;scheme=ready;package=com.ready.wallet;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Dcom.ready.wallet;end",
     ]);
     expect(requestOrder).toEqual(["request", "open", "request", "open"]);
     expect(requests).toEqual([

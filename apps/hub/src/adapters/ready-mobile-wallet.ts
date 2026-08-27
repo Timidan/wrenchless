@@ -5,6 +5,9 @@ import type { BrowserWallet } from "./wallet";
 const STARKNET_MAINNET = "starknet:SNMAIN";
 const STARKNET_MAINNET_FELT = "0x534e5f4d41494e";
 const READY_WALLET_API_VERSION = "0.10.3";
+const READY_X_ANDROID_PACKAGE = "com.ready.wallet";
+const READY_X_ANDROID_STORE =
+  "https://play.google.com/store/apps/details?id=com.ready.wallet";
 
 export const READY_MOBILE_METHODS = [
   "starknet_account",
@@ -76,6 +79,17 @@ const signatureResultSchema = z.union([
   z.array(z.string()),
   z.object({ signature: z.array(z.string()) }),
 ]);
+
+function readyXMobileUrl(userAgent: string, walletConnectUri?: string): string {
+  const route =
+    walletConnectUri === undefined
+      ? ""
+      : `wc?uri=${encodeURIComponent(walletConnectUri)}`;
+  if (/android/i.test(userAgent)) {
+    return `intent://${route}#Intent;scheme=ready;package=${READY_X_ANDROID_PACKAGE};S.browser_fallback_url=${encodeURIComponent(READY_X_ANDROID_STORE)};end`;
+  }
+  return walletConnectUri === undefined ? "ready://" : `ready://${route}`;
+}
 
 function accountFromSession(session: MobileSession): string {
   const accountId = session.namespaces.starknet.accounts[0];
@@ -152,6 +166,7 @@ async function createReadyMobileClient(input: {
 export async function connectReadyMobileWallet(input: {
   projectId: string;
   applicationUrl: string;
+  userAgent: string;
   createClient?: ReadyMobileClientFactory;
   openUrl(url: string): void;
 }): Promise<{ wallet: BrowserWallet; account: string }> {
@@ -183,7 +198,7 @@ export async function connectReadyMobileWallet(input: {
     if (uri === undefined) {
       throw new Error("Ready did not provide a mobile connection link");
     }
-    input.openUrl(`ready://wc?uri=${encodeURIComponent(uri)}`);
+    input.openUrl(readyXMobileUrl(input.userAgent, uri));
     session = sessionSchema.parse(await approval());
     if (!supportsPrivateActions(session)) {
       throw new Error("Ready mobile did not approve private actions");
@@ -230,7 +245,7 @@ export async function connectReadyMobileWallet(input: {
         chainId: STARKNET_MAINNET,
         request: remoteRequest,
       });
-      input.openUrl("ready://");
+      input.openUrl(readyXMobileUrl(input.userAgent));
       const result = await pendingResult;
       if (request.type === "wallet_signTypedData") {
         const signature = signatureResultSchema.parse(result);

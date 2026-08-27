@@ -266,6 +266,7 @@ export async function requestWalletAccount(
           "",
         applicationUrl: applicationUrl(),
         openUrl: options.openMobileUrl ?? openMobileUrl,
+        userAgent,
       };
       if (options.createMobileClient !== undefined) {
         mobileInput.createClient = options.createMobileClient;
