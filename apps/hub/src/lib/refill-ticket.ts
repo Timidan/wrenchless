@@ -1,12 +1,18 @@
 import {
+  createVersionedTravelSafeTicketStore,
   createTravelSafeTicketStore,
   generateTravelSafeTicketSealingKey,
   removeTravelSafeTicket,
+  type AnyTravelSafeTicket,
   type TravelSafeSecrets,
   type TravelSafeTicket,
   type TravelSafeTicketStatus,
   type TravelSafeTicketStore,
   type TravelSafeTicketTransitionPatch,
+  type TravelSafeTicketV3,
+  type TravelSafeTicketV3Status,
+  type TravelSafeTicketV3TransitionPatch,
+  type VersionedTravelSafeTicketStore,
 } from "@wrenchless/canary-core";
 import { z } from "zod";
 
@@ -208,6 +214,16 @@ async function localTicketStore(): Promise<TravelSafeTicketStore> {
   return createTravelSafeTicketStore(localStorage, sessionSealingKey);
 }
 
+async function localVersionedTicketStore(): Promise<VersionedTravelSafeTicketStore> {
+  if (sessionSealingKey === null) {
+    throw new Error("Confirm your passkey to open this Travel Safe");
+  }
+  return createVersionedTravelSafeTicketStore(
+    localStorage,
+    sessionSealingKey,
+  );
+}
+
 export async function createTravelSafeTicket(input: {
   secrets: TravelSafeSecrets;
   recoveryPhrase: string;
@@ -251,6 +267,29 @@ export async function readTravelSafeTicket(
   return ticket;
 }
 
+export async function readAnyTravelSafeTicket(
+  stateId: string,
+): Promise<AnyTravelSafeTicket> {
+  const ticket = await (await localVersionedTicketStore()).get(stateId);
+  if (ticket === null) throw new Error("Travel Safe ticket is not on this device");
+  return ticket;
+}
+
+export async function readActiveAnyTravelSafeTicket(): Promise<AnyTravelSafeTicket | null> {
+  const stateId = readSettings().activeSafeStateId;
+  return stateId === null ? null : readAnyTravelSafeTicket(stateId);
+}
+
+export async function storeNewTravelSafeTicketV3(
+  ticket: TravelSafeTicketV3,
+): Promise<void> {
+  if (readSettings().activeSafeStateId !== null) {
+    throw new Error("Finish or clear the current Travel Safe first");
+  }
+  await (await localVersionedTicketStore()).saveNew(ticket);
+  writeSettings({ activeSafeStateId: ticket.stateId });
+}
+
 export async function readActiveTravelSafeTicket(): Promise<TravelSafeTicket | null> {
   const stateId = readSettings().activeSafeStateId;
   return stateId === null ? null : readTravelSafeTicket(stateId);
@@ -262,6 +301,18 @@ export async function transitionStoredTravelSafeTicket(
   patch: TravelSafeTicketTransitionPatch = {},
 ): Promise<TravelSafeTicket> {
   return (await localTicketStore()).transition(stateId, nextStatus, patch);
+}
+
+export async function transitionStoredTravelSafeTicketV3(
+  stateId: string,
+  nextStatus: TravelSafeTicketV3Status,
+  patch: TravelSafeTicketV3TransitionPatch = {},
+): Promise<TravelSafeTicketV3> {
+  return (await localVersionedTicketStore()).transitionV3(
+    stateId,
+    nextStatus,
+    patch,
+  );
 }
 
 export async function clearTravelSafeTicket(stateId: string): Promise<void> {

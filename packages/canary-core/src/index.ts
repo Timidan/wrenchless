@@ -65,19 +65,30 @@ export type {
   SubmittedRefillRefund,
 } from "./refill-claim.js";
 export {
+  createVersionedTravelSafeTicketStore,
   createTravelSafeTicketStore,
   generateTravelSafeTicketSealingKey,
+  LEGACY_TRAVEL_SAFE_HELPER_ADDRESS,
   removeTravelSafeTicket,
+  resolveTicketContract,
   TravelSafeTicketSchema,
   TravelSafeTicketStatusSchema,
+  TravelSafeTicketV3Schema,
+  TravelSafeTicketV3StatusSchema,
   transitionTravelSafeTicket,
+  transitionTravelSafeTicketV3,
 } from "./refill-ticket-store.js";
 export type {
+  AnyTravelSafeTicket,
   TravelSafeTicket,
   TravelSafeTicketStatus,
   TravelSafeTicketStorage,
   TravelSafeTicketStore,
   TravelSafeTicketTransitionPatch,
+  TravelSafeTicketV3,
+  TravelSafeTicketV3Status,
+  TravelSafeTicketV3TransitionPatch,
+  VersionedTravelSafeTicketStore,
 } from "./refill-ticket-store.js";
 export {
   computeRecoveryLookupHash,
