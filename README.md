@@ -1,134 +1,104 @@
+<p align="center">
+  <img src="apps/hub/public/og.png" alt="Wrenchless — A Travel Safe for private STRK" width="900" />
+</p>
+
 # Wrenchless
 
-Wrenchless is a one-device Travel Safe for private STRK on Starknet mainnet.
+A passkey-protected Travel Safe for private STRK on Starknet.
 
-A traveller chooses an amount and a return date. Ready prepares a STRK20 FUND
-proof and the Wrenchless sponsor submits it to the deployed refill helper. The
-reserve is no longer spendable from the wallet they carry. After the return
-date, the chosen Ready account can return it as private STRK. A passkey unlocks
-the saved Safe on this device. An optional twelve-word backup can return the
-reserve early from another compatible browser.
+[Open Wrenchless](https://wrenchless.timidan.xyz) · [Mainnet contract](https://voyager.online/contract/0x018f6925422c85da8c9e0c1572adf4316a9821ffabc4b29db37d11c6a0c2844a) · [Transaction evidence](strk20.json)
 
-Wrenchless is not a wallet implementation. Ready remains the wallet, account
-selector, signer, private-balance reader, proof producer, and private-note
-recipient.
+Wrenchless parks part of your private STRK until a date you choose. Ready handles
+your wallet and privacy proofs. Wrenchless enforces when the STRK can return.
 
-## Product routes
+> Wrenchless runs on Starknet mainnet and uses real STRK.
 
-- `/safe` creates, monitors, and returns the one active Safe on this device.
-- `/recover` releases a funded Safe from its twelve words.
-- Retired setup, wallet, reserve, guardian, and signal paths redirect to
-  `/safe`.
+## How it works
 
-There are no demo balances, seeded transactions, pairing codes, guardian
-mailboxes, PINs, or second-device setup in the shipped hub.
+1. Connect Ready.
+2. Choose an amount and return date.
+3. Confirm the private transaction.
+4. Bring the STRK back after the return date.
 
-## Security boundary
+A passkey protects the Safe on your device. Optional recovery words let you
+bring it back early from another compatible browser.
 
-- Wrenchless generates early-return material inside one local ticket. The
-  ticket is AES-GCM encrypted and can reveal an optional twelve-word backup
-  only after passkey verification.
-- With a PRF-capable passkey, the non-extractable encryption key is derived for
-  the current session. Otherwise, the browser keeps one random non-extractable
-  key on this device. Neither key is sent to the sponsor. Explicitly forgetting
-  the Safe removes its ciphertext and local key data.
-- Before the return date, CLAIM requires the early-return key. After the date,
-  REFUND requires a typed-data signature from the Ready account selected during
-  setup.
-- Starknet accepted-block time, not device time, selects CLAIM at or before the
-  return date and REFUND strictly after it.
-- The helper contract enforces the release boundary and one terminal release.
-- Every FUND attempt prepares a fresh short-lived Ready proof and sends it
-  immediately. Prepared proofs are not persisted.
-- The sponsor verifies Ready's registration approval, rejects parks below 1
-  STRK, shorter than two hours, or longer than 90 days, validates the prepared
-  FUND, caps fees and daily spend, serializes its nonce stream, rate-limits
-  callers, and can disable broadcasts.
+| Park it | Leave it | Bring it back |
+| --- | --- | --- |
+| <img src="apps/hub/public/images/story/s2-counter.webp" alt="Park private STRK" width="280" /> | <img src="apps/hub/public/images/story/s4-vault.webp" alt="Private STRK held in the Travel Safe" width="280" /> | <img src="apps/hub/public/images/story/s5-hallway.webp" alt="Return private STRK" width="280" /> |
 
-For fresh-browser recovery after the date, the sponsor retains one HMAC account
-tag and an encrypted locator containing only the Safe ID and recovery salt. A
-new Safe replaces the old locator. The sponsor does not retain the amount,
-return date, backup, balance, wallet address, or transaction history.
+## Why STRK20
 
-The helper publishes the Safe ID, token, amount, return date, timing, and final
-status. Distinctive amounts or closely timed actions can still be correlated.
-The browser passkey is a local gate, not protection against malware or a
-compromised same-origin page.
+STRK20 lets Wrenchless use shielded STRK without taking over the wallet. Ready
+creates the privacy proof and receives the returned private note. The Wrenchless
+contract adds the return date and allows only one final release.
 
-## Mainnet configuration
+## Mainnet proof
 
-The hub uses the deployed STRK20 pool and Travel Safe helper declared in
-`apps/hub/src/lib/product-config.ts`. The production sponsor URL comes from
-`VITE_SPONSOR_URL`; local development defaults to `http://localhost:8788`.
+- Travel Safe helper: [`0x018f...2844a`](https://voyager.online/contract/0x018f6925422c85da8c9e0c1572adf4316a9821ffabc4b29db37d11c6a0c2844a)
+- STRK20 pool: [`0x0403...e812a`](https://voyager.online/contract/0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a)
+- FUND: [`0x05a9...6e01d`](https://voyager.online/tx/0x05a9458404b7c44510f712de9f59140e10106801eb0d79e49603451de706e01d)
+- Full FUND → CLAIM lifecycle: [`FUND`](https://voyager.online/tx/0x0c4fbacb5ee5fd3a65f09d7a724ad585387ba642e570a11ed79f9be8ac013a6) · [`CLAIM`](https://voyager.online/tx/0x02e969f712d5ff8f3091bd42b06978c285c8ad221081da5f575afbc72f87888e)
 
-The sponsor reads its operator account, private key, RPC, helper, pool, token,
-fee bounds, and daily budget from the file selected by
-`WRENCHLESS_SPONSOR_ENV`. Use `deployment/sponsor.env.example` as the schema;
-never commit a populated secret file.
+The machine-readable record is in [`strk20.json`](strk20.json).
 
-FUND broadcasting remains an explicit operator switch:
+## Architecture
 
 ```text
-WRENCHLESS_ALLOW_REFILL_FUND_BROADCAST=true
+Browser + passkey
+     ├─ Ready: balance, proof, signature
+     └─ Sponsor relay → Travel Safe helper → STRK20 pool
 ```
 
-This switch does not replace the sponsor readiness, balance, fee-bound, budget,
-artifact, and onchain-state checks.
+- **Hub:** React interface for creating, watching, and returning a Safe.
+- **Ready:** wallet connection, private balance, proof generation, and signing.
+- **Sponsor:** validates and submits bounded FUND calls.
+- **Travel Safe:** Cairo contract enforcing FUND, CLAIM, and REFUND.
 
-## Mainnet evidence
+The sponsor does not store the user's wallet balance or activity history. The
+encrypted Safe ticket stays in the browser. The helper's amount, return date,
+and status remain public on Starknet.
 
-- Live app: [wrenchless.timidan.xyz](https://wrenchless.timidan.xyz)
-- Current Travel Safe helper:
-  [`0x018f...2844a`](https://voyager.online/contract/0x018f6925422c85da8c9e0c1572adf4316a9821ffabc4b29db37d11c6a0c2844a)
-- STRK20 pool:
-  [`0x0403...e812a`](https://voyager.online/contract/0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a)
-- Proven FUND on the current helper:
-  [`0x05a9...6e01d`](https://voyager.online/tx/0x05a9458404b7c44510f712de9f59140e10106801eb0d79e49603451de706e01d)
-- Proven FUND and CLAIM lifecycle on the original helper:
-  [`0x0c4f...13a6`](https://voyager.online/tx/0x0c4fbacb5ee5fd3a65f09d7a724ad585387ba642e570a11ed79f9be8ac013a6)
-  and
-  [`0x02e9...888e`](https://voyager.online/tx/0x02e969f712d5ff8f3091bd42b06978c285c8ad221081da5f575afbc72f87888e)
+## Run locally
 
-The machine-readable version of this evidence is in `strk20.json`.
-
-## Development
-
-Install and run the hub:
+Requirements: Node.js 22, pnpm 11, and a WalletConnect project ID for Ready on
+mobile.
 
 ```bash
 pnpm install
+cp apps/hub/.env.example apps/hub/.env.local
 pnpm hub:dev
 ```
 
-Run the sponsor separately when testing a real FUND:
+Set `VITE_WALLETCONNECT_PROJECT_ID` in `apps/hub/.env.local` for mobile wallet
+connections. A real FUND also needs the sponsor service configured from
+`deployment/sponsor.env.example`.
 
 ```bash
 WRENCHLESS_SPONSOR_ENV=/absolute/path/sponsor.env pnpm sponsor:dev
 ```
 
-Core verification:
+## Verify
 
 ```bash
-pnpm --filter @wrenchless/canary-core test -- travel-safe.test.ts refill-ticket-store.test.ts
-pnpm --filter @wrenchless/canary-core typecheck
-pnpm --filter @wrenchless/hub typecheck
-pnpm --filter @wrenchless/hub build
-pnpm --filter @wrenchless/sponsor typecheck
+pnpm test
+pnpm typecheck
 pnpm contracts:test
 ```
 
-No command above broadcasts a transaction. A mainnet rehearsal requires a
-separate review of the Ready account, amount, return date, live fee reserve,
-sponsor fee bound, helper, token, and expected state transition before approval.
+These commands do not broadcast transactions.
 
-## Repository map
+## Repository
 
 ```text
-apps/hub/                 React Travel Safe and recovery UI
-apps/sponsor/             Bounded relay for prepared STRK20 FUND proofs
-apps/relay-canary/        Artifact inspection and Starknet relay client
-contracts/refill-helper/  FUND, CLAIM, and REFUND state machine
-packages/canary-core/     Derivation, proof boundaries, releases, and sealed ticket
-deployment/               Gateway and sponsor deployment configuration
-docs/superpowers/specs/   Approved product and security design
+apps/hub/                 Web app
+apps/sponsor/             Bounded FUND relay
+apps/relay-canary/        Mainnet inspection tools
+contracts/refill-helper/  Travel Safe contract
+packages/canary-core/     Shared privacy and recovery logic
+deployment/               Production configuration
 ```
+
+## License
+
+[MIT](LICENSE)
