@@ -1,21 +1,29 @@
 import { describe, expect, it } from "vitest";
 
-import { TRAVEL_SAFE_TOKENS } from "./travel-safe-tokens.js";
+import type { JsonValue } from "@wrenchless/canary-core";
+
 import {
   readReadyShieldedBalances,
   type ReadyPrivateWallet,
 } from "./ready-cover.js";
+import { TRAVEL_SAFE_TOKENS } from "./travel-safe-tokens.js";
 
 const MAINNET_CHAIN_ID = "0x534e5f4d41494e";
 
-function walletWithBalances(result: unknown): ReadyPrivateWallet {
+function testWalletValue<T>(value: JsonValue): T {
+  // SAFETY: This helper intentionally emulates an untrusted wallet boundary;
+  // the production reader must validate every returned value before use.
+  return value as T;
+}
+
+function walletWithBalances(result: JsonValue): ReadyPrivateWallet {
   return {
     selectedAddress: "0x123",
     async request<T>(request: { type: string; params?: unknown }): Promise<T> {
       const { type } = request;
-      if (type === "wallet_requestChainId") return MAINNET_CHAIN_ID as T;
-      if (type === "wallet_supportedWalletApi") return ["0.10.3"] as T;
-      if (type === "wallet_strk20Balances") return result as T;
+      if (type === "wallet_requestChainId") return testWalletValue(MAINNET_CHAIN_ID);
+      if (type === "wallet_supportedWalletApi") return testWalletValue(["0.10.3"]);
+      if (type === "wallet_strk20Balances") return testWalletValue(result);
       throw new Error(`Unexpected request: ${type}`);
     },
   };

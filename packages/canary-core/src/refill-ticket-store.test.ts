@@ -53,6 +53,7 @@ const V3_TICKET: TravelSafeTicketV3 = {
   returnDateSeconds: "1800864000",
   fundTransactionHash: null,
   actionTransactionHash: null,
+  pendingAction: null,
   createdAt: CREATED_AT,
   updatedAt: CREATED_AT,
 };
@@ -230,9 +231,16 @@ describe("encrypted Travel Safe ticket storage", () => {
     await store.transitionV3(V3_TICKET.stateId, "FUNDED", {
       fundTransactionHash: "0xabc",
     });
-    await store.transitionV3(V3_TICKET.stateId, "ACTION_SUBMITTING");
+    await store.transitionV3(V3_TICKET.stateId, "ACTION_SUBMITTING", {
+      pendingAction: {
+        operation: "RELEASE",
+        previousNonce: "0",
+        maximumRemaining: "900000",
+      },
+    });
     await store.transitionV3(V3_TICKET.stateId, "FUNDED", {
       actionTransactionHash: "0xdef",
+      pendingAction: null,
     });
     await store.transitionV3(V3_TICKET.stateId, "ACTION_SUBMITTING");
     const terminal = await store.transitionV3(

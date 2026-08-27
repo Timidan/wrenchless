@@ -47,7 +47,11 @@ export type ReadyTravelSafeV3State = TravelSafeV3StateAuthorization & {
 };
 
 export type PreparedTravelSafeV3Fund = { prepared: PreparedStrk20Call };
-export type PreparedTravelSafeV3TopUp = { prepared: PreparedStrk20Call };
+export type PreparedTravelSafeV3TopUp = {
+  prepared: PreparedStrk20Call;
+  signature: { r: string; s: string };
+  devicePublicKey: string;
+};
 
 function assertMainnet(chainId: string): void {
   if (BigInt(chainId) !== BigInt(MAINNET_CHAIN_ID)) {
@@ -238,7 +242,7 @@ export async function prepareTravelSafeTopUp(input: {
     false,
   );
   assertSubmittableProof(prepared, "TOP_UP");
-  return { prepared };
+  return { prepared, signature, devicePublicKey: input.devicePublicKey };
 }
 
 export async function submitTravelSafeExtend(input: {

@@ -3,6 +3,7 @@ import {
   createTravelSafeTicketStore,
   generateTravelSafeTicketSealingKey,
   removeTravelSafeTicket,
+  storedTravelSafeTicketVersion,
   type AnyTravelSafeTicket,
   type TravelSafeSecrets,
   type TravelSafeTicket,
@@ -278,6 +279,13 @@ export async function readAnyTravelSafeTicket(
 export async function readActiveAnyTravelSafeTicket(): Promise<AnyTravelSafeTicket | null> {
   const stateId = readSettings().activeSafeStateId;
   return stateId === null ? null : readAnyTravelSafeTicket(stateId);
+}
+
+export function readActiveTravelSafeTicketVersion(): "v2" | "v3" | null {
+  const stateId = readSettings().activeSafeStateId;
+  return stateId === null
+    ? null
+    : storedTravelSafeTicketVersion(localStorage, stateId);
 }
 
 export async function storeNewTravelSafeTicketV3(

@@ -27,16 +27,7 @@ const STEPS = [
   { id: "confirm", label: "Confirm" },
 ] as const;
 
-const MOMENTS: Record<
-  TravelSafeFundMoment,
-  {
-    current: number;
-    message: string;
-    money: TravelSafeFundProgress["money"];
-    moneyLabel: string;
-    working: boolean;
-  }
-> = {
+const MOMENTS = {
   approving: {
     current: 1,
     message: "Approve the private action",
@@ -86,7 +77,18 @@ const MOMENTS: Record<
     moneyLabel: "Safe locked",
     working: false,
   },
-};
+} as const satisfies Readonly<
+  Record<
+    TravelSafeFundMoment,
+    {
+      current: number;
+      message: string;
+      money: TravelSafeFundProgress["money"];
+      moneyLabel: string;
+      working: boolean;
+    }
+  >
+>;
 
 export function deriveTravelSafeFundProgress(
   moment: TravelSafeFundMoment,

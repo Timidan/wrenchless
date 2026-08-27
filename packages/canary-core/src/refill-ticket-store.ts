@@ -79,6 +79,40 @@ export const TravelSafeTicketV3StatusSchema = z.enum([
   "TERMINAL",
 ]);
 
+export const TravelSafeTicketV3PendingActionSchema = z.discriminatedUnion(
+  "operation",
+  [
+    z.object({ operation: z.literal("FUND") }).strict(),
+    z
+      .object({
+        operation: z.literal("TOP_UP"),
+        previousNonce: boundedDecimal(U64_MAX, "previous nonce"),
+        minimumRemaining: boundedDecimal(U128_MAX, "minimum remaining amount"),
+      })
+      .strict(),
+    z
+      .object({
+        operation: z.literal("RELEASE"),
+        previousNonce: boundedDecimal(U64_MAX, "previous nonce"),
+        maximumRemaining: boundedDecimal(U128_MAX, "maximum remaining amount"),
+      })
+      .strict(),
+    z
+      .object({
+        operation: z.literal("EXTEND"),
+        previousNonce: boundedDecimal(U64_MAX, "previous nonce"),
+        returnAt: boundedDecimal(U64_MAX, "return time"),
+      })
+      .strict(),
+    z
+      .object({
+        operation: z.literal("TERMINAL"),
+        previousNonce: boundedDecimal(U64_MAX, "previous nonce"),
+      })
+      .strict(),
+  ],
+);
+
 export const TravelSafeTicketV3Schema = z
   .object({
     schemaVersion: z.literal("wrenchless.travel-safe-ticket.v3"),
@@ -108,6 +142,7 @@ export const TravelSafeTicketV3Schema = z
     ),
     fundTransactionHash: nonZeroFeltSchema.nullable(),
     actionTransactionHash: nonZeroFeltSchema.nullable(),
+    pendingAction: TravelSafeTicketV3PendingActionSchema.nullable().default(null),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })
@@ -139,6 +174,9 @@ export type TravelSafeTicketV3Status = z.infer<
   typeof TravelSafeTicketV3StatusSchema
 >;
 export type TravelSafeTicketV3 = z.infer<typeof TravelSafeTicketV3Schema>;
+export type TravelSafeTicketV3PendingAction = z.infer<
+  typeof TravelSafeTicketV3PendingActionSchema
+>;
 export type AnyTravelSafeTicket = TravelSafeTicket | TravelSafeTicketV3;
 export type TravelSafeTicketTransitionPatch = Partial<
   Pick<
@@ -152,7 +190,7 @@ export type TravelSafeTicketTransitionPatch = Partial<
 export type TravelSafeTicketV3TransitionPatch = Partial<
   Pick<
     TravelSafeTicketV3,
-    "fundTransactionHash" | "actionTransactionHash"
+    "fundTransactionHash" | "actionTransactionHash" | "pendingAction"
   >
 >;
 
@@ -221,10 +259,26 @@ export function removeTravelSafeTicket(
   storage.removeItem(v3StorageKey(stateId));
 }
 
-export function resolveTicketContract(ticket: AnyTravelSafeTicket): {
+export function storedTravelSafeTicketVersion(
+  storage: TravelSafeTicketStorage,
+  stateId: string | bigint,
+): "v2" | "v3" | null {
+  const hasV2 = storage.getItem(storageKey(stateId)) !== null;
+  const hasV3 = storage.getItem(v3StorageKey(stateId)) !== null;
+  if (hasV2 && hasV3) {
+    throw new Error("Travel Safe device storage contains conflicting versions");
+  }
+  return hasV3 ? "v3" : hasV2 ? "v2" : null;
+}
+
+export type ResolvedTravelSafeContract = {
   contractVersion: "v2" | "v3";
   helperAddress: string;
-} {
+};
+
+export function resolveTicketContract(
+  ticket: AnyTravelSafeTicket,
+): ResolvedTravelSafeContract {
   if (ticket.schemaVersion === "wrenchless.travel-safe-ticket.v3") {
     return { contractVersion: "v3", helperAddress: ticket.helperAddress };
   }

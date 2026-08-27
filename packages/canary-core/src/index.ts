@@ -77,9 +77,11 @@ export {
   generateTravelSafeTicketSealingKey,
   LEGACY_TRAVEL_SAFE_HELPER_ADDRESS,
   removeTravelSafeTicket,
+  storedTravelSafeTicketVersion,
   resolveTicketContract,
   TravelSafeTicketSchema,
   TravelSafeTicketStatusSchema,
+  TravelSafeTicketV3PendingActionSchema,
   TravelSafeTicketV3Schema,
   TravelSafeTicketV3StatusSchema,
   transitionTravelSafeTicket,
@@ -93,9 +95,11 @@ export type {
   TravelSafeTicketStore,
   TravelSafeTicketTransitionPatch,
   TravelSafeTicketV3,
+  TravelSafeTicketV3PendingAction,
   TravelSafeTicketV3Status,
   TravelSafeTicketV3TransitionPatch,
   VersionedTravelSafeTicketStore,
+  ResolvedTravelSafeContract,
 } from "./refill-ticket-store.js";
 export {
   computeRecoveryLookupHash,
@@ -137,6 +141,7 @@ export {
   createTravelSafeV3ActionTypedData,
   createTravelSafeV3ReturnTypedData,
   deriveTravelSafeV3PublicKey,
+  generateTravelSafeV3PrivateKey,
   signTravelSafeV3Action,
   TRAVEL_SAFE_V3_OPEN_NOTE,
 } from "./travel-safe-actions-v3.js";

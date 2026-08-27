@@ -112,6 +112,7 @@ async function readPoolFee(
 export async function readReadyShieldedBalances(input: {
   wallet: ReadyPrivateWallet;
   tokens: readonly TravelSafeToken[];
+  checkContext?: boolean;
 }): Promise<
   readonly {
     token: TravelSafeToken;
@@ -119,7 +120,9 @@ export async function readReadyShieldedBalances(input: {
     available: boolean;
   }[]
 > {
-  await assertReadyPrivateContext(input.wallet);
+  if (input.checkContext !== false) {
+    await assertReadyPrivateContext(input.wallet);
+  }
   if (input.tokens.length === 0) {
     throw new Error("Choose at least one private token");
   }

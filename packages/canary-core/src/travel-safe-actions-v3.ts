@@ -167,6 +167,11 @@ export function deriveTravelSafeV3PublicKey(privateKey: string): string {
   return ec.starkCurve.getStarkKey(nonZeroFelt(privateKey, "private key"));
 }
 
+export function generateTravelSafeV3PrivateKey(): string {
+  const bytes = ec.starkCurve.utils.randomPrivateKey();
+  return `0x${Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("")}`;
+}
+
 export function computeTravelSafeV3DeviceCommitment(
   stateId: string,
   devicePublicKey: string,
