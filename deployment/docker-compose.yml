@@ -8,6 +8,7 @@ services:
       args:
         VITE_SITE_URL: ${WRENCHLESS_PUBLIC_ORIGIN:?set WRENCHLESS_PUBLIC_ORIGIN}
         VITE_SPONSOR_URL: ${WRENCHLESS_PUBLIC_ORIGIN:?set WRENCHLESS_PUBLIC_ORIGIN}/api/sponsor
+        VITE_TRAVEL_SAFE_V3_HELPER_ADDRESS: ${WRENCHLESS_TRAVEL_SAFE_V3_HELPER_ADDRESS:-}
     restart: unless-stopped
     depends_on:
       sponsor:
