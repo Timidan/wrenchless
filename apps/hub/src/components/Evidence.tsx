@@ -2,12 +2,12 @@ import type { ComponentType, JSX } from "react";
 import { useRef } from "react";
 import { gsap, useGSAP } from "../lib/gsap";
 import { motionProfile } from "../lib/motion";
-import { ReadyWalletMark } from "./ReadyWalletMark";
 import { StrkTokenMark } from "./StrkTokenMark";
 import {
   FingerprintIcon,
   KeyIcon,
   LockSimpleIcon,
+  WalletIcon,
   WarningCircleIcon,
 } from "./icons";
 
@@ -15,7 +15,7 @@ interface Station {
   name: string;
   line: string;
   note: string;
-  icon: "ready" | "lock" | "passkey" | "phrase" | "public";
+  icon: "wallet" | "lock" | "passkey" | "phrase" | "public";
 }
 
 /**
@@ -24,10 +24,10 @@ interface Station {
  */
 const STATIONS: readonly Station[] = [
   {
-    name: "Ready Wallet keeps your keys",
-    line: "You approve each private wallet action in Ready Wallet. Wrenchless never receives your account keys.",
+    name: "Your wallet keeps your keys",
+    line: "You approve each private action in your wallet. Wrenchless never receives your account keys.",
     note: "Same wallet",
-    icon: "ready",
+    icon: "wallet",
   },
   {
     name: "The schedule limits access",
@@ -43,7 +43,7 @@ const STATIONS: readonly Station[] = [
   },
   {
     name: "Recovery words return everything early",
-    line: "Save the 12 words during setup. On another compatible device, use them to return the remaining balance to a Ready account.",
+    line: "Save the 12 words during setup. On another compatible device, use them to return the remaining balance to your wallet.",
     note: "Emergency return",
     icon: "phrase",
   },
@@ -60,15 +60,10 @@ const PHOSPHOR_STATION_ICONS = {
   passkey: FingerprintIcon,
   phrase: KeyIcon,
   public: WarningCircleIcon,
-} satisfies Record<
-  Exclude<Station["icon"], "ready">,
-  ComponentType<{ "aria-hidden": true }>
->;
+  wallet: WalletIcon,
+} satisfies Record<Station["icon"], ComponentType<{ "aria-hidden": true }>>;
 
 function StationIcon({ icon }: { icon: Station["icon"] }): JSX.Element {
-  if (icon === "ready") {
-    return <ReadyWalletMark className="station__brand-mark" />;
-  }
   const Icon = PHOSPHOR_STATION_ICONS[icon];
   return <Icon aria-hidden={true} />;
 }
@@ -194,9 +189,9 @@ export function Evidence(): JSX.Element {
               <span className="evidence__token" aria-hidden="true">
                 <StrkTokenMark className="evidence__token-mark" />
               </span>
-              <h2>Wrenchless works with Ready Wallet.</h2>
+              <h2>Wrenchless works with privacy-ready wallets.</h2>
               <p className="evidence__intro">
-                Ready Wallet signs each action. Wrenchless controls when the
+                Your wallet signs each action. Wrenchless controls when the
                 locked balance can return. You do not create another wallet or
                 account.
               </p>

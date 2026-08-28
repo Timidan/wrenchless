@@ -43,7 +43,7 @@ function canonicalAddress(value: string): string {
     if (address <= 0n || address >= STARK_FIELD_PRIME) throw new Error();
     return `0x${address.toString(16)}`;
   } catch {
-    throw new Error("Ready returned an invalid account address");
+    throw new Error("The wallet returned an invalid account address");
   }
 }
 
@@ -86,7 +86,7 @@ export async function requestReadyRecoveryLocator(input: {
     // Invalid wallet output is handled as a network mismatch below.
   }
   if (!onMainnet) {
-    throw new Error("Ready must be connected to Starknet mainnet");
+    throw new Error("Connect your wallet to Starknet mainnet");
   }
   let challenged: Awaited<ReturnType<typeof post>>;
   try {
@@ -131,10 +131,10 @@ export async function requestReadyRecoveryLocator(input: {
     throw new Error("The recovery service could not be reached");
   }
   if (lookedUp.response.status === 404) {
-    throw new Error("No Travel Safe was found for this Ready account");
+    throw new Error("No Travel Safe was found for this wallet account");
   }
   if (!lookedUp.response.ok) {
-    throw new Error("Ready did not approve this recovery");
+    throw new Error("The wallet did not approve this recovery");
   }
   return locatorSchema.parse(lookedUp.body);
 }

@@ -19,7 +19,7 @@ export function PrivacyPage(): JSX.Element {
           <header className="bay bay--left document__head">
             <h1 className="document__title">Privacy</h1>
             <p className="document__lede">
-              What stays on your device, what Ready handles, and what Starknet
+              What stays on your device, what your wallet handles, and what Starknet
               publishes.
             </p>
           </header>
@@ -63,16 +63,16 @@ export function PrivacyPage(): JSX.Element {
                 Wrenchless never stores them.
               </p>
               <p>
-                A rescue sends the remaining reserve to the Ready account you
+                A rescue sends the remaining reserve to the wallet account you
                 connect at that moment, and only before the return date. That
                 account needs enough private STRK for the action fee.
               </p>
             </section>
 
             <section className="document__section">
-              <h2>Ready and the sponsor</h2>
+              <h2>Your wallet and the sponsor</h2>
               <p>
-                Ready holds your account keys. It prepares and signs the STRK20
+                Your wallet holds your account keys. It prepares and signs the STRK20
                 actions a Travel Safe needs and asks for your approval where its
                 Wallet API requires it.
               </p>
@@ -91,7 +91,7 @@ export function PrivacyPage(): JSX.Element {
                 funding can make activity easier to correlate.
               </p>
               <p>
-                The helper does not record which Ready account funded the Safe.
+                The helper does not record which wallet account funded the Safe.
                 That narrows the link to an account; it does not hide the facts
                 above.
               </p>

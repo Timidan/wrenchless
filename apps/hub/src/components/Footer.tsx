@@ -41,7 +41,7 @@ export function Footer(): JSX.Element {
             Carry your wallet. Leave most of the balance locked.
           </h2>
           <p className="footer__honest">
-            Ready Wallet keeps your keys. Device confirmation protects changes.
+            Your wallet keeps your keys. Device confirmation protects changes.
             Recovery words return the remaining balance early.
           </p>
           <div className="footer__meta">

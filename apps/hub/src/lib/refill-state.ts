@@ -216,16 +216,16 @@ export async function readRefillProofExpiryBlock(input: {
   const poolAddress = felt(input.poolAddress, "privacy pool");
   const baseBlockValue = input.proofFacts[4];
   if (baseBlockValue === undefined) {
-    throw new Error("Ready returned incomplete proof facts");
+    throw new Error("The wallet returned incomplete proof facts");
   }
   let baseBlock: bigint;
   try {
     baseBlock = BigInt(baseBlockValue);
   } catch {
-    throw new Error("Ready returned an invalid proof base block");
+    throw new Error("The wallet returned an invalid proof base block");
   }
   if (baseBlock < 0n) {
-    throw new Error("Ready returned an invalid proof base block");
+    throw new Error("The wallet returned an invalid proof base block");
   }
   const rpcUrl = input.rpcUrl ?? MAINNET_RPC;
   const fetcher = input.fetcher ?? fetch;

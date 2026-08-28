@@ -14,7 +14,7 @@ Lock private STRK until you return.
 ## Live now: Travel Safe v2
 
 The public app locks one private STRK amount until a return date. The connected
-Ready account can return it after that date. Saved recovery words can return it
+wallet account can return it after that date. Saved recovery words can return it
 early.
 
 - Private STRK
@@ -30,7 +30,7 @@ early.
 
 ## How it works
 
-1. Connect Ready Wallet.
+1. Connect a privacy-ready Starknet wallet.
 2. Choose how much private STRK to lock and when it should return.
 3. Save the recovery words.
 4. Confirm the private transaction.
@@ -40,7 +40,7 @@ early.
 The recovery words remain in page memory during setup. Wrenchless never sends
 them to its server.
 
-Ready supplies the private balance, proof, and signature. The Wrenchless
+Your wallet supplies the private balance, proof, and signature. The Wrenchless
 contract enforces the return date. Funds remain inside the STRK20 flow.
 
 Normal browsers use a passkey to open the encrypted local ticket. If an
@@ -92,7 +92,7 @@ lifecycle. Trip Allowance v3 has no mainnet deployment evidence yet.
 
 ```text
 Browser + device confirmation
-     ├─ Ready: private balance, proof, signature
+     ├─ Privacy wallet: private balance, proof, signature
      └─ Sponsor relay → Travel Safe helper → STRK20 pool
 ```
 
@@ -101,9 +101,14 @@ Browser + device confirmation
 - `contracts/refill-helper` — immutable Cairo helpers
 - `packages/canary-core` — shared actions, tickets, and recovery logic
 
+Wrenchless requires an injected Starknet Wallet API `>= 0.10.3`. Ready's
+browser extension and Xverse are supported when they expose that capability.
+On mobile, Wrenchless opens the current page in Xverse's in-app browser; the
+wallet remains responsible for private balance discovery and proof generation.
+
 ## Run locally
 
-Requirements: Node.js 22, pnpm 11, and a WalletConnect project ID for mobile.
+Requirements: Node.js 22 and pnpm 11.
 
 ```bash
 pnpm install
@@ -111,8 +116,7 @@ cp apps/hub/.env.example apps/hub/.env.local
 pnpm hub:dev
 ```
 
-Set `VITE_WALLETCONNECT_PROJECT_ID` in `apps/hub/.env.local`. Start the sponsor
-in another terminal:
+Start the sponsor in another terminal:
 
 ```bash
 WRENCHLESS_SPONSOR_ENV=/absolute/path/sponsor.env pnpm sponsor:dev

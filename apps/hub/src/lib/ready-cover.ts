@@ -63,17 +63,17 @@ export async function assertReadyPrivateContext(
     // Invalid wallet output is handled as a network mismatch below.
   }
   if (!onMainnet) {
-    throw new Error("Ready must be connected to Starknet mainnet");
+    throw new Error("Connect your wallet to Starknet mainnet");
   }
   if (!versions.includes(READY_WALLET_API_VERSION)) {
     throw new Error(
-      `Ready does not support Wallet API ${READY_WALLET_API_VERSION}`,
+      `This wallet does not support private Starknet actions`,
     );
   }
   if (!wallet.selectedAddress) {
-    throw new Error("Ready has no selected account");
+    throw new Error("The wallet has no selected account");
   }
-  return { account: canonicalFelt(wallet.selectedAddress, "Ready account") };
+  return { account: canonicalFelt(wallet.selectedAddress, "wallet account") };
 }
 
 async function readPoolFee(
@@ -157,23 +157,23 @@ export async function readReadyShieldedBalances(input: {
   const balances = shieldedBalanceResponseSchema.parse(response);
   const balancesByToken = new Map<string, bigint>();
   for (const entry of balances) {
-    const address = canonicalFelt(entry.token, "Ready balance token");
+    const address = canonicalFelt(entry.token, "wallet balance token");
     const key = BigInt(address).toString();
     if (!requestedByValue.has(key)) {
-      throw new Error("Ready returned an unrequested private token");
+      throw new Error("The wallet returned an unrequested private token");
     }
     if (balancesByToken.has(key)) {
-      throw new Error("Ready returned a duplicate private token balance");
+      throw new Error("The wallet returned a duplicate private token balance");
     }
 
     let balance: bigint;
     try {
       balance = BigInt(entry.balance);
     } catch {
-      throw new Error("Ready returned an invalid shielded balance");
+      throw new Error("The wallet returned an invalid shielded balance");
     }
     if (balance < 0n || balance > U128_MAX) {
-      throw new Error("Ready returned an invalid shielded balance");
+      throw new Error("The wallet returned an invalid shielded balance");
     }
     balancesByToken.set(key, balance);
   }
@@ -198,7 +198,7 @@ export async function readReadyShieldedBalance(input: {
     tokens: [{ symbol: "STRK", decimals: 18, address: tokenAddress }],
   });
   if (balance === undefined) {
-    throw new Error("Ready did not return the STRK private balance");
+    throw new Error("The wallet did not return the STRK private balance");
   }
   return {
     tokenAddress,

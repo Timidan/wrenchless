@@ -142,7 +142,7 @@ export function SceneHero(): JSX.Element {
             </span>
           </h1>
           <p className="hero__lede hero__step">
-            Choose private STRK or USDC from Ready Wallet. Set the daily amount
+            Choose private STRK or USDC from your wallet. Set the daily amount
             and the date when the remaining balance can return.
           </p>
           <div className="hero__actions hero__step">

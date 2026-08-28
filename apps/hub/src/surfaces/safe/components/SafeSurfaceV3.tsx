@@ -9,7 +9,6 @@ import {
   reasonFrom,
   shortHex,
 } from "../../../adapters/amount";
-import { ReadyWalletMark } from "../../../components/ReadyWalletMark";
 import { StrkTokenMark } from "../../../components/StrkTokenMark";
 import { UsdcTokenMark } from "../../../components/UsdcTokenMark";
 import {
@@ -26,6 +25,7 @@ import {
   PlusCircleIcon,
   ShieldCheckIcon,
   SuitcaseRollingIcon,
+  WalletIcon,
   WarningCircleIcon,
 } from "../../../components/icons";
 import {
@@ -256,12 +256,12 @@ function Phase(props: {
           title="Connect wallet"
         >
           <Emblem>
-            <ReadyWalletMark className="emblem__ready" />
+            <WalletIcon />
           </Emblem>
           <Actions>
             <Button
               disabled={safeActionBusy(model.action)}
-              icon={<ReadyWalletMark className="wbtn__ready" />}
+              icon={<WalletIcon />}
               iconMotion={model.action.name === "wallet" ? "spin" : undefined}
               label="Connect wallet"
               onClick={() => {
@@ -467,7 +467,7 @@ function PlanScreen(props: {
         <Note>
           {asset.available
             ? `${asset.shieldedBalance} ${asset.symbol} private now, plus ${asset.returnFeeStrk} STRK reserved for the return.`
-            : `${asset.symbol} is temporarily unavailable from Ready.`}
+            : `${asset.symbol} is temporarily unavailable from your wallet.`}
         </Note>
       )}
       <div className="wform">
@@ -764,7 +764,7 @@ function ReviewScreen(props: {
         ) : (
           <Button
             disabled={busy}
-            icon={<ReadyWalletMark className="wbtn__ready" />}
+            icon={<WalletIcon />}
             iconMotion={model.action.name === "wallet" ? "spin" : undefined}
             label="Connect wallet"
             onClick={() => {
@@ -1294,7 +1294,7 @@ function TerminalScreen(props: {
 
   return (
     <Screen
-      title={claimed ? "Returned early" : "Returned to Ready"}
+      title={claimed ? "Returned early" : "Returned to wallet"}
       tone={claimed ? "alert" : undefined}
     >
       <Emblem>{claimed ? <LockKeyOpenIcon /> : <CheckCircleIcon />}</Emblem>

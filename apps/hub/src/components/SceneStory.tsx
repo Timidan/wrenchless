@@ -49,8 +49,8 @@ const SCENES: readonly Scene[] = [
     portal: "74% 48%",
     width: 1536,
     height: 1024,
-    title: "Approve it in Ready Wallet.",
-    line: "Ready Wallet signs the private transfer. Wrenchless never sees your wallet keys.",
+    title: "Approve it in your wallet.",
+    line: "Your wallet signs the private transfer. Wrenchless never sees your keys.",
   },
   {
     id: "pool",
@@ -70,7 +70,7 @@ const SCENES: readonly Scene[] = [
     width: 1280,
     height: 960,
     title: "Release what is available.",
-    line: "Confirm on your device to move the available amount back to Ready Wallet.",
+    line: "Confirm on your device to move the available amount back to your wallet.",
   },
   {
     id: "hallway",

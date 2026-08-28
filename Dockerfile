@@ -19,13 +19,10 @@ COPY apps/hub apps/hub
 COPY packages/canary-core packages/canary-core
 ARG VITE_SITE_URL
 ARG VITE_SPONSOR_URL
-ARG VITE_WALLETCONNECT_PROJECT_ID
 RUN test -n "$VITE_SITE_URL" \
-    && test -n "$VITE_SPONSOR_URL" \
-    && test -n "$VITE_WALLETCONNECT_PROJECT_ID"
+    && test -n "$VITE_SPONSOR_URL"
 ENV VITE_SITE_URL=$VITE_SITE_URL
 ENV VITE_SPONSOR_URL=$VITE_SPONSOR_URL
-ENV VITE_WALLETCONNECT_PROJECT_ID=$VITE_WALLETCONNECT_PROJECT_ID
 RUN pnpm --filter @wrenchless/hub build
 
 FROM nginx:1.28.0-alpine AS gateway
