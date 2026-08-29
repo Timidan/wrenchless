@@ -43,7 +43,8 @@ async function readLiability(input: {
   calldata: string[];
   fetcher: typeof fetch;
 }): Promise<bigint> {
-  const response = await input.fetcher(WRENCHLESS_MAINNET.rpcUrl, {
+  const fetcher = input.fetcher;
+  const response = await fetcher(WRENCHLESS_MAINNET.rpcUrl, {
     method: "POST",
     headers: { "content-type": "application/json" },
     signal: AbortSignal.timeout(RPC_TIMEOUT_MILLISECONDS),
