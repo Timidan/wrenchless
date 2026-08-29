@@ -22,8 +22,8 @@
 /* One live number at the handoff from promise to product. The contracts own
    the value; the bar only gives that value a stable place to arrive. */
 .stats-bar {
-  border-block: 1px solid var(--rule);
-  background: var(--white);
+  border-block: 1px solid var(--rule-light);
+  background: var(--black);
 }
 
 .stats-bar__inner {
@@ -46,25 +46,22 @@
   align-self: center;
   width: clamp(26px, 2.2vw, 34px);
   height: clamp(26px, 2.2vw, 34px);
-  margin-right: var(--space-1);
+  margin-left: var(--space-1);
+  border-radius: 50%;
+  outline: 1px solid var(--rule-light);
 }
 
 .stats-bar__number {
-  color: var(--ink);
+  color: var(--paper);
   font-size: clamp(2rem, 2.2rem + 1.4vw, 3.75rem);
   font-weight: 400;
   line-height: 0.9;
   letter-spacing: -0.045em;
 }
 
-.stats-bar__unit {
-  color: var(--ink);
-  font-size: var(--size-body);
-}
-
 .stats-bar__detail,
 .stats-bar__source {
-  color: var(--ink-body);
+  color: var(--paper-body);
   font-size: 0.875rem;
 }
 
@@ -96,7 +93,7 @@
 
   .stats-bar__detail {
     flex-basis: 100%;
-    margin-left: calc(clamp(26px, 2.2vw, 34px) + var(--space-3));
+    margin-left: 0;
   }
 }
 

@@ -40,9 +40,9 @@ export function StatsBar(): JSX.Element {
       <div className="grid">
         <div className="bay stats-bar__inner">
           <div aria-live="polite" className="stats-bar__metric">
-            <StrkTokenMark className="stats-bar__mark" />
             <span className="stats-bar__number">{total}</span>
-            <span className="stats-bar__unit">STRK</span>
+            <StrkTokenMark className="stats-bar__mark" />
+            <span className="visually-hidden">STRK</span>
             <span className="stats-bar__detail">{detail}</span>
           </div>
           <span className="stats-bar__source">Starknet mainnet · live contracts</span>
