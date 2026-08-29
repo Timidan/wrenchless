@@ -56,10 +56,70 @@ export function SceneHero(): JSX.Element {
         },
       );
 
+      // A lightly dithered STRK20 coral reveal follows the cursor over the
+      // second line. The colour belongs to a duplicate paint layer, not the
+      // text itself, so the sentence remains plain white at rest and for
+      // touch-only or reduced-motion readers.
+      const finePointer = window.matchMedia(
+        "(hover: hover) and (pointer: fine)",
+      ).matches;
+      const releaseLine = section.querySelector<HTMLElement>(
+        ".hero__line-in--strk20",
+      );
+      let removeReleaseReveal = (): void => undefined;
+
+      if (finePointer && releaseLine) {
+        let currentX = 0;
+        let currentY = 0;
+        let targetX = 0;
+        let targetY = 0;
+        let tracking = false;
+
+        const locate = (event: PointerEvent): void => {
+          const box = releaseLine.getBoundingClientRect();
+          targetX = event.clientX - box.left;
+          targetY = event.clientY - box.top;
+        };
+        const paint = (): void => {
+          currentX += (targetX - currentX) * 0.28;
+          currentY += (targetY - currentY) * 0.28;
+          releaseLine.style.setProperty("--spotlight-x", `${currentX}px`);
+          releaseLine.style.setProperty("--spotlight-y", `${currentY}px`);
+        };
+        const enter = (event: PointerEvent): void => {
+          locate(event);
+          currentX = targetX;
+          currentY = targetY;
+          paint();
+          releaseLine.dataset.revealActive = "true";
+          if (!tracking) {
+            tracking = true;
+            gsap.ticker.add(paint);
+          }
+        };
+        const leave = (): void => {
+          delete releaseLine.dataset.revealActive;
+          if (tracking) {
+            tracking = false;
+            gsap.ticker.remove(paint);
+          }
+        };
+
+        releaseLine.addEventListener("pointerenter", enter);
+        releaseLine.addEventListener("pointermove", locate, { passive: true });
+        releaseLine.addEventListener("pointerleave", leave);
+        removeReleaseReveal = () => {
+          leave();
+          releaseLine.removeEventListener("pointerenter", enter);
+          releaseLine.removeEventListener("pointermove", locate);
+          releaseLine.removeEventListener("pointerleave", leave);
+        };
+      }
+
       // The magnet. Fine pointers only, and only this one button: a page where
       // everything reaches for the cursor is a page that cannot be aimed at.
       const button = section.querySelector<HTMLElement>(".hero__magnet");
-      if (!button || !window.matchMedia("(pointer: fine)").matches) return;
+      if (!button || !finePointer) return removeReleaseReveal;
 
       // Both clocks are the page's own. The pull tracks the cursor and the
       // release undoes it in a little over half the time, which is the same
@@ -105,6 +165,7 @@ export function SceneHero(): JSX.Element {
       document.addEventListener("pointerleave", onLeave);
       window.addEventListener("blur", onLeave);
       return () => {
+        removeReleaseReveal();
         window.removeEventListener("pointermove", onMove);
         document.removeEventListener("pointerleave", onLeave);
         window.removeEventListener("blur", onLeave);
@@ -138,7 +199,12 @@ export function SceneHero(): JSX.Element {
               </span>
             </span>
             <span className="hero__line">
-              <span className="hero__line-in">Release a set amount each day.</span>
+              <span
+                className="hero__line-in hero__line-in--strk20"
+                data-text="Release a set amount each day."
+              >
+                Release a set amount each day.
+              </span>
             </span>
           </h1>
           <p className="hero__lede hero__step">

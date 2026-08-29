@@ -141,6 +141,49 @@
   display: block;
 }
 
+.hero__line-in--strk20 {
+  --spotlight-x: 50%;
+  --spotlight-y: 50%;
+  position: relative;
+  color: var(--paper);
+}
+
+.hero__line-in--strk20::after {
+  position: absolute;
+  inset: 0;
+  content: attr(data-text);
+  color: transparent;
+  opacity: 0;
+  background-color: var(--coral);
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(255, 255, 255, 0.28) 0 0.65px,
+    transparent 0.8px
+  );
+  background-size: 4px 4px;
+  background-repeat: repeat;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-mask-image: radial-gradient(
+    circle clamp(120px, 12vw, 175px) at var(--spotlight-x) var(--spotlight-y),
+    #000 0 46%,
+    rgba(0, 0, 0, 0.82) 68%,
+    transparent 100%
+  );
+  mask-image: radial-gradient(
+    circle clamp(120px, 12vw, 175px) at var(--spotlight-x) var(--spotlight-y),
+    #000 0 46%,
+    rgba(0, 0, 0, 0.82) 68%,
+    transparent 100%
+  );
+  pointer-events: none;
+  transition: opacity 180ms ease-out;
+}
+
+.hero__line-in--strk20[data-reveal-active="true"]::after {
+  opacity: 1;
+}
+
 .hero__lede {
   max-width: 55ch;
   color: var(--paper-body);
