@@ -17,9 +17,8 @@ const MAGNET_PULL = 0.34;
  * rather than the middle, so the picture keeps its own centre. The section is
  * sticky: the white bed rides over it instead of pushing it away.
  *
- * Two pieces of motion, both kept from the previous build. The headline
- * arrives a line at a time, once, on load. The primary call to action is the
- * one magnetic thing on the page.
+ * The headline arrives a line at a time, then a quiet coral field crosses it.
+ * The primary call to action is the one magnetic thing on the page.
  */
 export function SceneHero(): JSX.Element {
   const root = useRef<HTMLElement>(null);
@@ -56,9 +55,9 @@ export function SceneHero(): JSX.Element {
         },
       );
 
-      // A lightly dithered STRK20 coral reveal follows the cursor across the
-      // complete headline. Each line owns its duplicate paint layer, but both
-      // layers read the same pointer position, so the radius crosses the line
+      // A lightly dithered STRK20 coral reveal crosses the complete headline.
+      // A fine pointer takes over on hover. Each line owns its duplicate paint
+      // layer, but both read the same point, so the radius crosses the line
       // break as one continuous field.
       const finePointer = window.matchMedia(
         "(hover: hover) and (pointer: fine)",
@@ -69,13 +68,28 @@ export function SceneHero(): JSX.Element {
       ];
       let removeHeroReveal = (): void => undefined;
 
-      if (finePointer && heroTitle && heroLines.length > 0) {
+      if (heroTitle && heroLines.length > 0) {
         let currentX = 0;
         let currentY = 0;
         let targetX = 0;
         let targetY = 0;
         let tracking = false;
 
+        const activate = (): void => {
+          for (const line of heroLines) line.dataset.revealActive = "true";
+        };
+        const deactivate = (): void => {
+          for (const line of heroLines) delete line.dataset.revealActive;
+        };
+        const paintAt = (clientX: number, clientY: number): void => {
+          const boxes = heroLines.map((line) => line.getBoundingClientRect());
+          heroLines.forEach((line, index) => {
+            const box = boxes[index];
+            if (!box) return;
+            line.style.setProperty("--spotlight-x", `${clientX - box.left}px`);
+            line.style.setProperty("--spotlight-y", `${clientY - box.top}px`);
+          });
+        };
         const locate = (event: PointerEvent): void => {
           targetX = event.clientX;
           targetY = event.clientY;
@@ -83,39 +97,66 @@ export function SceneHero(): JSX.Element {
         const paint = (): void => {
           currentX += (targetX - currentX) * 0.28;
           currentY += (targetY - currentY) * 0.28;
-          for (const line of heroLines) {
-            const box = line.getBoundingClientRect();
-            line.style.setProperty("--spotlight-x", `${currentX - box.left}px`);
-            line.style.setProperty("--spotlight-y", `${currentY - box.top}px`);
-          }
+          paintAt(currentX, currentY);
         };
+        const sweep = { progress: 0 };
+        const paintSweep = (): void => {
+          const box = heroTitle.getBoundingClientRect();
+          paintAt(
+            box.left - 180 + (box.width + 360) * sweep.progress,
+            box.top + box.height * (0.25 + sweep.progress * 0.5),
+          );
+        };
+        const automaticReveal = gsap.fromTo(
+          sweep,
+          { progress: 0 },
+          {
+            progress: 1,
+            duration: 4,
+            delay: 1.4,
+            repeat: -1,
+            repeatDelay: 1.6,
+            ease: "sine.inOut",
+            onStart: activate,
+            onRepeat: activate,
+            onUpdate: paintSweep,
+          },
+        );
         const enter = (event: PointerEvent): void => {
+          automaticReveal.pause();
           locate(event);
           currentX = targetX;
           currentY = targetY;
           paint();
-          for (const line of heroLines) line.dataset.revealActive = "true";
+          activate();
           if (!tracking) {
             tracking = true;
             gsap.ticker.add(paint);
           }
         };
         const leave = (): void => {
-          for (const line of heroLines) delete line.dataset.revealActive;
+          deactivate();
           if (tracking) {
             tracking = false;
             gsap.ticker.remove(paint);
           }
+          automaticReveal.restart(true);
         };
 
-        heroTitle.addEventListener("pointerenter", enter);
-        heroTitle.addEventListener("pointermove", locate, { passive: true });
-        heroTitle.addEventListener("pointerleave", leave);
+        if (finePointer) {
+          heroTitle.addEventListener("pointerenter", enter);
+          heroTitle.addEventListener("pointermove", locate, { passive: true });
+          heroTitle.addEventListener("pointerleave", leave);
+        }
         removeHeroReveal = () => {
-          leave();
-          heroTitle.removeEventListener("pointerenter", enter);
-          heroTitle.removeEventListener("pointermove", locate);
-          heroTitle.removeEventListener("pointerleave", leave);
+          automaticReveal.kill();
+          deactivate();
+          if (tracking) gsap.ticker.remove(paint);
+          if (finePointer) {
+            heroTitle.removeEventListener("pointerenter", enter);
+            heroTitle.removeEventListener("pointermove", locate);
+            heroTitle.removeEventListener("pointerleave", leave);
+          }
         };
       }
 

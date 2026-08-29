@@ -6,6 +6,7 @@ import { SceneStory } from "./components/SceneStory";
 import { Evidence } from "./components/Evidence";
 import { Footer } from "./components/Footer";
 import { SmoothScroll } from "./components/SmoothScroll";
+import { StatsBar } from "./components/StatsBar";
 import { applyMotionClasses, motionProfile, watchReducedMotion } from "./lib/motion";
 
 /**
@@ -35,6 +36,7 @@ export function App(): JSX.Element {
       <main className="page" id="main">
         <SceneHero />
         <div className="bed">
+          <StatsBar />
           <SceneStory />
           <Evidence />
         </div>

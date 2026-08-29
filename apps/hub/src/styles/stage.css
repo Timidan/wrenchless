@@ -19,6 +19,87 @@
   background: var(--white);
 }
 
+/* One live number at the handoff from promise to product. The contracts own
+   the value; the bar only gives that value a stable place to arrive. */
+.stats-bar {
+  border-block: 1px solid var(--rule);
+  background: var(--white);
+}
+
+.stats-bar__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  min-height: clamp(84px, 7vw, 112px);
+  padding-block: var(--space-5);
+}
+
+.stats-bar__metric {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.stats-bar__mark {
+  align-self: center;
+  width: clamp(26px, 2.2vw, 34px);
+  height: clamp(26px, 2.2vw, 34px);
+  margin-right: var(--space-1);
+}
+
+.stats-bar__number {
+  color: var(--ink);
+  font-size: clamp(2rem, 2.2rem + 1.4vw, 3.75rem);
+  font-weight: 400;
+  line-height: 0.9;
+  letter-spacing: -0.045em;
+}
+
+.stats-bar__unit {
+  color: var(--ink);
+  font-size: var(--size-body);
+}
+
+.stats-bar__detail,
+.stats-bar__source {
+  color: var(--ink-body);
+  font-size: 0.875rem;
+}
+
+.stats-bar__detail {
+  margin-left: var(--space-2);
+}
+
+.stats-bar__source {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--size-micro);
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 40rem) {
+  .stats-bar__inner,
+  .stats-bar__metric {
+    align-items: flex-start;
+  }
+
+  .stats-bar__inner {
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .stats-bar__metric {
+    flex-wrap: wrap;
+  }
+
+  .stats-bar__detail {
+    flex-basis: 100%;
+    margin-left: calc(clamp(26px, 2.2vw, 34px) + var(--space-3));
+  }
+}
+
 /* ---------- hero ----------
 
    Sticky rather than pinned by script: the browser holds it, the white bed
