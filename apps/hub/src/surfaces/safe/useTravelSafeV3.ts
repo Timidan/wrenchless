@@ -823,7 +823,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       recoveryAccount: canonicalFelt(account),
       recoverySalt: recovery.recoverySalt,
       devicePrivateKey,
-      tokenAddress: token.address,
+      tokenAddress: canonicalFelt(token.address),
       tokenSymbol: token.symbol,
       tokenDecimals: token.decimals,
       amountBaseUnits: parseTokenAmount(plan.parkAmount, token.decimals).toString(),

@@ -55,6 +55,19 @@ export type PreparedTravelSafeV3TopUp = {
   devicePublicKey: string;
 };
 
+/**
+ * A wallet hands back a `PADDED_TXN_HASH` — 64 hex characters, leading zeros
+ * and all, and the spec permits upper case. The ticket store accepts only
+ * canonical felts, so a hash copied straight from the wallet is rejected the
+ * moment the action is recorded, after the transaction has already been sent.
+ * Every hash leaving this module is canonicalised here instead.
+ */
+function canonicalTransactionHash(value: string): string {
+  const parsed = BigInt(value);
+  if (parsed <= 0n) throw new Error("The wallet returned an invalid transaction");
+  return `0x${parsed.toString(16)}`;
+}
+
 function assertMainnet(chainId: string): void {
   if (BigInt(chainId) !== BigInt(MAINNET_CHAIN_ID)) {
     throw new Error("Switch to Starknet mainnet");
@@ -94,10 +107,7 @@ async function invoke(
       params: { actions, api_version: READY_WALLET_API_VERSION },
     }),
   );
-  if (BigInt(result.transaction_hash) === 0n) {
-    throw new Error("The wallet returned an invalid transaction");
-  }
-  return { transactionHash: result.transaction_hash };
+  return { transactionHash: canonicalTransactionHash(result.transaction_hash) };
 }
 
 function readPreviewNote(input: {
@@ -416,8 +426,5 @@ export async function submitShieldDeposits(input: {
       params: { actions, api_version: READY_WALLET_API_VERSION },
     }),
   );
-  if (BigInt(result.transaction_hash) === 0n) {
-    throw new Error("The wallet returned an invalid transaction");
-  }
-  return { transactionHash: result.transaction_hash };
+  return { transactionHash: canonicalTransactionHash(result.transaction_hash) };
 }

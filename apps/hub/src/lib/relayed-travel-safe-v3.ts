@@ -174,5 +174,12 @@ export async function submitTravelSafeV3Relay(input: {
       true,
     );
   }
-  return parsed.data;
+  // The node behind the relay decides whether it pads the hash. The ticket
+  // store takes canonical felts only, and it is read after the transaction is
+  // already on its way, so the padding is removed here rather than left to
+  // fail the recording of a broadcast that did happen.
+  return {
+    ...parsed.data,
+    transactionHash: `0x${BigInt(parsed.data.transactionHash).toString(16)}`,
+  };
 }
