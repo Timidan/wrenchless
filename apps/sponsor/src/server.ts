@@ -107,12 +107,20 @@ type SponsorResponse =
   | TravelSafeV3Submission
   | RecoveryChallenge
   | RecoveryLocator
-  | { error: string; reason?: SponsorUnavailableReason }
+  | { error: string; reason?: SponsorUnavailableReason | string }
   | { status: "ok" | "ready" };
 
 type PublicError = {
   status: number;
   code: string;
+  /**
+   * Why a submission was refused, when the answer is about the submission
+   * itself rather than about this service. A rejected artifact is the
+   * client's own object and describing it reveals nothing the client did not
+   * send, while withholding the reason leaves somebody staring at a screen
+   * that says only that something did not work.
+   */
+  reason?: string;
 };
 
 function setSecurityHeaders(response: ServerResponse): void {
@@ -204,6 +212,13 @@ function publicError(error: Error): PublicError {
   if (error instanceof TravelSafeV3RelayError) {
     if (error.code === "travel_safe_submission_uncertain") {
       return { status: 503, code: error.code };
+    }
+    if (error.code === "travel_safe_v3_rejected") {
+      const cause = error.cause;
+      const reason = cause instanceof Error ? cause.message.slice(0, 200) : undefined;
+      return reason === undefined
+        ? { status: 422, code: error.code }
+        : { status: 422, code: error.code, reason };
     }
     if (error.code === "relay_busy" || error.code === "travel_safe_cost_changed") {
       return { status: 409, code: error.code };
@@ -441,7 +456,13 @@ export function createSponsorServer(
       const error = cause instanceof Error ? cause : new Error("unexpected sponsor error");
       const responseError = publicError(error);
       if (responseError.status === 503) response.setHeader("Retry-After", "300");
-      sendJson(response, responseError.status, { error: responseError.code });
+      sendJson(
+        response,
+        responseError.status,
+        responseError.reason === undefined
+          ? { error: responseError.code }
+          : { error: responseError.code, reason: responseError.reason },
+      );
     }
   });
 }

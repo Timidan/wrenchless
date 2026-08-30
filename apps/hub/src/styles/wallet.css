@@ -1280,6 +1280,26 @@ html.reduced-motion .fund-progress__marker {
   }
 }
 
+/* A lock is not a wheel. It is pressed shut and tried again, so it presses:
+   a short travel down and back, with no rotation anywhere in it. */
+@keyframes processing-latch {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  45% {
+    transform: translateY(1.5px);
+  }
+}
+
+.statusline__icon[data-icon-motion="latch"],
+.wbtn__icon[data-icon-motion="latch"],
+.wcheck__icon[data-icon-motion="latch"],
+.iconbtn > span[data-icon-motion="latch"] {
+  animation: processing-latch var(--dur-latch) ease-in-out infinite;
+  transform-origin: center;
+}
+
 .statusline__icon[data-icon-motion="guard"],
 .wbtn__icon[data-icon-motion="guard"],
 .wcheck__icon[data-icon-motion="guard"],

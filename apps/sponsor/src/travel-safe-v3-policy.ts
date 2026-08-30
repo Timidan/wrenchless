@@ -127,6 +127,21 @@ function assertPreparedActions(artifact: TravelSafeV3RelayArtifact): void {
   );
   const actions = readPreparedServerActions(value, artifact.poolAddress);
   const deposits = BigInt(artifact.depositBaseUnits) > 0n ? 1 : 0;
+  /**
+   * Police what moves value, not what order the wallet emitted it in.
+   *
+   * The previous rule listed the two exact discriminant sequences a funding
+   * bundle had ever been seen to compile to, which made the relay refuse any
+   * arrangement it had not been told about — including the perfectly ordinary
+   * one a bundled deposit produces. The invariants that actually protect
+   * anybody are about value and reach: exactly one withdrawal, to the helper,
+   * for the stated amount; exactly one plain invoke, of the helper, with the
+   * exact calldata; at most one deposit, declared and bounded. Everything
+   * else the pool emits is bookkeeping and events, which move nothing and
+   * call nobody.
+   */
+  const BOOKKEEPING = new Set([0n, 1n, 4n, 5n, 6n, 7n, 8n, 9n]);
+  const POLICED = new Set([2n, 3n, 10n]);
   if (
     actions.screening !== "None" ||
     actions.transfersTo.length !== 1 ||
@@ -135,26 +150,13 @@ function assertPreparedActions(artifact: TravelSafeV3RelayArtifact): void {
   ) {
     throw new Error("prepared action must contain one withdrawal and one helper invoke");
   }
-  /**
-   * A deposit compiles to a TransferFrom and a Deposit event ahead of the
-   * withdrawal, so the accepted shapes double rather than change: the
-   * withdrawal and the helper invoke still have to be exactly one each, in
-   * that order, and nothing else may appear.
-   */
-  const withdrawalSequences = [
-    [3n, 10n],
-    [3n, 5n, 10n],
-  ];
-  const accepted = withdrawalSequences.map((sequence) =>
-    deposits === 1 ? [2n, 6n, ...sequence] : sequence,
+  const unpoliced = actions.discriminants.find(
+    (value) => !POLICED.has(value) && !BOOKKEEPING.has(value),
   );
-  const matches = accepted.some(
-    (sequence) =>
-      sequence.length === actions.discriminants.length &&
-      sequence.every((value, index) => actions.discriminants[index] === value),
-  );
-  if (!matches) {
-    throw new Error("prepared action contains an unexpected server action");
+  if (unpoliced !== undefined) {
+    throw new Error(
+      `prepared action contains an unexpected server action (${unpoliced.toString()})`,
+    );
   }
   if (deposits === 1) {
     const deposited = actions.transfersFrom[0]!;

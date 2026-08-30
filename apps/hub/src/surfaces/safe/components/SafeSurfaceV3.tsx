@@ -856,7 +856,7 @@ function ReviewScreen(props: {
               <Button
                 disabled={busy || missingWords}
                 icon={<LockSimpleIcon />}
-                iconMotion={busy ? "spin" : undefined}
+                iconMotion={busy ? "latch" : undefined}
                 label="Get exact fee"
                 onClick={() => {
                   void actions.prepareFund();
@@ -970,7 +970,7 @@ function QuoteScreen(props: {
         <Button
           disabled={locked}
           icon={<LockSimpleIcon />}
-          iconMotion={safeActionBusy(model.action) ? "spin" : undefined}
+          iconMotion={safeActionBusy(model.action) ? "latch" : undefined}
           label="Confirm and fund"
           onClick={() => {
             void actions.submitFund();
@@ -1203,7 +1203,7 @@ function TopUpSubview(props: {
             <Button
               disabled={busy || amount.trim() === ""}
               icon={<LockSimpleIcon />}
-              iconMotion={busy ? "spin" : undefined}
+              iconMotion={busy ? "latch" : undefined}
               label="Get exact fee"
               onClick={() => {
                 setAttempted(true);
@@ -1227,7 +1227,7 @@ function TopUpSubview(props: {
             <Button
               disabled={locked}
               icon={<LockSimpleIcon />}
-              iconMotion={busy ? "spin" : undefined}
+              iconMotion={busy ? "latch" : undefined}
               label="Confirm top-up"
               onClick={() => {
                 void actions.submitTopUp();

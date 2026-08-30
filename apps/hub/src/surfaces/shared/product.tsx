@@ -152,9 +152,11 @@ export function Button(props: {
    * The button reports `aria-busy` either way; what the glyph does is the
    * glyph's business. `spin` is for the marks that turn — an arrow circling a
    * clock face. `guard` is for the ones that do not: a shield does not
-   * rotate, it stands watch, so it breathes instead.
+   * rotate, it stands watch, so it breathes instead. `latch` is for a lock,
+   * which neither turns nor breathes — it is pressed shut, over and over,
+   * until it closes.
    */
-  iconMotion?: "spin" | "guard" | undefined;
+  iconMotion?: "spin" | "guard" | "latch" | undefined;
 }): JSX.Element {
   const working = props.iconMotion !== undefined;
   return (

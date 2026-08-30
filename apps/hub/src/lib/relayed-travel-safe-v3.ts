@@ -58,7 +58,11 @@ const submissionSchema = z.object({
   status: z.literal("submitted"),
   transactionHash: z.string().regex(/^0x[0-9a-f]+$/),
 });
-const errorSchema = z.object({ error: z.string() });
+const errorSchema = z.object({
+  error: z.string(),
+  /** Present when the service can say what about the submission it refused. */
+  reason: z.string().optional(),
+});
 
 export type TravelSafeV3RelayEstimate = z.infer<typeof estimateSchema>;
 export type TravelSafeV3RelaySubmission = z.infer<typeof submissionSchema>;
@@ -83,13 +87,21 @@ function route(
   return new URL(`v3/${name}${estimate ? "/estimate" : ""}`, base).toString();
 }
 
-function message(code: string): string {
+function message(code: string, reason?: string): string {
   if (code === "travel_safe_cost_changed") return "Cost changed. Prepare again.";
   if (code === "relay_busy") return "Another action is confirming. Try shortly.";
   if (code === "daily_fund_budget_exhausted") return "Private actions are paused today.";
   if (code === "rate_limited") return "Too many attempts. Try later.";
   if (code === "travel_safe_v3_disabled" || code === "sponsor_unavailable") {
     return "Private parking is temporarily unavailable.";
+  }
+  /**
+   * A rejection is about the request this device just built, so saying which
+   * part was refused costs nothing and is the difference between a screen
+   * somebody can act on and one that says only that something did not work.
+   */
+  if (reason !== undefined && reason.trim().length > 0) {
+    return `This action could not be prepared: ${reason.trim()}`;
   }
   return "This action could not be prepared.";
 }
@@ -125,7 +137,9 @@ export async function estimateTravelSafeV3Relay(input: {
   if (!response.ok) {
     const error = errorSchema.safeParse(body);
     throw new TravelSafeV3SponsorError(
-      error.success ? message(error.data.error) : "Could not prepare the cost.",
+      error.success
+        ? message(error.data.error, error.data.reason)
+        : "Could not prepare the cost.",
       false,
     );
   }
@@ -168,7 +182,7 @@ export async function submitTravelSafeV3Relay(input: {
       ambiguous
         ? "The action may still be landing. Checking the chain."
         : error.success
-          ? message(error.data.error)
+          ? message(error.data.error, error.data.reason)
           : "The action was not sent.",
       ambiguous,
     );
