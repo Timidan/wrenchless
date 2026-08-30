@@ -23,15 +23,16 @@ import {
 } from "../../adapters/wallet";
 import { readSettings } from "../../adapters/settings";
 import { WRENCHLESS_MAINNET, WRENCHLESS_SERVICES } from "../../lib/product-config";
+import { approvePoolSpending } from "../../lib/ready-approval";
 import {
   assertReadyPrivateContext,
+  readErc20Allowance,
   readPublicBalances,
   readReadyPoolFee,
   readReadyShieldedBalances,
 } from "../../lib/ready-cover";
 import {
   submitAllowanceRelease,
-  submitShieldDeposits,
   submitTravelSafeClaimEarly,
   submitTravelSafeExtend,
   submitTravelSafeV3Refund,
@@ -59,8 +60,6 @@ import {
 } from "../../lib/travel-safe-action-state";
 import {
   planShieldDeposits,
-  shieldLeftTheWallet,
-  shieldShortfalls,
   type ShieldableBalance,
   type ShieldDeposit,
 } from "../../lib/travel-safe-shield";
@@ -86,18 +85,16 @@ import {
 import type {
   SafeAssetView,
   SafePlanDraft,
+  SafeApprovalStep,
   SafeReadinessCheck,
-  SafeShieldStep,
   TravelSafeV3Controller,
 } from "./travel-safe-model";
 
 const MAINNET_CHAIN_ID = "0x534e5f4d41494e";
 const AMBIGUOUS_ACTION_WINDOW_MILLISECONDS = 5 * 60 * 1_000;
 const MAXIMUM_SAFE_DURATION_SECONDS = 180n * 86_400n;
-const SHIELD_POLL_MILLISECONDS = 4_000;
-const SHIELD_RECEIPT_TIMEOUT_MILLISECONDS = 10 * 60_000;
-/** How long to keep watching the chain for a wallet that never replies. */
-const SHIELD_WALLET_TIMEOUT_MILLISECONDS = 15 * 60_000;
+const APPROVAL_POLL_MILLISECONDS = 4_000;
+const APPROVAL_TIMEOUT_MILLISECONDS = 10 * 60_000;
 const EMPTY_PLAN: SafePlanDraft = {
   tokenAddress: TRAVEL_SAFE_TOKENS[0].address,
   parkAmount: "",
@@ -141,35 +138,31 @@ function readable(available: boolean, baseUnits: string): bigint {
   return available ? BigInt(baseUnits) : 0n;
 }
 
-function shieldStep(input: {
-  purpose: SafeShieldStep["purpose"];
-  tokenAddress: string;
-  amountBaseUnits: string;
+function approvalStep(input: {
+  purpose: SafeApprovalStep["purpose"];
+  deposit: ShieldDeposit;
   topUpAmount: string | null;
-  deposits: readonly ShieldDeposit[];
-}): SafeShieldStep {
+}): SafeApprovalStep {
   return {
     purpose: input.purpose,
-    tokenAddress: input.tokenAddress,
-    amountBaseUnits: input.amountBaseUnits,
+    symbol: input.deposit.token.symbol,
+    tokenAddress: input.deposit.token.address,
+    amount: formatTokenAmount(
+      BigInt(input.deposit.amountBaseUnits),
+      input.deposit.token.decimals,
+    ),
+    amountBaseUnits: input.deposit.amountBaseUnits,
+    towardAmount: formatTokenAmount(
+      BigInt(input.deposit.towardAmountBaseUnits),
+      input.deposit.token.decimals,
+    ),
+    towardReserve: formatTokenAmount(
+      BigInt(input.deposit.towardReserveBaseUnits),
+      input.deposit.token.decimals,
+    ),
     topUpAmount: input.topUpAmount,
     transactionHash: null,
     sent: false,
-    deposits: input.deposits.map((deposit) => ({
-      symbol: deposit.token.symbol,
-      tokenAddress: deposit.token.address,
-      decimals: deposit.token.decimals,
-      amount: formatTokenAmount(BigInt(deposit.amountBaseUnits), deposit.token.decimals),
-      amountBaseUnits: deposit.amountBaseUnits,
-      towardAmount: formatTokenAmount(
-        BigInt(deposit.towardAmountBaseUnits),
-        deposit.token.decimals,
-      ),
-      towardReserve: formatTokenAmount(
-        BigInt(deposit.towardReserveBaseUnits),
-        deposit.token.decimals,
-      ),
-    })),
   };
 }
 
@@ -293,7 +286,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
   const [ticket, setTicket] = useState<TravelSafeTicketV3 | null>(null);
   const [snapshot, setSnapshot] = useState<TravelSafeV3Controller["model"]["snapshot"]>(null);
   const [readiness, setReadiness] = useState<TravelSafeV3Controller["model"]["readiness"]>(null);
-  const [shield, setShield] = useState<SafeShieldStep | null>(null);
+  const [approval, setApproval] = useState<SafeApprovalStep | null>(null);
   const [recoveryDrill, setRecoveryDrill] = useState<TravelSafeV3Controller["model"]["recoveryDrill"]>({ status: "idle" });
   const [action, setAction] = useState<TravelSafeV3Controller["model"]["action"]>({ name: "idle" });
   const [recoveryWords, updateRecoveryWords] = useState<string | null>(null);
@@ -305,8 +298,8 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
   const prepared = useRef<PreparedTravelSafeV3Relay | null>(null);
   const pending = useRef<PendingAction | null>(null);
   const passkeyVerified = useRef(false);
-  /** Bumped per shield attempt; a stale attempt stops writing state. */
-  const shieldRun = useRef(0);
+  /** Bumped per approval attempt; a stale attempt stops writing state. */
+  const approvalRun = useRef(0);
   /** The same, for proof preparation, which can outlive a person's patience. */
   const prepareRun = useRef(0);
 
@@ -552,7 +545,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
                 label: "Balance",
                 status: "ready",
                 detail: shieldsFirst
-                  ? `${fundedText} available; wallet funds are shielded first`
+                  ? `${fundedText} available; wallet funds move in when you fund`
                   : `${fundedText} available privately`,
               },
       );
@@ -565,64 +558,63 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
   }, [refreshBalances]);
 
   /**
-   * The same balances, read from mainnet alone.
+   * Whether the pool may already take the deposit this operation folds in.
    *
-   * `refreshBalances` asks the wallet for private balances, and that is a
-   * request the person has to approve every single time. It must never go on
-   * a timer. This one touches only public RPC, so it can be polled — which is
-   * all the shield watcher needs, because a deposit leaving the account is
-   * visible in the ordinary balance.
+   * Returns the step to show when it may not. The allowance is read from
+   * mainnet rather than remembered, so an approval given in another tab, or
+   * left over from an attempt that was abandoned, is honoured instead of
+   * asked for twice.
    */
-  const readChainBalances = useCallback(async (currentWallet: BrowserWallet) => {
-    const [publicBalances, fee] = await Promise.all([
-      readPublicBalances({
-        account: currentWallet.selectedAddress,
-        tokens: TRAVEL_SAFE_TOKENS,
-        rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
-      }),
-      readReadyPoolFee({
-        poolAddress: WRENCHLESS_MAINNET.poolAddress,
-        rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
-      }),
-    ]);
-    const balances = TRAVEL_SAFE_TOKENS.map((token): ShieldableBalance => {
-      const ordinary = publicBalances.find(
-        (entry) => BigInt(entry.token.address) === BigInt(token.address),
-      );
-      return {
-        token,
-        // Not read here, and reported as unread rather than as zero.
-        shieldedBalanceBaseUnits: "0",
-        shieldedAvailable: false,
-        publicBalanceBaseUnits: ordinary?.publicBalanceBaseUnits ?? "0",
-        publicAvailable: ordinary?.available ?? false,
-      };
+  const approvalNeeded = useCallback(async (input: {
+    purpose: SafeApprovalStep["purpose"];
+    deposit: ShieldDeposit;
+    topUpAmount: string | null;
+  }): Promise<SafeApprovalStep | null> => {
+    if (account === null) throw new Error("Connect your wallet");
+    const { allowanceBaseUnits } = await readErc20Allowance({
+      owner: account,
+      spender: WRENCHLESS_MAINNET.poolAddress,
+      tokenAddress: input.deposit.token.address,
+      rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
     });
-    return { balances, poolFeeFri: fee.poolFeeFri };
-  }, []);
+    if (BigInt(allowanceBaseUnits) >= BigInt(input.deposit.amountBaseUnits)) {
+      return null;
+    }
+    return approvalStep(input);
+  }, [account]);
 
-  /**
-   * Fresh balances for parking or adding `amountBaseUnits` of one token.
-   * Returns the deposits the wallet must shield first when the private
-   * balance falls short and the ordinary balance can cover it; otherwise
-   * holds the existing private-only guarantees — the return-fee reserve and
-   * the parked amount both sit in the private balance — before any proof.
-   */
   const readFundingBalances = useCallback(async (
     tokenAddress: string,
     amountBaseUnits: string,
-  ): Promise<{ fresh: FreshBalances; deposits: readonly ShieldDeposit[] }> => {
+  ): Promise<{ fresh: FreshBalances; deposit: ShieldDeposit | null }> => {
     if (wallet.current === null || account === null) throw new Error("Connect your wallet");
     assertSelectedWalletAccount(wallet.current, account);
     const fresh = await refreshBalances(wallet.current);
-    const deposits = planShieldDeposits({
+    const shortfalls = planShieldDeposits({
       tokenAddress,
       amountBaseUnits,
       poolFeeFri: fresh.poolFeeFri,
       balances: fresh.balances,
     });
-    if (deposits.length > 0) return { fresh, deposits };
     const token = tokenFor(tokenAddress);
+    /**
+     * Only the Safe's own token can be shielded inside the funding
+     * transaction, because the bundle carries one deposit and the withdrawal
+     * that gives it replay protection spends that same token. A shortfall in
+     * the other token — the STRK action fee behind a USDC Safe — has no such
+     * carrier, and saying so is better than sending something the pool will
+     * refuse.
+     */
+    const elsewhere = shortfalls.find(
+      (entry) => BigInt(entry.token.address) !== BigInt(tokenAddress),
+    );
+    if (elsewhere !== undefined) {
+      throw new Error(
+        `Shield at least ${formatTokenAmount(BigInt(elsewhere.amountBaseUnits), elsewhere.token.decimals)} ${elsewhere.token.symbol} in your wallet first — it pays this Safe's action fee and cannot travel with a ${token.symbol} deposit`,
+      );
+    }
+    const deposit = shortfalls[0] ?? null;
+    if (deposit !== null) return { fresh, deposit };
     const strk = fresh.balances.find((item) => item.token.symbol === "STRK");
     if (strk === undefined) throw new Error("Private STRK balance is unavailable");
     assertPrivateReturnFeeReserve({
@@ -641,7 +633,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
     ) {
       throw new Error(`${token.symbol} private balance is too low`);
     }
-    return { fresh, deposits };
+    return { fresh, deposit };
   }, [account, refreshBalances]);
 
   const refresh = useCallback(async (): Promise<void> => {
@@ -1012,20 +1004,21 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       setAction({ name: "preparing", label: "Reading your balances" });
       const funding = await readFundingBalances(ticket.tokenAddress, ticket.amountBaseUnits);
       if (!current()) return;
-      if (funding.deposits.length > 0) {
-        setShield(
-          shieldStep({
-            purpose: "fund",
-            tokenAddress: ticket.tokenAddress,
-            amountBaseUnits: ticket.amountBaseUnits,
-            topUpAmount: null,
-            deposits: funding.deposits,
-          }),
-        );
-        setAction({ name: "idle" });
-        return;
+      const deposit = funding.deposit;
+      if (deposit !== null) {
+        const step = await approvalNeeded({
+          purpose: "fund",
+          deposit,
+          topUpAmount: null,
+        });
+        if (!current()) return;
+        if (step !== null) {
+          setApproval(step);
+          setAction({ name: "idle" });
+          return;
+        }
       }
-      setShield(null);
+      setApproval(null);
       setAction({
         name: "wallet",
         label: "Your wallet is building the private proof",
@@ -1039,6 +1032,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
         claimCommitment: setup.current.claimCommitment,
         deviceCommitment: setup.current.deviceCommitment,
         recoveryCommitment: setup.current.recoveryCommitment,
+        depositBaseUnits: deposit?.amountBaseUnits ?? "0",
         sponsorUrl: WRENCHLESS_SERVICES.sponsorUrl,
       });
       if (!current()) return;
@@ -1051,7 +1045,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       setAction({ name: "failed", message: reasonFrom(cause), retryable: true });
       setError(reasonFrom(cause));
     }
-  }, [account, readFundingBalances, recoveryWords, ticket]);
+  }, [account, approvalNeeded, readFundingBalances, recoveryWords, ticket]);
 
   /**
    * Give up on a preparation that is taking too long.
@@ -1135,7 +1129,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
    */
   const forgetSafe = useCallback(async (stateId: string): Promise<void> => {
     await clearTravelSafeTicket(stateId);
-    shieldRun.current += 1;
+    approvalRun.current += 1;
     wallet.current = null;
     setup.current = null;
     prepared.current = null;
@@ -1146,7 +1140,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
     setPlan(EMPTY_PLAN);
     setTicket(null);
     setSnapshot(null);
-    setShield(null);
+    setApproval(null);
     setQuote(null);
     setLive(null);
     setReadiness(null);
@@ -1202,7 +1196,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       setQuote(null);
       setLive(null);
       setReadiness(null);
-      setShield(null);
+      setApproval(null);
       setRecoveryDrill({ status: "idle" });
       passkeyVerified.current = false;
       setPhase("empty");
@@ -1258,20 +1252,20 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
         `Add at least ${formatTokenAmount(BigInt(fresh.poolFeeFri), 18)} STRK to your wallet for this action's fee`,
       );
     }
-    if (deposits.length > 0) {
-      setShield(
-        shieldStep({
-          purpose: "action",
-          tokenAddress: active.ticket.tokenAddress,
-          amountBaseUnits: "0",
-          topUpAmount: null,
-          deposits,
-        }),
+    /**
+     * These actions have nowhere to put a deposit. Funding folds one into its
+     * own withdrawal, which supplies the replay protection the pool demands;
+     * a release or a return spends a note that already has to exist. So the
+     * fee has to be private before we start, and the only honest answer is
+     * where to get it.
+     */
+    const short = deposits[0];
+    if (short !== undefined) {
+      throw new Error(
+        `Shield at least ${formatTokenAmount(BigInt(short.amountBaseUnits), short.token.decimals)} ${short.token.symbol} in your wallet — this action's fee is paid from your private balance`,
       );
-      setAction({ name: "idle" });
-      return null;
     }
-    setShield(null);
+    setApproval(null);
     setAction({ name: "wallet", label: "Approve private action" });
     return { wallet: wallet.current, account, ...active };
   }, [account, activeState, refreshBalances]);
@@ -1368,20 +1362,20 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       setQuote(null);
       setAction({ name: "preparing", label: "Checking top-up" });
       const funding = await readFundingBalances(active.ticket.tokenAddress, amountBaseUnits);
-      if (funding.deposits.length > 0) {
-        setShield(
-          shieldStep({
-            purpose: "top-up",
-            tokenAddress: active.ticket.tokenAddress,
-            amountBaseUnits,
-            topUpAmount: amount,
-            deposits: funding.deposits,
-          }),
-        );
-        setAction({ name: "idle" });
-        return;
+      const deposit = funding.deposit;
+      if (deposit !== null) {
+        const step = await approvalNeeded({
+          purpose: "top-up",
+          deposit,
+          topUpAmount: amount,
+        });
+        if (step !== null) {
+          setApproval(step);
+          setAction({ name: "idle" });
+          return;
+        }
       }
-      setShield(null);
+      setApproval(null);
       setAction({ name: "preparing", label: "Preparing private proof" });
       const next = await prepareTravelSafeV3TopUpRelay({
         wallet: readyWallet(wallet.current),
@@ -1391,6 +1385,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
         ticket: active.ticket,
         amountBaseUnits,
         devicePublicKey: deriveTravelSafeV3PublicKey(active.ticket.devicePrivateKey),
+        depositBaseUnits: deposit?.amountBaseUnits ?? "0",
         sponsorUrl: WRENCHLESS_SERVICES.sponsorUrl,
       });
       prepared.current = next;
@@ -1400,163 +1395,80 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       setError(reasonFrom(cause));
       setAction({ name: "failed", message: reasonFrom(cause), retryable: true });
     }
-  }, [account, activeState, readFundingBalances]);
+  }, [account, activeState, approvalNeeded, readFundingBalances]);
 
   /**
-   * Send the pending shield, then wait for two things in order: the deposit
-   * accepted on Starknet, and the wallet reporting a private balance that
-   * covers the action. Only then does the original preparation resume, so a
-   * proof is never built against a note that does not exist yet. A step that
-   * already holds a hash resumes the wait instead of sending a second deposit.
+   * Give the pool permission to take the deposit, then carry on.
+   *
+   * This is an ordinary public transaction and the only one the product asks
+   * the account to send. The wait afterwards watches the allowance on
+   * mainnet rather than the wallet's reply, for the same reason the shield
+   * watcher did: a reply can go missing while the transaction lands, and
+   * reading the allowance costs nobody an approval prompt.
    */
-  const shieldNow = useCallback(async (): Promise<void> => {
-    const step = shield;
+  const approveNow = useCallback(async (): Promise<void> => {
+    const step = approval;
     if (step === null) return;
-    const run = shieldRun.current + 1;
-    shieldRun.current = run;
-    const current = () => shieldRun.current === run;
+    const run = approvalRun.current + 1;
+    approvalRun.current = run;
+    const current = () => approvalRun.current === run;
     setError(null);
     try {
       if (wallet.current === null || account === null) throw new Error("Connect your wallet");
       const activeWallet = wallet.current;
       assertSelectedWalletAccount(activeWallet, account);
-      let transactionHash = step.transactionHash;
-      let sent = step.sent;
 
-      if (!sent) {
-        setAction({ name: "wallet", label: "Approve the shield in your wallet" });
-        const baseline = (await readChainBalances(activeWallet)).balances;
-        const deposits = step.deposits.map((deposit) => ({
-          token: tokenFor(deposit.tokenAddress),
-          amountBaseUnits: deposit.amountBaseUnits,
-        }));
+      const enough = async (): Promise<boolean> => {
+        const { allowanceBaseUnits } = await readErc20Allowance({
+          owner: account,
+          spender: WRENCHLESS_MAINNET.poolAddress,
+          tokenAddress: step.tokenAddress,
+          rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
+        });
+        return BigInt(allowanceBaseUnits) >= BigInt(step.amountBaseUnits);
+      };
 
-        /**
-         * Two witnesses, whichever speaks first. The wallet's reply carries a
-         * hash and is the better answer; the account's own balance falling is
-         * the answer that still arrives when the reply does not.
-         */
-        const stopped = { value: false };
-        const reply = submitShieldDeposits({
-          wallet: readyWallet(activeWallet),
-          chainId: MAINNET_CHAIN_ID,
-          deposits,
-        }).then((result) => ({
-          kind: "reply" as const,
-          transactionHash: result.transactionHash,
-        }));
-        // A reply that fails after the chain already answered must not surface
-        // as an unhandled rejection; the race below still sees it first if it
-        // is first.
-        reply.catch(() => undefined);
-        const observed = (async () => {
-          const startedAt = Date.now();
-          while (!stopped.value) {
-            await sleep(SHIELD_POLL_MILLISECONDS);
-            if (stopped.value || !current()) break;
-            const seen = await readChainBalances(activeWallet).catch(() => null);
-            if (seen !== null && shieldLeftTheWallet({
-              deposits,
-              baseline,
-              current: seen.balances,
-            })) {
-              return { kind: "observed" as const };
-            }
-            if (Date.now() - startedAt > SHIELD_WALLET_TIMEOUT_MILLISECONDS) {
-              return { kind: "timeout" as const };
-            }
-          }
-          return { kind: "stopped" as const };
-        })();
-
-        let outcome;
-        try {
-          outcome = await Promise.race([reply, observed]);
-        } finally {
-          stopped.value = true;
-        }
+      if (!step.sent) {
+        setAction({ name: "wallet", label: "Approve the amount in your wallet" });
+        const sent = await approvePoolSpending({
+          wallet: activeWallet,
+          tokenAddress: step.tokenAddress,
+          poolAddress: WRENCHLESS_MAINNET.poolAddress,
+          amountBaseUnits: step.amountBaseUnits,
+        });
         if (!current()) return;
-        if (outcome.kind === "timeout") {
+        setApproval({ ...step, transactionHash: sent.transactionHash, sent: true });
+      }
+
+      setAction({ name: "preparing", label: "Confirming the approval on Starknet" });
+      const startedAt = Date.now();
+      for (;;) {
+        if (!current()) return;
+        if (await enough()) break;
+        if (Date.now() - startedAt > APPROVAL_TIMEOUT_MILLISECONDS) {
           throw new Error(
-            "Your wallet has not answered and no deposit has appeared onchain. Try the shield again.",
+            "The approval has not appeared onchain yet. Check it again in a moment.",
           );
         }
-        if (outcome.kind === "reply") transactionHash = outcome.transactionHash;
-        sent = true;
-        setShield({ ...step, transactionHash, sent });
+        await sleep(APPROVAL_POLL_MILLISECONDS);
       }
-
-      if (transactionHash !== null) {
-        setAction({ name: "preparing", label: "Confirming the shield on Starknet" });
-        const submittedAt = Date.now();
-        for (;;) {
-          if (!current()) return;
-          const receipt = await readTransactionReceiptStatus({
-            transactionHash,
-            rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
-          });
-          if (receipt.name === "accepted") break;
-          if (receipt.name === "reverted") {
-            setShield({ ...step, transactionHash: null, sent: false });
-            throw new Error(`The shield was rejected on Starknet: ${receipt.reason}`);
-          }
-          if (Date.now() - submittedAt > SHIELD_RECEIPT_TIMEOUT_MILLISECONDS) {
-            throw new Error("The shield is still confirming. Check it again in a moment.");
-          }
-          await sleep(SHIELD_POLL_MILLISECONDS);
-        }
-      }
-
-      /**
-       * Exactly one read of the private balance, and only once the deposit is
-       * already accepted.
-       *
-       * Asking the wallet for private balances opens an approval prompt, so
-       * this can never be a poll — an earlier version checked every four
-       * seconds and buried people under dozens of them. If the note has not
-       * surfaced yet, the person presses again and pays one prompt for it.
-       */
-      setAction({ name: "preparing", label: "Checking your private balance" });
-      const fresh = await refreshBalances(activeWallet);
       if (!current()) return;
-      const remaining = shieldShortfalls({
-        tokenAddress: step.tokenAddress,
-        amountBaseUnits: step.amountBaseUnits,
-        poolFeeFri: fresh.poolFeeFri,
-        balances: fresh.balances,
-      });
-      if (remaining.length > 0) {
-        throw new Error(
-          fresh.shieldedError ??
-            "The deposit is confirmed onchain. Your wallet has not shown the private note yet — press Check the shield again in a moment.",
-        );
-      }
-      setShield(null);
+      setApproval(null);
       if (step.purpose === "fund") {
         await prepareFund();
         return;
       }
-      if (step.purpose === "top-up") {
-        await prepareTopUp(step.topUpAmount ?? "");
-        return;
-      }
-      // A direct action carries no prepared work to resume — the fee is
-      // simply private now, and the button that asked for it will go through.
-      setAction({
-        name: "confirmed",
-        transactionHash,
-        label: "The action fee is private now",
-      });
+      await prepareTopUp(step.topUpAmount ?? "");
     } catch (cause) {
       if (!current()) return;
       setError(reasonFrom(cause));
       setAction({ name: "failed", message: reasonFrom(cause), retryable: true });
     }
-  }, [account, prepareFund, prepareTopUp, readChainBalances, refreshBalances, shield]);
+  }, [account, approval, prepareFund, prepareTopUp]);
 
-  const dismissShield = useCallback((): void => {
-    shieldRun.current += 1;
-    setShield(null);
+  const dismissApproval = useCallback((): void => {
+    approvalRun.current += 1;
+    setApproval(null);
     setError(null);
     setAction({ name: "idle" });
   }, []);
@@ -1755,7 +1667,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       snapshot,
       nextReleaseAt,
       readiness,
-      shield,
+      approval,
       recoveryDrill,
       action,
       recoveryWords,
@@ -1865,8 +1777,8 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       },
       confirmRecoveryWords,
       prepareFund,
-      shieldNow,
-      dismissShield,
+      approveNow,
+      dismissApproval,
       cancelPreparation,
       discardUnfundedSafe,
       submitFund,

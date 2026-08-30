@@ -65,6 +65,7 @@ export type {
   RefillWithdrawAction,
   InvokeServerAction,
   ParsedServerActions,
+  TransferFromServerAction,
   TransferToServerAction,
   SubmitRefillClaimInput,
   SubmitRefillRefundInput,

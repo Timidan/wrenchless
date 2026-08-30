@@ -10,6 +10,12 @@ export type TravelSafeV3RelayArtifact = {
   stateId: string;
   tokenAddress: string;
   amountBaseUnits: string;
+  /**
+   * Ordinary funds moved into the pool inside this same transaction, so the
+   * whole thing is one approval and one broadcast. "0" when the private
+   * balance already covers the operation.
+   */
+  depositBaseUnits: string;
   createdAt: string;
   call: {
     contractAddress: string;

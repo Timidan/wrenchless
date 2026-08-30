@@ -54,6 +54,20 @@ const RETURN_TYPES: TypedData["types"] = {
   ],
 };
 
+/**
+ * Moving ordinary funds into the pool as part of a larger action.
+ *
+ * A deposit is never sent on its own: it compiles to a TransferFrom and a
+ * Deposit event, neither of which carries a nullifier or a random, so a bundle
+ * containing nothing else is refused by the pool as NO_REPLAY_PROTECTION. It
+ * rides along with the withdrawal that funds a Safe, which supplies both.
+ */
+export type TravelSafeV3DepositAction = {
+  type: "deposit";
+  token: string;
+  amount: string;
+};
+
 export type TravelSafeV3TransferAction = {
   type: "transfer";
   token: string;
@@ -75,6 +89,7 @@ export type TravelSafeV3InvokeAction = {
 };
 
 export type TravelSafeV3Action =
+  | TravelSafeV3DepositAction
   | TravelSafeV3TransferAction
   | TravelSafeV3WithdrawAction
   | TravelSafeV3InvokeAction;
@@ -301,6 +316,8 @@ export function buildTravelSafeV3FundActions(input: {
   dailyAmount: string;
   firstReleaseAt: string;
   returnAt: string;
+  /** Ordinary funds to move into the pool first. "0" or absent for none. */
+  depositAmount?: string;
 }): TravelSafeV3Action[] {
   const helper = nonZeroFelt(input.helperAddress, "helper address");
   const token = nonZeroFelt(input.tokenAddress, "token");
@@ -322,7 +339,11 @@ export function buildTravelSafeV3FundActions(input: {
     throw new Error("single-return Safes release only on the return date");
   }
 
+  const deposit = integer(input.depositAmount ?? "0", U128_MAX, "deposit amount");
   return [
+    ...(BigInt(deposit) > 0n
+      ? [{ type: "deposit" as const, token, amount: deposit }]
+      : []),
     { type: "withdraw", token, amount, recipient: helper },
     {
       type: "invoke",
@@ -387,11 +408,17 @@ export function buildTravelSafeV3TopUpActions(input: {
   nonce: string;
   devicePublicKey: string;
   signature: TravelSafeV3Signature;
+  /** Ordinary funds to move into the pool first. "0" or absent for none. */
+  depositAmount?: string;
 }): TravelSafeV3Action[] {
   const token = nonZeroFelt(input.tokenAddress, "token");
   const helper = nonZeroFelt(input.helperAddress, "helper address");
   const amount = nonZeroAmount(input.amount);
+  const deposit = integer(input.depositAmount ?? "0", U128_MAX, "deposit amount");
   return [
+    ...(BigInt(deposit) > 0n
+      ? [{ type: "deposit" as const, token, amount: deposit }]
+      : []),
     { type: "withdraw", token, amount, recipient: helper },
     {
       type: "invoke",

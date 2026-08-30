@@ -20,37 +20,29 @@ export type SafeAssetView = {
   publicAvailable: boolean;
 };
 
-export type SafeShieldDeposit = {
+/**
+ * The one ordinary, public transaction the product asks for.
+ *
+ * Shielding now rides inside the funding transaction, as an ERC-20
+ * `transferFrom` the pool performs — a deposit cannot be sent on its own,
+ * because the pool refuses a bundle with no nullifier and no random as
+ * NO_REPLAY_PROTECTION. What the pool still needs is permission to take the
+ * money, and only the account can give that.
+ */
+export type SafeApprovalStep = {
+  purpose: "fund" | "top-up";
   symbol: "STRK" | "USDC";
   tokenAddress: string;
-  decimals: 18 | 6;
+  /** Exactly what the pool is being allowed to take, formatted. */
   amount: string;
   amountBaseUnits: string;
   /** The part being parked or added, formatted; "0" when none of it is. */
   towardAmount: string;
   /** The part that is the action fee, formatted; "0" when none of it is. */
   towardReserve: string;
-};
-
-/**
- * The wallet-signed shield that must land before a FUND or TOP_UP can be
- * proven: ordinary balances moving into the private pool, one deposit per
- * token that falls short. `transactionHash` is set once the wallet has sent
- * it, so a retry waits on that transaction instead of asking for a second.
- */
-export type SafeShieldStep = {
-  purpose: "fund" | "top-up" | "action";
-  tokenAddress: string;
-  amountBaseUnits: string;
   topUpAmount: string | null;
-  deposits: readonly SafeShieldDeposit[];
   transactionHash: string | null;
-  /**
-   * The deposit has left the wallet — proved either by the wallet's reply or
-   * by the account's own balance falling on mainnet. Once true the step never
-   * sends again; pressing it only checks. A wallet that goes quiet after the
-   * user approves must not cost them a second deposit.
-   */
+  /** Sent by reply or by an allowance that has already appeared onchain. */
   sent: boolean;
 };
 
@@ -115,7 +107,7 @@ export type TravelSafeV3Model = {
   snapshot: TravelSafeV3Snapshot | null;
   nextReleaseAt: string | null;
   readiness: SafeReadiness | null;
-  shield: SafeShieldStep | null;
+  approval: SafeApprovalStep | null;
   recoveryDrill: SafeRecoveryDrill;
   action: SafeActionState;
   recoveryWords: string | null;
@@ -144,8 +136,9 @@ export type TravelSafeV3Actions = {
   setRecoveryWords(words: string): void;
   confirmRecoveryWords(): Promise<void>;
   prepareFund(): Promise<void>;
-  shieldNow(): Promise<void>;
-  dismissShield(): void;
+  /** Send the approval, wait for it, then carry on with what was interrupted. */
+  approveNow(): Promise<void>;
+  dismissApproval(): void;
   /** Stop waiting on a proof that has not come back. Nothing was sent. */
   cancelPreparation(): void;
   /** Abandon a planned but never funded Safe. Local state only. */

@@ -207,6 +207,13 @@ export type InvokeServerAction = {
   calldata: bigint[];
 };
 
+export type TransferFromServerAction = {
+  actionIndex: number;
+  from: bigint;
+  token: bigint;
+  amount: bigint;
+};
+
 export type TransferToServerAction = {
   actionIndex: number;
   recipient: bigint;
@@ -218,6 +225,7 @@ export type ParsedServerActions = {
   actionCount: number;
   discriminants: bigint[];
   invokes: InvokeServerAction[];
+  transfersFrom: TransferFromServerAction[];
   transfersTo: TransferToServerAction[];
   screening: "None" | "Some";
 };
@@ -314,6 +322,7 @@ function readServerActions(
   const reader = new FeltReader(calldata);
   const actionCount = reader.readCount("server action count");
   const invokes: InvokeServerAction[] = [];
+  const transfersFrom: TransferFromServerAction[] = [];
   const transfersTo: TransferToServerAction[] = [];
   const discriminants: bigint[] = [];
 
@@ -329,6 +338,13 @@ function readServerActions(
         reader.skip(4, `server action ${index} append value`);
         break;
       case 2n:
+        transfersFrom.push({
+          actionIndex: index,
+          from: reader.read(`server action ${index} deposit source`),
+          token: reader.read(`server action ${index} deposit token`),
+          amount: reader.read(`server action ${index} deposit amount`),
+        });
+        break;
       case 6n:
         reader.skip(3, `server action ${index} value`);
         break;
@@ -370,7 +386,14 @@ function readServerActions(
   }
 
   if (!reader.hasRemaining() && allowMissingScreening) {
-    return { actionCount, discriminants, invokes, screening: "None", transfersTo };
+    return {
+      actionCount,
+      discriminants,
+      invokes,
+      screening: "None",
+      transfersFrom,
+      transfersTo,
+    };
   }
 
   const screeningDiscriminant = reader.read("screening option");
@@ -384,7 +407,7 @@ function readServerActions(
     throw new Error("invalid screening option");
   }
   reader.assertFinished();
-  return { actionCount, discriminants, invokes, screening, transfersTo };
+  return { actionCount, discriminants, invokes, screening, transfersFrom, transfersTo };
 }
 
 function buildFundActions(

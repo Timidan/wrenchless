@@ -42,6 +42,18 @@ const commonArtifact = {
   stateId: nonZeroFeltSchema,
   tokenAddress: nonZeroFeltSchema,
   amountBaseUnits: decimal(U128_MAX, true),
+  /**
+   * Ordinary funds the same transaction moves into the pool before spending
+   * them. A deposit cannot travel on its own — it compiles to a TransferFrom
+   * and an event, neither carrying a nullifier or a random, and the pool
+   * refuses such a bundle as NO_REPLAY_PROTECTION — so it rides with the
+   * withdrawal that funds the Safe. "0" when none is needed.
+   *
+   * Defaulted rather than required so a browser still running the previous
+   * bundle keeps working across the deploy: an artifact without the field is
+   * an artifact with no deposit, which is exactly the old behaviour.
+   */
+  depositBaseUnits: decimal(U128_MAX).default("0"),
   createdAt: z.iso.datetime(),
   call: callSchema,
   proof: z.string().trim().min(1),
@@ -114,22 +126,43 @@ function assertPreparedActions(artifact: TravelSafeV3RelayArtifact): void {
     artifact.operation === "FUND" ? "FUND" : "TOP_UP",
   );
   const actions = readPreparedServerActions(value, artifact.poolAddress);
+  const deposits = BigInt(artifact.depositBaseUnits) > 0n ? 1 : 0;
   if (
-    (actions.actionCount !== 2 && actions.actionCount !== 3) ||
     actions.screening !== "None" ||
     actions.transfersTo.length !== 1 ||
-    actions.invokes.length !== 1
+    actions.invokes.length !== 1 ||
+    actions.transfersFrom.length !== deposits
   ) {
     throw new Error("prepared action must contain one withdrawal and one helper invoke");
   }
-  const expectedDiscriminants =
-    actions.actionCount === 2 ? [3n, 10n] : [3n, 5n, 10n];
-  if (
-    actions.discriminants.some(
-      (value, index) => value !== expectedDiscriminants[index],
-    )
-  ) {
+  /**
+   * A deposit compiles to a TransferFrom and a Deposit event ahead of the
+   * withdrawal, so the accepted shapes double rather than change: the
+   * withdrawal and the helper invoke still have to be exactly one each, in
+   * that order, and nothing else may appear.
+   */
+  const withdrawalSequences = [
+    [3n, 10n],
+    [3n, 5n, 10n],
+  ];
+  const accepted = withdrawalSequences.map((sequence) =>
+    deposits === 1 ? [2n, 6n, ...sequence] : sequence,
+  );
+  const matches = accepted.some(
+    (sequence) =>
+      sequence.length === actions.discriminants.length &&
+      sequence.every((value, index) => actions.discriminants[index] === value),
+  );
+  if (!matches) {
     throw new Error("prepared action contains an unexpected server action");
+  }
+  if (deposits === 1) {
+    const deposited = actions.transfersFrom[0]!;
+    same(deposited.token, artifact.tokenAddress, "deposit token");
+    same(deposited.amount, artifact.depositBaseUnits, "deposit amount");
+    if (BigInt(deposited.amount) > BigInt(artifact.amountBaseUnits)) {
+      throw new Error("deposit exceeds the amount being funded");
+    }
   }
   const withdrawal = actions.transfersTo[0]!;
   const invoke = actions.invokes[0]!;

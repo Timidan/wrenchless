@@ -1,11 +1,14 @@
-import { jsonValueSchema } from "@wrenchless/canary-core";
+import {
+  deriveTravelSafeV3PublicKey,
+  generateTravelSafeV3PrivateKey,
+  jsonValueSchema,
+} from "@wrenchless/canary-core";
 import { describe, expect, it } from "vitest";
 
 import {
-  submitShieldDeposits,
+  submitTravelSafeExtend,
   type ReadyTravelSafeV3Wallet,
 } from "./ready-travel-safe-v3";
-import { TRAVEL_SAFE_TOKENS } from "./travel-safe-tokens";
 
 /**
  * The wallet API returns a `PADDED_TXN_HASH`: 64 hex characters with the
@@ -25,18 +28,34 @@ function walletReturning(transactionHash: string): ReadyTravelSafeV3Wallet {
   };
 }
 
-const MAINNET = "0x534e5f4d41494e";
-const deposits = [{ token: TRAVEL_SAFE_TOKENS[0], amountBaseUnits: "1000" }];
+const devicePrivateKey = generateTravelSafeV3PrivateKey();
+const state = {
+  chainId: "0x534e5f4d41494e",
+  helperAddress: "0x43d60a5bf9cd864d9d5bb1d86d48a3268d32c3a004db64962b03215d3fdb2ed",
+  stateId: "0x400",
+  nonce: "0",
+  tokenAddress: "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+  remainingAmount: "1000",
+  firstReleaseAt: "2000",
+  returnAt: "3000",
+} as const;
+
+async function extendWith(transactionHash: string): Promise<string> {
+  const result = await submitTravelSafeExtend({
+    wallet: walletReturning(transactionHash),
+    state,
+    newReturnAt: "4000",
+    devicePrivateKey,
+    devicePublicKey: deriveTravelSafeV3PublicKey(devicePrivateKey),
+  });
+  return result.transactionHash;
+}
 
 describe("Transaction hashes leaving the wallet", () => {
   it("canonicalises a padded hash so the ticket store accepts it", async () => {
     const padded =
       "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-    const { transactionHash } = await submitShieldDeposits({
-      wallet: walletReturning(padded),
-      chainId: MAINNET,
-      deposits,
-    });
+    const transactionHash = await extendWith(padded);
     expect(transactionHash).toBe(
       "0x123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     );
@@ -46,21 +65,12 @@ describe("Transaction hashes leaving the wallet", () => {
   });
 
   it("lower-cases a hash the wallet returned in upper case", async () => {
-    const { transactionHash } = await submitShieldDeposits({
-      wallet: walletReturning("0x00ABCDEF"),
-      chainId: MAINNET,
-      deposits,
-    });
-    expect(transactionHash).toBe("0xabcdef");
+    expect(await extendWith("0x00ABCDEF")).toBe("0xabcdef");
   });
 
   it("refuses a zero hash rather than recording one", async () => {
-    await expect(
-      submitShieldDeposits({
-        wallet: walletReturning("0x0000000000000000000000000000000000000000"),
-        chainId: MAINNET,
-        deposits,
-      }),
-    ).rejects.toThrow("invalid transaction");
+    await expect(extendWith("0x0000000000000000000000000000000000000000")).rejects.toThrow(
+      "invalid transaction",
+    );
   });
 });

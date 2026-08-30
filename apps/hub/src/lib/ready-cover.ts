@@ -328,3 +328,63 @@ export async function readPublicBalances(input: {
     };
   });
 }
+
+const ALLOWANCE_SELECTOR =
+  "0x1e888a1026b19c8c0b57c72d63ed1737106aa10034105b980ba117bd0c29fe1";
+
+/**
+ * How much of a token the account has already allowed the privacy pool to
+ * take.
+ *
+ * Funding shields ordinary funds inside the same transaction the relay
+ * broadcasts, and that is an ERC-20 `transferFrom` performed by the pool, so
+ * it moves nothing without a standing allowance. Reading it first is what
+ * keeps the flow from asking for an approval somebody has already given.
+ */
+export async function readErc20Allowance(input: {
+  owner: string;
+  spender: string;
+  tokenAddress: string;
+  rpcUrl?: string;
+  fetcher?: typeof fetch;
+}): Promise<{ allowanceBaseUnits: string }> {
+  const fetcher = input.fetcher ?? fetch;
+  const response = await fetcher(input.rpcUrl ?? MAINNET_RPC, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    signal: AbortSignal.timeout(RPC_TIMEOUT_MILLISECONDS),
+    body: JSON.stringify({
+      id: 1,
+      jsonrpc: "2.0",
+      method: "starknet_call",
+      params: {
+        block_id: "latest",
+        request: {
+          calldata: [
+            canonicalFelt(input.owner, "account"),
+            canonicalFelt(input.spender, "privacy pool"),
+          ],
+          contract_address: canonicalFelt(input.tokenAddress, "token address"),
+          entry_point_selector: ALLOWANCE_SELECTOR,
+        },
+      },
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Mainnet allowance read returned HTTP ${response.status}`);
+  }
+  const body = rpcResponseSchema.parse(await response.json());
+  if ("error" in body) {
+    throw new Error(`Could not read the token allowance: ${body.error.message}`);
+  }
+  const [low, high] = body.result;
+  if (body.result.length !== 2 || low === undefined || high === undefined) {
+    throw new Error("The allowance read returned an unexpected shape");
+  }
+  const lowValue = BigInt(low);
+  const highValue = BigInt(high);
+  if (lowValue < 0n || lowValue > U128_MAX || highValue < 0n || highValue > U128_MAX) {
+    throw new Error("The allowance read returned an invalid amount");
+  }
+  return { allowanceBaseUnits: ((highValue << 128n) + lowValue).toString() };
+}

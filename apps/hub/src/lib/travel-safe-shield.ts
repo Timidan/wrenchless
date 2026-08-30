@@ -23,16 +23,10 @@ export type ShieldableBalance = {
  * they already made. It is the action fee, and it is a different thing from
  * the money being parked.
  */
-export type ShieldAmount = {
+/** A shortfall to be shielded, with the reason it exists attached. */
+export type ShieldDeposit = {
   token: TravelSafeToken;
   amountBaseUnits: string;
-};
-
-/**
- * A deposit with its reason attached. Sending one needs only `ShieldAmount`;
- * explaining one to a person needs the split.
- */
-export type ShieldDeposit = ShieldAmount & {
   /** The part that is the amount being parked or added. */
   towardAmountBaseUnits: string;
   /** The part that is the action fee, which stays private afterwards. */
@@ -116,56 +110,4 @@ export function planShieldDeposits(input: ShieldRequirement): readonly ShieldDep
     }
   }
   return shortfalls;
-}
-
-/** The STRK20 actions for one wallet-signed shield of these deposits. */
-export function buildShieldActions(
-  deposits: readonly ShieldAmount[],
-): { type: "deposit"; token: string; amount: string }[] {
-  if (deposits.length === 0) throw new Error("Nothing needs shielding");
-  return deposits.map((deposit) => {
-    const amount = BigInt(deposit.amountBaseUnits);
-    if (amount <= 0n) throw new Error("Shield amounts must be positive");
-    return {
-      type: "deposit",
-      token: `0x${BigInt(deposit.token.address).toString(16)}`,
-      amount: `0x${amount.toString(16)}`,
-    };
-  });
-}
-
-/**
- * Whether the deposits have already left the account, judged from mainnet
- * rather than from the wallet.
- *
- * A wallet's reply to `wallet_strk20InvokeTransaction` can go missing — the
- * proof takes a long time, the popup is dismissed, the mobile app returns
- * without answering — and a flow that waits only for that reply waits forever
- * for a transaction that already landed. The account's ordinary balance is an
- * independent witness: one shield moves every deposit in a single transaction,
- * so when each token has fallen by at least what was deposited, it happened.
- *
- * Every token must agree. A single token falling on its own is somebody
- * spending, not this shield.
- */
-export function shieldLeftTheWallet(input: {
-  deposits: readonly ShieldAmount[];
-  baseline: readonly ShieldableBalance[];
-  current: readonly ShieldableBalance[];
-}): boolean {
-  if (input.deposits.length === 0) return false;
-  return input.deposits.every((deposit) => {
-    const before = input.baseline.find((entry) =>
-      sameToken(entry.token.address, deposit.token.address),
-    );
-    const after = input.current.find((entry) =>
-      sameToken(entry.token.address, deposit.token.address),
-    );
-    // An unreadable balance is not evidence in either direction.
-    if (before === undefined || after === undefined) return false;
-    if (!before.publicAvailable || !after.publicAvailable) return false;
-    const spent =
-      BigInt(before.publicBalanceBaseUnits) - BigInt(after.publicBalanceBaseUnits);
-    return spent >= BigInt(deposit.amountBaseUnits);
-  });
 }

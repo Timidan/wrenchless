@@ -48,7 +48,7 @@ import type {
   SafeActionState,
   SafeAssetView,
   SafeReadinessCheck,
-  SafeShieldStep,
+  SafeApprovalStep,
   SafeV3Phase,
   TravelSafeV3Actions,
   TravelSafeV3Model,
@@ -462,7 +462,7 @@ function PlanScreen(props: {
           {!asset.available
             ? `${asset.symbol} is temporarily unavailable from your wallet.`
             : asset.hasPublicBalance
-              ? `${asset.shieldedBalance} ${asset.symbol} private and ${asset.publicBalance} ${asset.symbol} still in your wallet, plus ${asset.returnFeeStrk} STRK reserved for the return. Anything parked from the wallet is shielded first, with your approval.`
+              ? `${asset.shieldedBalance} ${asset.symbol} private and ${asset.publicBalance} ${asset.symbol} still in your wallet, plus ${asset.returnFeeStrk} STRK reserved for the return. Anything parked from the wallet moves into your private balance inside the funding transaction, after one approval.`
               : `${asset.shieldedBalance} ${asset.symbol} private now, plus ${asset.returnFeeStrk} STRK reserved for the return.`}
         </Note>
       )}
@@ -665,83 +665,62 @@ function RecoveryScreen(props: {
 }
 
 /**
- * The one step that asks the account itself to send something: ordinary
- * balances moving into the private pool before a FUND or TOP_UP can be
- * proven. It shows exactly what will move, lets the wallet do the asking,
- * and keeps the hash in view once there is one so a retry waits on that
- * transaction rather than sending another.
+ * The one ordinary, public transaction the product asks for.
+ *
+ * Shielding used to be its own transaction, and it could never have worked: a
+ * bundle holding nothing but a deposit carries no nullifier and no random, and
+ * the pool refuses it as NO_REPLAY_PROTECTION. The deposit now rides inside
+ * the funding transaction, where the withdrawal supplies both — which leaves
+ * only the permission to take the money, and only the account can give that.
+ *
+ * The amount is exact. An allowance that outlives the transaction it was for
+ * is a standing permission nobody asked to keep.
  */
-function ShieldStep(props: {
-  shield: SafeShieldStep;
+function ApprovalStep(props: {
+  approval: SafeApprovalStep;
   model: TravelSafeV3Model;
   actions: TravelSafeV3Actions;
 }): JSX.Element {
-  const { actions, model, shield } = props;
+  const { actions, approval, model } = props;
   const busy = safeActionBusy(model.action);
-  const sent = shield.sent;
-  /**
-   * The whole shield is the action fee — nothing of the parked amount is
-   * missing. This is the case that reads as a mistake, so it is named.
-   */
-  const reserveOnly = shield.deposits.filter(
-    (deposit) => deposit.towardAmount === "0" && deposit.towardReserve !== "0",
-  );
-  const feeOnly =
-    reserveOnly.length === shield.deposits.length && reserveOnly[0] !== undefined
-      ? `${reserveOnly[0].towardReserve} ${reserveOnly[0].symbol}`
-      : null;
+  const sent = approval.sent;
   return (
     <>
       <Facts>
-        {shield.deposits.map((deposit) => (
-          <Fact
-            key={deposit.tokenAddress}
-            label="Shield first"
-            strong
-            value={<SafeAmount symbol={deposit.symbol} value={deposit.amount} />}
-          />
-        ))}
+        <Fact
+          label="Allow the pool to take"
+          strong
+          value={<SafeAmount symbol={approval.symbol} value={approval.amount} />}
+        />
         {/* A total on its own is unexplainable: somebody holding exactly the
             ten STRK they mean to park is still asked for six more, and without
             this the six reads as a deposit the app has lost track of. */}
-        {shield.deposits.map((deposit) =>
-          deposit.towardAmount === "0" || deposit.towardReserve === "0" ? null : (
-            <Fact
-              key={`${deposit.tokenAddress}-split`}
-              label="Of which"
-              value={`${deposit.towardAmount} to park, ${deposit.towardReserve} action fee`}
-            />
-          ),
+        {approval.towardAmount === "0" || approval.towardReserve === "0" ? null : (
+          <Fact
+            label="Of which"
+            value={`${approval.towardAmount} to park, ${approval.towardReserve} action fee`}
+          />
         )}
       </Facts>
-      {feeOnly === null ? null : (
+      {approval.towardAmount !== "0" ? null : (
         <Note>
-          You already hold what you are parking. The {feeOnly} is the pool's
-          action fee, which has to be private and has to still be there
-          afterwards — it is what pays to release the money or bring it home.
+          You already hold what you are parking. The {approval.amount}{" "}
+          {approval.symbol} is the pool&apos;s action fee, which has to be
+          private and has to still be there afterwards — it is what pays to
+          release the money or bring it home.
         </Note>
       )}
       <Note>
         {sent
-          ? shield.purpose === "action"
-            ? "The shield is on its way. This action goes through once your wallet holds the private note."
-            : "The shield is on its way. The exact fee follows once your wallet holds the private note."
-          : shield.purpose === "action"
-            ? "This action's fee is paid from your private balance, and there is not enough there yet. This moves the amount above across; your wallet asks you to approve it and pays its own network fee."
-            : "This moves the amount above from your wallet into your private balance. Your wallet asks you to approve it and pays its own network fee; the exact Safe fee follows after."}
+          ? "The approval is on its way. The exact fee follows once it is onchain."
+          : `This is an ordinary Starknet transaction and the only one you send yourself: it lets the privacy pool take exactly ${approval.amount} ${approval.symbol}, and nothing more. The money moves into your private balance inside the funding transaction itself, so there is no separate shield and nothing to wait for afterwards.`}
       </Note>
-      {busy && !sent ? (
-        <Note>
-          If your wallet has already sent it, Wrenchless picks that up from
-          Starknet on its own — approving a second time is never needed.
-        </Note>
-      ) : null}
       <SafeStatus action={model.action} error={model.error} />
-      {shield.transactionHash === null ? null : (
+      {approval.transactionHash === null ? null : (
         <TransactionRef
-          hash={shortHex(shield.transactionHash)}
-          href={`${EXPLORER_BASE}${shield.transactionHash}`}
-          label="Shield"
+          hash={shortHex(approval.transactionHash)}
+          href={`${EXPLORER_BASE}${approval.transactionHash}`}
+          label="Approval"
         />
       )}
       <Actions>
@@ -749,16 +728,16 @@ function ShieldStep(props: {
           disabled={busy}
           icon={<ShieldCheckIcon />}
           iconMotion={busy ? "guard" : undefined}
-          label={sent ? "Check the shield" : "Shield in wallet"}
+          label={sent ? "Check the approval" : "Approve in wallet"}
           onClick={() => {
-            void actions.shieldNow();
+            void actions.approveNow();
           }}
         />
         {/* Never disabled. A wallet that goes quiet must not be able to trap
             somebody on this screen with both controls greyed out. */}
         <Button
           label={busy ? "Stop waiting" : "Not now"}
-          onClick={actions.dismissShield}
+          onClick={actions.dismissApproval}
           tone="quiet"
         />
       </Actions>
@@ -792,7 +771,7 @@ function ReviewScreen(props: {
    * place rather than behind a button that could only fail.
    */
   const connected = model.walletAccount !== null;
-  const shield = model.shield?.purpose === "fund" ? model.shield : null;
+  const approval = model.approval?.purpose === "fund" ? model.approval : null;
   const missingWords = needsRecoveryWords && recoveryInput.trim() === "";
   return (
     <Screen lede="Check the plan before the exact fee." title="Review">
@@ -860,8 +839,8 @@ function ReviewScreen(props: {
       {connected ? null : (
         <Note>Connect the wallet that funds this allowance to price it.</Note>
       )}
-      {shield !== null && connected ? (
-        <ShieldStep actions={actions} model={model} shield={shield} />
+      {approval !== null && connected ? (
+        <ApprovalStep actions={actions} approval={approval} model={model} />
       ) : (
         <>
           <SafeStatus action={model.action} error={model.error} />
@@ -910,9 +889,9 @@ function ReviewScreen(props: {
         </>
       )}
       <Note>
-        {shield === null
-          ? "Nothing broadcasts until you confirm the fee, unless part of the amount is still in your wallet — then the shield goes first, with your approval."
-          : "Only the shield broadcasts now, and only after you approve it in your wallet."}
+        {approval === null
+          ? "Nothing broadcasts until you confirm the fee, unless part of the amount is still in your wallet — then one approval goes first."
+          : "Only the approval broadcasts now, and only after you send it from your wallet."}
       </Note>
       {/* This Safe exists on this device and nowhere else until it is funded,
           so abandoning it costs nothing and strands nothing. Without it a
@@ -1067,7 +1046,6 @@ function ActiveHome(props: {
     );
   }
 
-  const shield = model.shield?.purpose === "action" ? model.shield : null;
   const busy = safeActionBusy(model.action);
   const canReturnNow =
     model.snapshot !== null &&
@@ -1117,26 +1095,20 @@ function ActiveHome(props: {
           returnDateSeconds={state.returnAt}
         />
       )}
-      {shield === null ? (
-        <>
-          <SafeStatus action={model.action} error={model.error} />
-          <Actions>
-            <Button
-              disabled={busy || BigInt(state.claimableAmount) <= 0n}
-              icon={<ArrowDownLeftIcon />}
-              iconMotion={busy ? "spin" : undefined}
-              label="Release available"
-              onClick={() => {
-                void actions.releaseAvailable();
-              }}
-            />
-          </Actions>
-        </>
-      ) : (
-        <ShieldStep actions={actions} model={model} shield={shield} />
-      )}
+      <SafeStatus action={model.action} error={model.error} />
+      <Actions>
+        <Button
+          disabled={busy || BigInt(state.claimableAmount) <= 0n}
+          icon={<ArrowDownLeftIcon />}
+          iconMotion={busy ? "spin" : undefined}
+          label="Release available"
+          onClick={() => {
+            void actions.releaseAvailable();
+          }}
+        />
+      </Actions>
 
-      <div className="wshelf" hidden={shield !== null}>
+      <div className="wshelf">
         <Actions>
           <Button
             disabled={busy}
@@ -1203,12 +1175,12 @@ function TopUpSubview(props: {
   const busy = safeActionBusy(model.action);
   const showQuote = attempted && model.quote !== null;
   const locked = busy || model.action.name === "confirmed";
-  const shield = model.shield?.purpose === "top-up" ? model.shield : null;
+  const approval = model.approval?.purpose === "top-up" ? model.approval : null;
 
   return (
     <Screen lede="Add more without changing the schedule." onBack={props.onBack} title="Top up">
-      {shield !== null ? (
-        <ShieldStep actions={actions} model={model} shield={shield} />
+      {approval !== null ? (
+        <ApprovalStep actions={actions} approval={approval} model={model} />
       ) : !showQuote ? (
         <>
           <div className="wform">
