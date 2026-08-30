@@ -19,7 +19,7 @@ import {
 } from "@wrenchless/canary-core";
 import { z } from "zod";
 
-import { buildShieldActions, type ShieldDeposit } from "./travel-safe-shield";
+import { buildShieldActions, type ShieldAmount } from "./travel-safe-shield";
 
 const READY_WALLET_API_VERSION = "0.10.3";
 const MAINNET_CHAIN_ID = "0x534e5f4d41494e";
@@ -416,7 +416,7 @@ export async function submitTravelSafeV3Refund(input: {
 export async function submitShieldDeposits(input: {
   wallet: ReadyTravelSafeV3Wallet;
   chainId: string;
-  deposits: readonly ShieldDeposit[];
+  deposits: readonly ShieldAmount[];
 }): Promise<{ transactionHash: string }> {
   assertMainnet(input.chainId);
   const actions = buildShieldActions(input.deposits);

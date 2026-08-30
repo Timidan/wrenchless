@@ -56,7 +56,9 @@ describe("Shield planning", () => {
         poolFeeFri: "10",
         balances: balances({ strkShielded: "30", strkPublic: "500" }),
       }),
-    ).toEqual([{ token: STRK, amountBaseUnits: "80" }]);
+    ).toEqual([
+      { token: STRK, amountBaseUnits: "80", towardAmountBaseUnits: "70", towardReserveBaseUnits: "10" },
+    ]);
   });
 
   it("shields the STRK reserve alongside a USDC deposit", () => {
@@ -73,8 +75,8 @@ describe("Shield planning", () => {
         }),
       }),
     ).toEqual([
-      { token: STRK, amountBaseUnits: "6" },
-      { token: USDC, amountBaseUnits: "1500" },
+      { token: STRK, amountBaseUnits: "6", towardAmountBaseUnits: "0", towardReserveBaseUnits: "6" },
+      { token: USDC, amountBaseUnits: "1500", towardAmountBaseUnits: "1500", towardReserveBaseUnits: "0" },
     ]);
   });
 
@@ -86,7 +88,9 @@ describe("Shield planning", () => {
         poolFeeFri: "1",
         balances: balances({ strkShielded: "999", strkShieldedAvailable: false }),
       }),
-    ).toEqual([{ token: STRK, amountBaseUnits: "6" }]);
+    ).toEqual([
+      { token: STRK, amountBaseUnits: "6", towardAmountBaseUnits: "5", towardReserveBaseUnits: "1" },
+    ]);
   });
 
   it("refuses when the ordinary balance cannot cover the shortfall", () => {
@@ -113,7 +117,9 @@ describe("Shield planning", () => {
         poolFeeFri: "10",
         balances: balances({ strkShielded: "4", strkPublic: "50", usdcShielded: "999" }),
       }),
-    ).toEqual([{ token: STRK, amountBaseUnits: "6" }]);
+    ).toEqual([
+      { token: STRK, amountBaseUnits: "6", towardAmountBaseUnits: "0", towardReserveBaseUnits: "6" },
+    ]);
     expect(
       planShieldDeposits({
         tokenAddress: USDC.address,

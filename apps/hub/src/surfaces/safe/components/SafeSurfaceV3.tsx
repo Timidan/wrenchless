@@ -679,6 +679,17 @@ function ShieldStep(props: {
   const { actions, model, shield } = props;
   const busy = safeActionBusy(model.action);
   const sent = shield.sent;
+  /**
+   * The whole shield is the action fee — nothing of the parked amount is
+   * missing. This is the case that reads as a mistake, so it is named.
+   */
+  const reserveOnly = shield.deposits.filter(
+    (deposit) => deposit.towardAmount === "0" && deposit.towardReserve !== "0",
+  );
+  const feeOnly =
+    reserveOnly.length === shield.deposits.length && reserveOnly[0] !== undefined
+      ? `${reserveOnly[0].towardReserve} ${reserveOnly[0].symbol}`
+      : null;
   return (
     <>
       <Facts>
@@ -690,7 +701,26 @@ function ShieldStep(props: {
             value={<SafeAmount symbol={deposit.symbol} value={deposit.amount} />}
           />
         ))}
+        {/* A total on its own is unexplainable: somebody holding exactly the
+            ten STRK they mean to park is still asked for six more, and without
+            this the six reads as a deposit the app has lost track of. */}
+        {shield.deposits.map((deposit) =>
+          deposit.towardAmount === "0" || deposit.towardReserve === "0" ? null : (
+            <Fact
+              key={`${deposit.tokenAddress}-split`}
+              label="Of which"
+              value={`${deposit.towardAmount} to park, ${deposit.towardReserve} action fee`}
+            />
+          ),
+        )}
       </Facts>
+      {feeOnly === null ? null : (
+        <Note>
+          You already hold what you are parking. The {feeOnly} is the pool's
+          action fee, which has to be private and has to still be there
+          afterwards — it is what pays to release the money or bring it home.
+        </Note>
+      )}
       <Note>
         {sent
           ? shield.purpose === "action"

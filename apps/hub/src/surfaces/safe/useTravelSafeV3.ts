@@ -161,6 +161,14 @@ function shieldStep(input: {
       decimals: deposit.token.decimals,
       amount: formatTokenAmount(BigInt(deposit.amountBaseUnits), deposit.token.decimals),
       amountBaseUnits: deposit.amountBaseUnits,
+      towardAmount: formatTokenAmount(
+        BigInt(deposit.towardAmountBaseUnits),
+        deposit.token.decimals,
+      ),
+      towardReserve: formatTokenAmount(
+        BigInt(deposit.towardReserveBaseUnits),
+        deposit.token.decimals,
+      ),
     })),
   };
 }

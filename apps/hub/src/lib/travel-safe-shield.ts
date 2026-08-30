@@ -14,10 +14,29 @@ export type ShieldableBalance = {
   publicAvailable: boolean;
 };
 
-/** One STRK20 deposit the wallet must sign before the private action. */
-export type ShieldDeposit = {
+/**
+ * One STRK20 deposit the wallet must sign before the private action.
+ *
+ * The split is carried because the total on its own is unexplainable. Somebody
+ * holding exactly the ten STRK they mean to park is still asked for six more,
+ * and without the breakdown that reads as the app losing track of a deposit
+ * they already made. It is the action fee, and it is a different thing from
+ * the money being parked.
+ */
+export type ShieldAmount = {
   token: TravelSafeToken;
   amountBaseUnits: string;
+};
+
+/**
+ * A deposit with its reason attached. Sending one needs only `ShieldAmount`;
+ * explaining one to a person needs the split.
+ */
+export type ShieldDeposit = ShieldAmount & {
+  /** The part that is the amount being parked or added. */
+  towardAmountBaseUnits: string;
+  /** The part that is the action fee, which stays private afterwards. */
+  towardReserveBaseUnits: string;
 };
 
 export type ShieldRequirement = {
@@ -49,13 +68,28 @@ export function shieldShortfalls(input: ShieldRequirement): readonly ShieldDepos
   if (amount < 0n || reserve < 0n) throw new Error("Amounts cannot be negative");
   const shortfalls: ShieldDeposit[] = [];
   for (const balance of input.balances) {
-    let needed = 0n;
-    if (sameToken(balance.token.address, input.tokenAddress)) needed += amount;
-    if (balance.token.symbol === "STRK") needed += reserve;
+    const towardAmount = sameToken(balance.token.address, input.tokenAddress)
+      ? amount
+      : 0n;
+    const towardReserve = balance.token.symbol === "STRK" ? reserve : 0n;
     const shielded = readable(balance.shieldedAvailable, balance.shieldedBalanceBaseUnits);
-    if (needed > shielded) {
-      shortfalls.push({ token: balance.token, amountBaseUnits: (needed - shielded).toString() });
-    }
+    const needed = towardAmount + towardReserve;
+    if (needed <= shielded) continue;
+    /**
+     * What is already private is counted against the parked amount first, so
+     * the shortfall that remains is named as the fee rather than as a vague
+     * remainder. It is also the true reading: the parked amount is what the
+     * person chose, and the fee is what the pool adds on top of it.
+     */
+    const amountShort = towardAmount > shielded ? towardAmount - shielded : 0n;
+    const spare = shielded > towardAmount ? shielded - towardAmount : 0n;
+    const reserveShort = towardReserve > spare ? towardReserve - spare : 0n;
+    shortfalls.push({
+      token: balance.token,
+      amountBaseUnits: (amountShort + reserveShort).toString(),
+      towardAmountBaseUnits: amountShort.toString(),
+      towardReserveBaseUnits: reserveShort.toString(),
+    });
   }
   return shortfalls;
 }
@@ -86,7 +120,7 @@ export function planShieldDeposits(input: ShieldRequirement): readonly ShieldDep
 
 /** The STRK20 actions for one wallet-signed shield of these deposits. */
 export function buildShieldActions(
-  deposits: readonly ShieldDeposit[],
+  deposits: readonly ShieldAmount[],
 ): { type: "deposit"; token: string; amount: string }[] {
   if (deposits.length === 0) throw new Error("Nothing needs shielding");
   return deposits.map((deposit) => {
@@ -115,7 +149,7 @@ export function buildShieldActions(
  * spending, not this shield.
  */
 export function shieldLeftTheWallet(input: {
-  deposits: readonly ShieldDeposit[];
+  deposits: readonly ShieldAmount[];
   baseline: readonly ShieldableBalance[];
   current: readonly ShieldableBalance[];
 }): boolean {

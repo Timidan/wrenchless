@@ -26,6 +26,10 @@ export type SafeShieldDeposit = {
   decimals: 18 | 6;
   amount: string;
   amountBaseUnits: string;
+  /** The part being parked or added, formatted; "0" when none of it is. */
+  towardAmount: string;
+  /** The part that is the action fee, formatted; "0" when none of it is. */
+  towardReserve: string;
 };
 
 /**
