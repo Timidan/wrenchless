@@ -167,9 +167,21 @@ export function deriveTravelSafeV3PublicKey(privateKey: string): string {
   return ec.starkCurve.getStarkKey(nonZeroFelt(privateKey, "private key"));
 }
 
+/**
+ * A fresh device key, in the canonical felt form every consumer stores and
+ * validates.
+ *
+ * The zero-padded byte string this used to return was never canonical: a Stark
+ * key is below 2^251, so its first byte never exceeds 0x07 and the text always
+ * carried a leading zero nibble. The ticket store rejected every one of them,
+ * which took out Safe creation entirely. Canonicalising here changes the text
+ * and not the key — the same scalar derives the same public key and the same
+ * signatures.
+ */
 export function generateTravelSafeV3PrivateKey(): string {
   const bytes = ec.starkCurve.utils.randomPrivateKey();
-  return `0x${Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("")}`;
+  const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+  return nonZeroFelt(`0x${hex}`, "device private key");
 }
 
 export function computeTravelSafeV3DeviceCommitment(

@@ -1471,3 +1471,110 @@ html.reduced-motion .waiting__pulse {
   font-size: 1.25rem;
   font-weight: 400;
 }
+
+/* ---------- a recovery phrase, shown once ----------
+
+   The words are concealed on arrival and revealed on purpose. This screen is
+   opened in airports and on trains, and a phrase that paints itself onto the
+   glass the moment a route loads has already been read by whoever is standing
+   behind the person holding the phone.
+
+   The blur is a visual guard and nothing more: the words are in the DOM and in
+   the accessibility tree throughout, because the person who needs them read
+   aloud is the person the phrase belongs to. `user-select` is withdrawn only
+   while they are hidden, so a stray drag cannot lift what the eye cannot see.  */
+
+.phrasebox {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.phrasebox__sheet {
+  position: relative;
+}
+
+.phrasebox__sheet[data-concealed] .phrase__text {
+  user-select: none;
+  filter: blur(7px);
+}
+
+.phrasebox__sheet .phrase__text {
+  transition: filter var(--dur-mid) var(--ease-settle);
+}
+
+.phrasebox__reveal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  color: var(--w-text);
+  font-family: var(--font-sans);
+  font-size: var(--size-ui);
+  letter-spacing: 0.01em;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.phrasebox__reveal svg {
+  width: 18px;
+  height: 18px;
+}
+
+.phrasebox__controls {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.phrasebox__action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding-inline: var(--space-3);
+  border-radius: var(--r-pill);
+  color: var(--w-text-body);
+  font-family: var(--font-sans);
+  font-size: var(--size-ui);
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color var(--dur-fast) var(--ease-settle),
+    background-color var(--dur-fast) var(--ease-settle),
+    transform var(--dur-press) var(--ease-settle);
+}
+
+.phrasebox__action svg {
+  width: 18px;
+  height: 18px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .phrasebox__reveal:hover,
+  .phrasebox__action:hover {
+    background: var(--w-raised);
+    color: var(--w-text);
+  }
+}
+
+.phrasebox__action:active {
+  transform: translateY(1px);
+}
+
+.phrasebox__said:empty {
+  display: none;
+}
+
+.phrasebox__said {
+  margin: 0;
+  color: var(--w-text-secondary);
+  font-size: var(--size-micro);
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phrasebox__sheet .phrase__text {
+    transition: none;
+  }
+}

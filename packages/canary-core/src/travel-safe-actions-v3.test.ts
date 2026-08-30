@@ -12,6 +12,8 @@ import {
   computeTravelSafeV3ClaimCommitment,
   computeTravelSafeV3DeviceCommitment,
   computeTravelSafeV3RecoveryCommitment,
+  deriveTravelSafeV3PublicKey,
+  generateTravelSafeV3PrivateKey,
   signTravelSafeV3Action,
   TRAVEL_SAFE_V3_OPEN_NOTE,
 } from "./travel-safe-actions-v3.js";
@@ -254,5 +256,20 @@ describe("Travel Safe v3 action vectors", () => {
         signature: [],
       }),
     ).toThrow("return signature cannot be empty");
+  });
+
+  /**
+   * Every Stark key is below 2^251, so the zero-padded byte string this used
+   * to hand back always began `0x0` and never passed the ticket store's
+   * canonical-felt check. That rejected every new Safe, so the property is
+   * held here rather than left to a caller to notice again.
+   */
+  it("generates canonical, non-zero device keys that still derive a public key", () => {
+    for (let attempt = 0; attempt < 64; attempt += 1) {
+      const privateKey = generateTravelSafeV3PrivateKey();
+      expect(privateKey).toMatch(/^0x(?:0|[1-9a-f][0-9a-f]*)$/);
+      expect(BigInt(privateKey)).toBeGreaterThan(0n);
+      expect(deriveTravelSafeV3PublicKey(privateKey)).toMatch(/^0x[0-9a-f]+$/);
+    }
   });
 });

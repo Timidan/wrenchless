@@ -78,13 +78,6 @@ const CREATE_STEPS: readonly SafeV3Phase[] = [
 
 const LOCK_PRESETS = [25, 50, 75, 100] as const;
 
-/** Trim, lowercase and collapse whitespace, so a pasted or retyped phrase
- * compares the same way the controller's own `setRecoveryWords` normalizes
- * it. */
-function normalizeRecoveryWords(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
 /** A failure, in the words the controller already wrote for a person. */
 function Failure(props: { message: string }): JSX.Element {
   return (
@@ -603,6 +596,16 @@ function PlanScreen(props: {
   );
 }
 
+/**
+ * The one moment the twelve words exist on screen.
+ *
+ * They arrive concealed and copyable, and nothing here asks for them back.
+ * The type-back that used to gate this screen proved only that the words were
+ * still on the screen being read from — a person who copied them into a
+ * password manager had to retype all twelve to get past it, and a person who
+ * saved nothing could pass it by looking up. The honest guard is the phrase
+ * itself: it is shown once, said plainly, and Wrenchless cannot show it again.
+ */
 function RecoveryScreen(props: {
   model: TravelSafeV3Model;
   actions: TravelSafeV3Actions;
@@ -610,10 +613,6 @@ function RecoveryScreen(props: {
   const { actions, model } = props;
   const [localError, setLocalError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [confirmInput, setConfirmInput] = useState("");
-  const matches =
-    model.recoveryWords !== null &&
-    normalizeRecoveryWords(confirmInput) === model.recoveryWords;
 
   async function handleConfirm(): Promise<void> {
     setLocalError(null);
@@ -633,24 +632,14 @@ function RecoveryScreen(props: {
       onBack={actions.closeCreate}
       title="Save these words once"
     >
-      <Phrase words={(model.recoveryWords ?? "").split(" ")} />
-      <Note tone="caution">Write them down now. Wrenchless never shows them again.</Note>
-      <WalletField label="Type them back">
-        {({ inputId, describedBy }) => (
-          <textarea
-            aria-describedby={describedBy}
-            className="winput winput--paste"
-            id={inputId}
-            onChange={(event) => setConfirmInput(event.target.value)}
-            rows={3}
-            value={confirmInput}
-          />
-        )}
-      </WalletField>
+      <Phrase conceal words={(model.recoveryWords ?? "").split(" ")} />
+      <Note tone="caution">
+        Save them now. Wrenchless never shows them again, and nobody can reissue them.
+      </Note>
       {localError === null ? null : <Failure message={localError} />}
       <Actions>
         <Button
-          disabled={busy || !matches}
+          disabled={busy}
           icon={<KeyIcon />}
           iconMotion={busy ? "spin" : undefined}
           label="I saved them"
