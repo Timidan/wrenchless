@@ -64,11 +64,11 @@ describe("Travel Safe action reconciliation", () => {
     ).toMatchObject({ name: "confirmed", label: "Already completed" });
   });
 
-  it("accepts a partial release and discards estimates after an account switch", () => {
+  it("confirms a partial release from helper state before receipt finality", () => {
     expect(
       reconcileTravelSafeAction({
         transactionHash: "0xaa",
-        receipt: { name: "accepted" },
+        receipt: { name: "pending" },
         state: { ...funded, nonce: "1", remainingAmount: "90", releasedAmount: "10" },
         target: { operation: "RELEASE", previousNonce: "0", maximumRemaining: "90" },
       }),

@@ -33,7 +33,7 @@ const transactionReceiptSchema = z
     transaction_hash: z.string(),
     execution_status: z.enum(["SUCCEEDED", "REVERTED"]).optional(),
     finality_status: z
-      .enum(["RECEIVED", "ACCEPTED_ON_L2", "ACCEPTED_ON_L1"])
+      .enum(["RECEIVED", "PRE_CONFIRMED", "ACCEPTED_ON_L2", "ACCEPTED_ON_L1"])
       .optional(),
     revert_reason: z.string().optional(),
   })
