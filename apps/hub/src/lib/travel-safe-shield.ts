@@ -99,3 +99,39 @@ export function buildShieldActions(
     };
   });
 }
+
+/**
+ * Whether the deposits have already left the account, judged from mainnet
+ * rather than from the wallet.
+ *
+ * A wallet's reply to `wallet_strk20InvokeTransaction` can go missing — the
+ * proof takes a long time, the popup is dismissed, the mobile app returns
+ * without answering — and a flow that waits only for that reply waits forever
+ * for a transaction that already landed. The account's ordinary balance is an
+ * independent witness: one shield moves every deposit in a single transaction,
+ * so when each token has fallen by at least what was deposited, it happened.
+ *
+ * Every token must agree. A single token falling on its own is somebody
+ * spending, not this shield.
+ */
+export function shieldLeftTheWallet(input: {
+  deposits: readonly ShieldDeposit[];
+  baseline: readonly ShieldableBalance[];
+  current: readonly ShieldableBalance[];
+}): boolean {
+  if (input.deposits.length === 0) return false;
+  return input.deposits.every((deposit) => {
+    const before = input.baseline.find((entry) =>
+      sameToken(entry.token.address, deposit.token.address),
+    );
+    const after = input.current.find((entry) =>
+      sameToken(entry.token.address, deposit.token.address),
+    );
+    // An unreadable balance is not evidence in either direction.
+    if (before === undefined || after === undefined) return false;
+    if (!before.publicAvailable || !after.publicAvailable) return false;
+    const spent =
+      BigInt(before.publicBalanceBaseUnits) - BigInt(after.publicBalanceBaseUnits);
+    return spent >= BigInt(deposit.amountBaseUnits);
+  });
+}

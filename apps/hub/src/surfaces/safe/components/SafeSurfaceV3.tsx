@@ -678,7 +678,7 @@ function ShieldStep(props: {
 }): JSX.Element {
   const { actions, model, shield } = props;
   const busy = safeActionBusy(model.action);
-  const sent = shield.transactionHash !== null;
+  const sent = shield.sent;
   return (
     <>
       <Facts>
@@ -700,6 +700,12 @@ function ShieldStep(props: {
             ? "This action's fee is paid from your private balance, and there is not enough there yet. This moves the amount above across; your wallet asks you to approve it and pays its own network fee."
             : "This moves the amount above from your wallet into your private balance. Your wallet asks you to approve it and pays its own network fee; the exact Safe fee follows after."}
       </Note>
+      {busy && !sent ? (
+        <Note>
+          If your wallet has already sent it, Wrenchless picks that up from
+          Starknet on its own — approving a second time is never needed.
+        </Note>
+      ) : null}
       <SafeStatus action={model.action} error={model.error} />
       {shield.transactionHash === null ? null : (
         <TransactionRef
@@ -712,15 +718,16 @@ function ShieldStep(props: {
         <Button
           disabled={busy}
           icon={<ShieldCheckIcon />}
-          iconMotion={busy ? "spin" : undefined}
+          iconMotion={busy ? "guard" : undefined}
           label={sent ? "Check the shield" : "Shield in wallet"}
           onClick={() => {
             void actions.shieldNow();
           }}
         />
+        {/* Never disabled. A wallet that goes quiet must not be able to trap
+            somebody on this screen with both controls greyed out. */}
         <Button
-          disabled={busy}
-          label="Not now"
+          label={busy ? "Stop waiting" : "Not now"}
           onClick={actions.dismissShield}
           tone="quiet"
         />

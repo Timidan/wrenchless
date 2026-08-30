@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildShieldActions,
   planShieldDeposits,
+  shieldLeftTheWallet,
   shieldShortfalls,
   type ShieldableBalance,
 } from "./travel-safe-shield";
@@ -148,5 +149,47 @@ describe("Shield planning", () => {
     expect(() => buildShieldActions([{ token: STRK, amountBaseUnits: "0" }])).toThrow(
       "Shield amounts must be positive",
     );
+  });
+});
+
+describe("Reading a shield off the chain instead of the wallet", () => {
+  const deposits = [
+    { token: STRK, amountBaseUnits: "100" },
+    { token: USDC, amountBaseUnits: "50" },
+  ];
+  const before = balances({ strkPublic: "1000", usdcPublic: "500" });
+
+  it("sees the deposits once every token has fallen by its amount", () => {
+    expect(
+      shieldLeftTheWallet({
+        deposits,
+        baseline: before,
+        // STRK also paid the wallet's own network fee, so it fell further.
+        current: balances({ strkPublic: "880", usdcPublic: "450" }),
+      }),
+    ).toBe(true);
+  });
+
+  it("waits while only one of the two tokens has moved", () => {
+    expect(
+      shieldLeftTheWallet({
+        deposits,
+        baseline: before,
+        current: balances({ strkPublic: "880", usdcPublic: "500" }),
+      }),
+    ).toBe(false);
+  });
+
+  it("treats an unreadable balance as no evidence rather than as a drop", () => {
+    const current = balances({ strkPublic: "880", usdcPublic: "450" }).map((entry) =>
+      entry.token.symbol === "USDC" ? { ...entry, publicAvailable: false } : entry,
+    );
+    expect(shieldLeftTheWallet({ deposits, baseline: before, current })).toBe(false);
+  });
+
+  it("claims nothing when there are no deposits to see", () => {
+    expect(
+      shieldLeftTheWallet({ deposits: [], baseline: before, current: before }),
+    ).toBe(false);
   });
 });

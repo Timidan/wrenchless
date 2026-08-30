@@ -147,14 +147,19 @@ export function Button(props: {
   disabled?: boolean | undefined;
   tone?: "outline" | "quiet" | undefined;
   type?: "button" | "submit" | undefined;
-  /** Set only while the state machine backing this button is actively
-   * working; the icon rotates and the button reports `aria-busy`. */
-  iconMotion?: "spin" | undefined;
+  /**
+   * Set only while the state machine backing this button is actively working.
+   * The button reports `aria-busy` either way; what the glyph does is the
+   * glyph's business. `spin` is for the marks that turn — an arrow circling a
+   * clock face. `guard` is for the ones that do not: a shield does not
+   * rotate, it stands watch, so it breathes instead.
+   */
+  iconMotion?: "spin" | "guard" | undefined;
 }): JSX.Element {
-  const spinning = props.iconMotion === "spin";
+  const working = props.iconMotion !== undefined;
   return (
     <button
-      aria-busy={spinning ? "true" : undefined}
+      aria-busy={working ? "true" : undefined}
       className={props.tone === "quiet" ? "wbtn wbtn--quiet" : "wbtn"}
       disabled={props.disabled === true}
       {...(props.onClick === undefined ? {} : { onClick: props.onClick })}
@@ -164,7 +169,7 @@ export function Button(props: {
         <span
           aria-hidden="true"
           className="wbtn__icon"
-          data-icon-motion={spinning ? "spin" : undefined}
+          data-icon-motion={props.iconMotion}
         >
           {props.icon}
         </span>

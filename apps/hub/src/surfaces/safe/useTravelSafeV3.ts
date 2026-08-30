@@ -59,6 +59,7 @@ import {
 } from "../../lib/travel-safe-action-state";
 import {
   planShieldDeposits,
+  shieldLeftTheWallet,
   shieldShortfalls,
   type ShieldableBalance,
   type ShieldDeposit,
@@ -95,6 +96,8 @@ const MAXIMUM_SAFE_DURATION_SECONDS = 180n * 86_400n;
 const SHIELD_POLL_MILLISECONDS = 4_000;
 const SHIELD_RECEIPT_TIMEOUT_MILLISECONDS = 10 * 60_000;
 const SHIELD_NOTE_TIMEOUT_MILLISECONDS = 5 * 60_000;
+/** How long to keep watching the chain for a wallet that never replies. */
+const SHIELD_WALLET_TIMEOUT_MILLISECONDS = 15 * 60_000;
 const EMPTY_PLAN: SafePlanDraft = {
   tokenAddress: TRAVEL_SAFE_TOKENS[0].address,
   parkAmount: "",
@@ -151,6 +154,7 @@ function shieldStep(input: {
     amountBaseUnits: input.amountBaseUnits,
     topUpAmount: input.topUpAmount,
     transactionHash: null,
+    sent: false,
     deposits: input.deposits.map((deposit) => ({
       symbol: deposit.token.symbol,
       tokenAddress: deposit.token.address,
@@ -293,6 +297,8 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
   const prepared = useRef<PreparedTravelSafeV3Relay | null>(null);
   const pending = useRef<PendingAction | null>(null);
   const passkeyVerified = useRef(false);
+  /** Bumped per shield attempt; a stale attempt stops writing state. */
+  const shieldRun = useRef(0);
 
   const selectedToken = useMemo(() => tokenFor(plan.tokenAddress), [plan.tokenAddress]);
   const nextReleaseAt = useMemo(() => nextReleaseTime(snapshot), [snapshot]);
@@ -1237,45 +1243,106 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
   const shieldNow = useCallback(async (): Promise<void> => {
     const step = shield;
     if (step === null) return;
+    const run = shieldRun.current + 1;
+    shieldRun.current = run;
+    const current = () => shieldRun.current === run;
     setError(null);
     try {
       if (wallet.current === null || account === null) throw new Error("Connect your wallet");
-      assertSelectedWalletAccount(wallet.current, account);
+      const activeWallet = wallet.current;
+      assertSelectedWalletAccount(activeWallet, account);
       let transactionHash = step.transactionHash;
-      if (transactionHash === null) {
+      let sent = step.sent;
+
+      if (!sent) {
         setAction({ name: "wallet", label: "Approve the shield in your wallet" });
-        const sent = await submitShieldDeposits({
-          wallet: readyWallet(wallet.current),
+        const baseline = (await refreshBalances(activeWallet)).balances;
+        const deposits = step.deposits.map((deposit) => ({
+          token: tokenFor(deposit.tokenAddress),
+          amountBaseUnits: deposit.amountBaseUnits,
+        }));
+
+        /**
+         * Two witnesses, whichever speaks first. The wallet's reply carries a
+         * hash and is the better answer; the account's own balance falling is
+         * the answer that still arrives when the reply does not.
+         */
+        const stopped = { value: false };
+        const reply = submitShieldDeposits({
+          wallet: readyWallet(activeWallet),
           chainId: MAINNET_CHAIN_ID,
-          deposits: step.deposits.map((deposit) => ({
-            token: tokenFor(deposit.tokenAddress),
-            amountBaseUnits: deposit.amountBaseUnits,
-          })),
-        });
-        transactionHash = sent.transactionHash;
-        setShield({ ...step, transactionHash });
-      }
-      setAction({ name: "preparing", label: "Confirming the shield on Starknet" });
-      const submittedAt = Date.now();
-      for (;;) {
-        const receipt = await readTransactionReceiptStatus({
-          transactionHash,
-          rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
-        });
-        if (receipt.name === "accepted") break;
-        if (receipt.name === "reverted") {
-          setShield({ ...step, transactionHash: null });
-          throw new Error(`The shield was rejected on Starknet: ${receipt.reason}`);
+          deposits,
+        }).then((result) => ({
+          kind: "reply" as const,
+          transactionHash: result.transactionHash,
+        }));
+        // A reply that fails after the chain already answered must not surface
+        // as an unhandled rejection; the race below still sees it first if it
+        // is first.
+        reply.catch(() => undefined);
+        const observed = (async () => {
+          const startedAt = Date.now();
+          while (!stopped.value) {
+            await sleep(SHIELD_POLL_MILLISECONDS);
+            if (stopped.value || !current()) break;
+            const seen = await refreshBalances(activeWallet).catch(() => null);
+            if (seen !== null && shieldLeftTheWallet({
+              deposits,
+              baseline,
+              current: seen.balances,
+            })) {
+              return { kind: "observed" as const };
+            }
+            if (Date.now() - startedAt > SHIELD_WALLET_TIMEOUT_MILLISECONDS) {
+              return { kind: "timeout" as const };
+            }
+          }
+          return { kind: "stopped" as const };
+        })();
+
+        let outcome;
+        try {
+          outcome = await Promise.race([reply, observed]);
+        } finally {
+          stopped.value = true;
         }
-        if (Date.now() - submittedAt > SHIELD_RECEIPT_TIMEOUT_MILLISECONDS) {
-          throw new Error("The shield is still confirming. Check it again in a moment.");
+        if (!current()) return;
+        if (outcome.kind === "timeout") {
+          throw new Error(
+            "Your wallet has not answered and no deposit has appeared onchain. Try the shield again.",
+          );
         }
-        await sleep(SHIELD_POLL_MILLISECONDS);
+        if (outcome.kind === "reply") transactionHash = outcome.transactionHash;
+        sent = true;
+        setShield({ ...step, transactionHash, sent });
       }
+
+      if (transactionHash !== null) {
+        setAction({ name: "preparing", label: "Confirming the shield on Starknet" });
+        const submittedAt = Date.now();
+        for (;;) {
+          if (!current()) return;
+          const receipt = await readTransactionReceiptStatus({
+            transactionHash,
+            rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
+          });
+          if (receipt.name === "accepted") break;
+          if (receipt.name === "reverted") {
+            setShield({ ...step, transactionHash: null, sent: false });
+            throw new Error(`The shield was rejected on Starknet: ${receipt.reason}`);
+          }
+          if (Date.now() - submittedAt > SHIELD_RECEIPT_TIMEOUT_MILLISECONDS) {
+            throw new Error("The shield is still confirming. Check it again in a moment.");
+          }
+          await sleep(SHIELD_POLL_MILLISECONDS);
+        }
+      }
+
       setAction({ name: "preparing", label: "Waiting for the private note" });
       const acceptedAt = Date.now();
       for (;;) {
-        const fresh = await refreshBalances(wallet.current);
+        if (!current()) return;
+        const fresh = await refreshBalances(activeWallet);
         const remaining = shieldShortfalls({
           tokenAddress: step.tokenAddress,
           amountBaseUnits: step.amountBaseUnits,
@@ -1291,6 +1358,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
         }
         await sleep(SHIELD_POLL_MILLISECONDS);
       }
+      if (!current()) return;
       setShield(null);
       if (step.purpose === "fund") {
         await prepareFund();
@@ -1308,12 +1376,14 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
         label: "The action fee is private now",
       });
     } catch (cause) {
+      if (!current()) return;
       setError(reasonFrom(cause));
       setAction({ name: "failed", message: reasonFrom(cause), retryable: true });
     }
   }, [account, prepareFund, prepareTopUp, refreshBalances, shield]);
 
   const dismissShield = useCallback((): void => {
+    shieldRun.current += 1;
     setShield(null);
     setError(null);
     setAction({ name: "idle" });

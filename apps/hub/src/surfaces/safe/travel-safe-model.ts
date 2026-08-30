@@ -41,6 +41,13 @@ export type SafeShieldStep = {
   topUpAmount: string | null;
   deposits: readonly SafeShieldDeposit[];
   transactionHash: string | null;
+  /**
+   * The deposit has left the wallet — proved either by the wallet's reply or
+   * by the account's own balance falling on mainnet. Once true the step never
+   * sends again; pressing it only checks. A wallet that goes quiet after the
+   * user approves must not cost them a second deposit.
+   */
+  sent: boolean;
 };
 
 export type SafePlanDraft = {

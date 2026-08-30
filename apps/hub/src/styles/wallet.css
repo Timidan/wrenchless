@@ -1261,22 +1261,51 @@ html.reduced-motion .fund-progress__marker {
   transform-origin: center;
 }
 
-/* These come after (and outweigh, via html.reduced-motion) the spin rule
-   above so an opted-in processing icon still stops rotating once reduced
-   motion is requested, mid-animation or not. */
-html.reduced-motion .statusline__icon[data-icon-motion="spin"],
-html.reduced-motion .wbtn__icon[data-icon-motion="spin"],
-html.reduced-motion .wcheck__icon[data-icon-motion="spin"],
-html.reduced-motion .iconbtn > span[data-icon-motion="spin"] {
+/* Work in progress, from a mark with no rotation of its own.
+
+   A spinning shield is a shield that has come loose. The rule the glyph table
+   above states — that a mark moves the way the object it draws would move —
+   does not stop applying because the button is busy, so the shield does the
+   only thing a shield does: it stands there and holds, breathing slightly, and
+   the scale is small enough to read as steady rather than as a pulse alarm. */
+@keyframes processing-guard {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.07);
+  }
+}
+
+.statusline__icon[data-icon-motion="guard"],
+.wbtn__icon[data-icon-motion="guard"],
+.wcheck__icon[data-icon-motion="guard"],
+.iconbtn > span[data-icon-motion="guard"] {
+  animation: processing-guard var(--dur-guard) ease-in-out infinite;
+  transform-origin: center;
+}
+
+/* These come after (and outweigh, via html.reduced-motion) the rules above so
+   an opted-in processing icon still stops once reduced motion is requested,
+   mid-animation or not. */
+html.reduced-motion .statusline__icon[data-icon-motion],
+html.reduced-motion .wbtn__icon[data-icon-motion],
+html.reduced-motion .wcheck__icon[data-icon-motion],
+html.reduced-motion .iconbtn > span[data-icon-motion] {
   animation: none;
+  opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .statusline__icon[data-icon-motion="spin"],
-  .wbtn__icon[data-icon-motion="spin"],
-  .wcheck__icon[data-icon-motion="spin"],
-  .iconbtn > span[data-icon-motion="spin"] {
+  .statusline__icon[data-icon-motion],
+  .wbtn__icon[data-icon-motion],
+  .wcheck__icon[data-icon-motion],
+  .iconbtn > span[data-icon-motion] {
     animation: none;
+    opacity: 1;
   }
 }
 
