@@ -142,13 +142,37 @@ function assertPreparedActions(artifact: TravelSafeV3RelayArtifact): void {
    */
   const BOOKKEEPING = new Set([0n, 1n, 4n, 5n, 6n, 7n, 8n, 9n]);
   const POLICED = new Set([2n, 3n, 10n]);
-  if (
-    actions.screening !== "None" ||
-    actions.transfersTo.length !== 1 ||
-    actions.invokes.length !== 1 ||
-    actions.transfersFrom.length !== deposits
-  ) {
-    throw new Error("prepared action must contain one withdrawal and one helper invoke");
+  /**
+   * One invariant per sentence. These were a single condition behind a single
+   * message, and the first time one of them failed for a new reason the
+   * message named the wrong thing and cost a day.
+   */
+  if (actions.transfersTo.length !== 1) {
+    throw new Error(
+      `prepared action must contain exactly one withdrawal, found ${String(actions.transfersTo.length)}`,
+    );
+  }
+  if (actions.invokes.length !== 1) {
+    throw new Error(
+      `prepared action must contain exactly one helper invoke, found ${String(actions.invokes.length)}`,
+    );
+  }
+  if (actions.transfersFrom.length !== deposits) {
+    throw new Error(
+      `prepared action declares ${String(deposits)} deposit(s) but contains ${String(actions.transfersFrom.length)}`,
+    );
+  }
+  /**
+   * Moving ordinary funds into the pool is a regular deposit, and the pool
+   * demands a screening attestation for one — it is the pool's own compliance
+   * check, signed by its screener and verified during execution, and the
+   * relay neither issues nor forges it. A bundle that moves no ordinary funds
+   * still may not carry one, because then there is nothing for it to attest.
+   */
+  if (deposits === 0 && actions.screening !== "None") {
+    throw new Error(
+      "prepared action carries a screening attestation but moves no ordinary funds",
+    );
   }
   const unpoliced = actions.discriminants.find(
     (value) => !POLICED.has(value) && !BOOKKEEPING.has(value),

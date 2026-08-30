@@ -220,6 +220,33 @@ describe("A funding transaction that shields first", () => {
     };
   }
 
+  it("accepts the screening attestation a deposit obliges the pool to demand", () => {
+    const artifact = shieldingFundArtifact("200");
+    const screened = [...artifact.call.calldata];
+    // Option::Some, then issued_at and the two signature felts.
+    screened[screened.length - 1] = "0x0";
+    screened.push("0x64", "0x11", "0x22");
+    expect(
+      parseTravelSafeV3RelayArtifact(
+        { ...artifact, call: { ...artifact.call, calldata: screened } },
+        config,
+      ).artifact.depositBaseUnits,
+    ).toBe("200");
+  });
+
+  it("refuses a screening attestation on a bundle that deposits nothing", () => {
+    const base = fundArtifact();
+    const screened = [...base.call.calldata];
+    screened[screened.length - 1] = "0x0";
+    screened.push("0x64", "0x11", "0x22");
+    expect(() =>
+      parseTravelSafeV3RelayArtifact(
+        { ...base, call: { ...base.call, calldata: screened } },
+        config,
+      ),
+    ).toThrow();
+  });
+
   it("accepts a deposit that matches what the artifact declares", () => {
     const artifact = shieldingFundArtifact("200");
     const parsed = parseTravelSafeV3RelayArtifact(artifact, config);
