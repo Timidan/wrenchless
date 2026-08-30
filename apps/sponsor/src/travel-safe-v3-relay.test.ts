@@ -155,3 +155,137 @@ describe("Travel Safe v3 relay policy", () => {
     ).toThrow("first release");
   });
 });
+
+/**
+ * A deposit rides inside the funding transaction because a bundle containing
+ * only a deposit is refused by the pool as NO_REPLAY_PROTECTION. The relay
+ * broadcasts whatever it is handed, so what it will accept is a security
+ * boundary: exactly one deposit, of the Safe's own token, never larger than
+ * the amount being funded, and nothing else added to the bundle.
+ */
+describe("A funding transaction that shields first", () => {
+  const user = "0x900";
+
+  function depositCalldata(helperCalldata: string[], deposit: string, amount = "500") {
+    return [
+      "0x5",
+      // TransferFrom: the ordinary funds entering the pool.
+      "0x2",
+      user,
+      token,
+      `0x${BigInt(deposit).toString(16)}`,
+      // The deposit event that follows it.
+      "0x6",
+      user,
+      token,
+      `0x${BigInt(deposit).toString(16)}`,
+      // The withdrawal into the helper, then its event, then the invoke.
+      "0x3",
+      helper,
+      token,
+      `0x${BigInt(amount).toString(16)}`,
+      "0x5",
+      "0x1",
+      helper,
+      token,
+      `0x${BigInt(amount).toString(16)}`,
+      "0x1",
+      "0x2",
+      "0xa",
+      helper,
+      `0x${helperCalldata.length.toString(16)}`,
+      ...helperCalldata,
+      "0x1",
+    ];
+  }
+
+  function shieldingFundArtifact(deposit: string, declared = deposit) {
+    const base = fundArtifact();
+    const helperCalldata = [
+      "0x0",
+      stateId,
+      "0x11",
+      "0x12",
+      "0x13",
+      token,
+      `0x${BigInt(base.amountBaseUnits).toString(16)}`,
+      "0x32",
+      "0x7d0",
+      "0xbb8",
+    ];
+    return {
+      ...base,
+      depositBaseUnits: declared,
+      call: { ...base.call, calldata: depositCalldata(helperCalldata, deposit) },
+    };
+  }
+
+  it("accepts the screening attestation a deposit obliges the pool to demand", () => {
+    const artifact = shieldingFundArtifact("200");
+    const screened = [...artifact.call.calldata];
+    // Option::Some, then issued_at and the two signature felts.
+    screened[screened.length - 1] = "0x0";
+    screened.push("0x64", "0x11", "0x22");
+    expect(
+      parseTravelSafeV3RelayArtifact(
+        { ...artifact, call: { ...artifact.call, calldata: screened } },
+        config,
+      ).artifact.depositBaseUnits,
+    ).toBe("200");
+  });
+
+  it("refuses a screening attestation on a bundle that deposits nothing", () => {
+    const base = fundArtifact();
+    const screened = [...base.call.calldata];
+    screened[screened.length - 1] = "0x0";
+    screened.push("0x64", "0x11", "0x22");
+    expect(() =>
+      parseTravelSafeV3RelayArtifact(
+        { ...base, call: { ...base.call, calldata: screened } },
+        config,
+      ),
+    ).toThrow();
+  });
+
+  it("accepts a deposit that matches what the artifact declares", () => {
+    const artifact = shieldingFundArtifact("200");
+    const parsed = parseTravelSafeV3RelayArtifact(artifact, config);
+    expect(parsed.artifact.operation).toBe("FUND");
+    expect(parsed.artifact.depositBaseUnits).toBe("200");
+  });
+
+  it("refuses a deposit larger than the declared one", () => {
+    expect(() =>
+      parseTravelSafeV3RelayArtifact(shieldingFundArtifact("400", "200"), config),
+    ).toThrow();
+  });
+
+  it("refuses a bundled deposit the artifact never declared", () => {
+    const artifact = shieldingFundArtifact("200");
+    expect(() =>
+      parseTravelSafeV3RelayArtifact({ ...artifact, depositBaseUnits: "0" }, config),
+    ).toThrow();
+  });
+
+  it("refuses a declared deposit that is not in the bundle", () => {
+    expect(() =>
+      parseTravelSafeV3RelayArtifact(
+        { ...fundArtifact(), depositBaseUnits: "200" },
+        config,
+      ),
+    ).toThrow();
+  });
+
+  it("refuses a deposit bigger than the Safe it claims to fund", () => {
+    expect(() =>
+      parseTravelSafeV3RelayArtifact(shieldingFundArtifact("600"), config),
+    ).toThrow();
+  });
+
+  it("still accepts a funding transaction with no deposit at all", () => {
+    expect(
+      parseTravelSafeV3RelayArtifact(fundArtifact(), config).artifact
+        .depositBaseUnits,
+    ).toBe("0");
+  });
+});

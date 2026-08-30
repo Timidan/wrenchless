@@ -207,6 +207,13 @@ export type InvokeServerAction = {
   calldata: bigint[];
 };
 
+export type TransferFromServerAction = {
+  actionIndex: number;
+  from: bigint;
+  token: bigint;
+  amount: bigint;
+};
+
 export type TransferToServerAction = {
   actionIndex: number;
   recipient: bigint;
@@ -218,6 +225,14 @@ export type ParsedServerActions = {
   actionCount: number;
   discriminants: bigint[];
   invokes: InvokeServerAction[];
+  /**
+   * How many leading felts the serialized action array occupies — everything
+   * before the trailing screening option. The SNIP-36 proof commits to
+   * exactly this span, so it has to be measured rather than guessed at from
+   * the end of the calldata.
+   */
+  actionsFeltLength: number;
+  transfersFrom: TransferFromServerAction[];
   transfersTo: TransferToServerAction[];
   screening: "None" | "Some";
 };
@@ -226,6 +241,11 @@ class FeltReader {
   private index = 0;
 
   constructor(private readonly values: readonly string[]) {}
+
+  /** How many felts have been consumed so far. */
+  position(): number {
+    return this.index;
+  }
 
   read(label: string): bigint {
     const value = this.values[this.index];
@@ -314,6 +334,7 @@ function readServerActions(
   const reader = new FeltReader(calldata);
   const actionCount = reader.readCount("server action count");
   const invokes: InvokeServerAction[] = [];
+  const transfersFrom: TransferFromServerAction[] = [];
   const transfersTo: TransferToServerAction[] = [];
   const discriminants: bigint[] = [];
 
@@ -329,6 +350,13 @@ function readServerActions(
         reader.skip(4, `server action ${index} append value`);
         break;
       case 2n:
+        transfersFrom.push({
+          actionIndex: index,
+          from: reader.read(`server action ${index} deposit source`),
+          token: reader.read(`server action ${index} deposit token`),
+          amount: reader.read(`server action ${index} deposit amount`),
+        });
+        break;
       case 6n:
         reader.skip(3, `server action ${index} value`);
         break;
@@ -369,8 +397,17 @@ function readServerActions(
     }
   }
 
+  const actionsFeltLength = reader.position();
   if (!reader.hasRemaining() && allowMissingScreening) {
-    return { actionCount, discriminants, invokes, screening: "None", transfersTo };
+    return {
+      actionCount,
+      actionsFeltLength,
+      discriminants,
+      invokes,
+      screening: "None",
+      transfersFrom,
+      transfersTo,
+    };
   }
 
   const screeningDiscriminant = reader.read("screening option");
@@ -384,7 +421,15 @@ function readServerActions(
     throw new Error("invalid screening option");
   }
   reader.assertFinished();
-  return { actionCount, discriminants, invokes, screening, transfersTo };
+  return {
+    actionCount,
+    actionsFeltLength,
+    discriminants,
+    invokes,
+    screening,
+    transfersFrom,
+    transfersTo,
+  };
 }
 
 function buildFundActions(
@@ -603,6 +648,22 @@ function assertPreparedFund(
   expected.forEach((value, index) => {
     assertSameFelt(fund[index]!, value, `FUND calldata ${index}`);
   });
+}
+
+/**
+ * The part of an `apply_actions` calldata the SNIP-36 proof commits to.
+ *
+ * That is the serialized action array and nothing after it. The trailing
+ * screening option is an argument the pool checks for itself, and it is one
+ * felt when absent and four when present — so slicing a fixed number off the
+ * end silently mangles the payload the moment a bundle carries an
+ * attestation, which is what a deposit obliges it to do.
+ */
+export function serializedServerActionSpan(
+  calldata: readonly string[],
+): readonly string[] {
+  const { actionsFeltLength } = readServerActions(calldata, true);
+  return calldata.slice(0, actionsFeltLength);
 }
 
 export function assertSubmittableProof(

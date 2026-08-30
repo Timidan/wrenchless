@@ -19,10 +19,10 @@ export function validateTravelSafeAmount(
   const amount = decimal(amountFri, "Travel Safe amount");
   if (amount < MINIMUM_AMOUNT_FRI) throw new Error("Park at least 1 STRK");
   if (!readiness.registered) {
-    throw new Error("Set up Shielded Starknet in Ready before parking STRK");
+    throw new Error("Set up Shielded Starknet in your wallet before parking STRK");
   }
   if (amount > BigInt(readiness.maxParkableFri)) {
-    throw new Error("Leave the live private fee reserve in Ready");
+    throw new Error("Leave the private fee reserve in your wallet");
   }
 }
 

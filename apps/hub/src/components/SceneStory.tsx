@@ -39,8 +39,8 @@ const SCENES: readonly Scene[] = [
     portal: "36% 38%",
     width: 922,
     height: 1152,
-    title: "Choose what stays home.",
-    line: "Pick a daily allowance or one return date, in private STRK or USDC.",
+    title: "Choose your plan.",
+    line: "Pick the token, amount, daily release, and return date. Or keep everything locked until one date.",
   },
   {
     id: "counter",
@@ -49,8 +49,8 @@ const SCENES: readonly Scene[] = [
     portal: "74% 48%",
     width: 1536,
     height: 1024,
-    title: "Ready prepares the move.",
-    line: "It signs a STRK20 proof — your wallet keys never leave it.",
+    title: "Approve it in your wallet.",
+    line: "Your wallet signs the private transfer. Wrenchless never sees your keys.",
   },
   {
     id: "pool",
@@ -59,8 +59,8 @@ const SCENES: readonly Scene[] = [
     portal: "64% 70%",
     width: 1536,
     height: 1024,
-    title: "The reserve waits.",
-    line: "Wrenchless parks it in the Travel Safe. Missed days accumulate; future days don't release early.",
+    title: "The schedule controls access.",
+    line: "Daily amounts become available on time. Skip a day and it carries over. Later amounts stay locked.",
   },
   {
     id: "vault",
@@ -69,8 +69,8 @@ const SCENES: readonly Scene[] = [
     portal: "58% 58%",
     width: 1280,
     height: 960,
-    title: "Use the daily allowance.",
-    line: "Release what's available today with your passkey, or bring the whole reserve back early with your saved recovery words.",
+    title: "Release what is available.",
+    line: "Confirm on your device to move the available amount back to your wallet.",
   },
   {
     id: "hallway",
@@ -79,8 +79,8 @@ const SCENES: readonly Scene[] = [
     portal: "64% 57%",
     width: 922,
     height: 1152,
-    title: "The dated return goes to Ready.",
-    line: "Extend the date or top up anytime, then return the remainder once it opens.",
+    title: "Return the remaining balance.",
+    line: "Move everything back on your return date. Recovery words can do this earlier from another compatible device.",
   },
 ];
 
@@ -116,10 +116,6 @@ const ARRIVE_SCALE = 1.12;
 
 /** Small enough to read as a caption settling rather than as travel. */
 const CAPTION_RISE = 16;
-
-/** The storyboard's own rise. A picture is a bigger object than a line of
-    type, so it is allowed a little more travel than a caption gets. */
-const BOARD_RISE = 24;
 
 /**
  * The words hand over slightly ahead of the picture they belong to, and they
@@ -165,12 +161,16 @@ interface Layer {
  * the next frame settles in underneath it, so there is always a stretch with
  * two layers moving at once and never a cut.
  *
- * Below 1024px the same five frames are a plain vertical storyboard: picture,
- * caption, picture, caption, each one arriving with the page's own reveal as
- * the reader reaches it. Nothing is pinned and nothing is measured. Under
- * reduced motion that storyboard is simply present, with no reveal at all.
- * The markup is identical on all three paths, so the reading order is too, and
- * nothing inside the section is focusable in the first place.
+ * On a phone it is the same dive. What changes is where the words sit: the
+ * caption is a column beside the picture on a wide window and a band across
+ * the top of it in portrait, because the portals these scenes fall into sit
+ * between 38% and 70% down the frame, and a caption at the foot of the picture
+ * would be lying across the very thing the scene is diving towards.
+ *
+ * Under reduced motion the five frames are simply present, in order, with no
+ * pin and no reveal. The markup is identical on both paths, so the reading
+ * order is too, and nothing inside the section is focusable in the first
+ * place.
  */
 export function SceneStory(): JSX.Element {
   const root = useRef<HTMLElement>(null);
@@ -185,7 +185,14 @@ export function SceneStory(): JSX.Element {
 
       const media = gsap.matchMedia();
 
-      media.add("(min-width: 64rem)", () => {
+      /* Everywhere motion is allowed, not just on a wide window. What was
+         gated here was never the choreography — the timeline only moves
+         opacity, scale and a caption's own y, none of which has an opinion
+         about the shape of the window — it was the caption bay, a column of
+         34vw that is unreadable on a phone. `stage.css` answers that below
+         64rem by moving the caption to the top of the frame, where the plates
+         are darker and the portals are not. */
+      media.add("all", () => {
         const layers: Layer[] = [];
         for (const figure of frame.querySelectorAll<HTMLElement>(
           ".story__scene",
@@ -239,7 +246,13 @@ export function SceneStory(): JSX.Element {
           scrollTrigger: {
             trigger: frame,
             start: "top top",
-            end: () => `+=${Math.round(window.innerHeight * RUN_SCREENS)}`,
+            /* Measured from the pinned box and not from `window.innerHeight`.
+               The box is `100svh` — the window at its smallest — while
+               `innerHeight` on a phone grows and shrinks by the height of the
+               browser's own toolbar as you scroll. Reading the window here
+               meant the run was one length on the way down and another on the
+               way back up, and every segment boundary moved with it. */
+            end: () => `+=${Math.round(frame.offsetHeight * RUN_SCREENS)}`,
             pin: true,
             scrub: true,
             anticipatePin: 1,
@@ -327,40 +340,6 @@ export function SceneStory(): JSX.Element {
         };
       });
 
-      /**
-       * The storyboard's own motion.
-       *
-       * The dive is not available at this width, but "no dive" was reading as
-       * "no motion at all": five full-bleed photographs and five captions
-       * simply present, while every other section on the page arrives. Each
-       * figure now uses the page's one reveal gesture, with the picture a beat
-       * ahead of the words it belongs to, and each one is triggered on itself
-       * so the reader meets them one at a time rather than all five at once.
-       */
-      media.add("(max-width: 63.99rem)", () => {
-        for (const figure of frame.querySelectorAll<HTMLElement>(
-          ".story__scene",
-        )) {
-          const parts = figure.querySelectorAll<HTMLElement>(
-            ".story__media, .story__caption",
-          );
-          if (parts.length === 0) continue;
-
-          gsap.fromTo(
-            parts,
-            { opacity: 0, y: BOARD_RISE },
-            {
-              opacity: 1,
-              y: 0,
-              duration: 0.5,
-              ease: "settle",
-              stagger: 0.05,
-              scrollTrigger: { trigger: figure, start: "top 88%" },
-            },
-          );
-        }
-      });
-
       return () => media.revert();
     },
     { scope: root },
@@ -369,7 +348,7 @@ export function SceneStory(): JSX.Element {
   return (
     <section className="section section--story" id="story" ref={root}>
       <h2 className="visually-hidden">
-        How a Wrenchless Travel Safe works, in five scenes.
+        How Wrenchless works, in five steps.
       </h2>
 
       <div className="story__stage" ref={stage}>

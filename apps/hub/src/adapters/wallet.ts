@@ -1,8 +1,6 @@
 import { getWallets } from "@wallet-standard/app";
 import { z } from "zod";
 
-import type { ReadyMobileClientFactory } from "./ready-mobile-wallet";
-
 /** The wallet surface used after an account has been selected. */
 export type BrowserWallet = {
   id?: string;
@@ -23,7 +21,7 @@ type WalletRequest = DiscoverableWallet["request"];
 export type WalletUnavailableResolution = {
   href: string;
   kind: "install_extension";
-  label: "Install Ready";
+  label: "Install Ready" | "Install Xverse";
 };
 
 export class WalletUnavailableError extends Error {
@@ -37,11 +35,9 @@ export class WalletUnavailableError extends Error {
 }
 
 type RequestWalletAccountOptions = {
-  createMobileClient?: ReadyMobileClientFactory;
   discoverWallets?: () => Promise<readonly DiscoverableWallet[]>;
   openMobileUrl?: (url: string) => void;
   userAgent?: string;
-  walletConnectProjectId?: string;
 };
 
 declare global {
@@ -49,18 +45,24 @@ declare global {
     starknet?: unknown;
     starknet_argentX?: unknown;
     starknet_braavos?: unknown;
+    starknet_xverse?: unknown;
   }
 }
 
 const READY_INSTALL = {
-  chrome:
-    "https://chromewebstore.google.com/detail/argent-x/dlcobpjiigpikoobohmabehhmhfoodbb",
   firefox: "https://addons.mozilla.org/en-GB/firefox/addon/argent-x/",
   other:
     "https://help.wallet.ready.co/hc/en-us/articles/28313046540829-What-is-Ready-X",
 } as const;
 
+const XVERSE = {
+  chrome:
+    "https://chromewebstore.google.com/detail/xverse-wallet/idnnbdplmphpflfnlkomgpfbpcgelopg",
+  mobile: "https://connect.xverse.app/browser",
+} as const;
+
 const STARKNET_WALLET_API = "starknet:walletApi";
+const PRIVATE_WALLET_API_VERSION = "0.10.3";
 
 const standardFeatureSchema = z
   .object({
@@ -81,11 +83,15 @@ const injectedProviderSchema = z
 function unavailableResolution(
   userAgent: string,
 ): WalletUnavailableResolution {
+  if (/chrome|chromium|crios|edg\//i.test(userAgent)) {
+    return {
+      href: XVERSE.chrome,
+      kind: "install_extension",
+      label: "Install Xverse",
+    };
+  }
   let href: string = READY_INSTALL.other;
   if (/firefox/i.test(userAgent)) href = READY_INSTALL.firefox;
-  else if (/chrome|chromium|crios|edg\//i.test(userAgent)) {
-    href = READY_INSTALL.chrome;
-  }
   return { href, kind: "install_extension", label: "Install Ready" };
 }
 
@@ -93,18 +99,24 @@ function mobileBrowser(userAgent: string): boolean {
   return /android|iphone|ipad|ipod|mobile/i.test(userAgent);
 }
 
-function applicationUrl(): string {
-  const configured = import.meta.env.VITE_SITE_URL?.trim();
-  if (configured) return configured;
+function applicationPageUrl(): string {
   const parsed = z
-    .object({ location: z.object({ origin: z.string().url() }) })
+    .object({ location: z.object({ href: z.string().url() }) })
     .safeParse(globalThis.window);
-  if (parsed.success) return parsed.data.location.origin;
+  if (parsed.success) return parsed.data.location.href;
+  const configured = import.meta.env.VITE_SITE_URL?.trim();
+  if (configured) return new URL(configured).toString();
   throw new Error("Wrenchless public URL is not configured");
 }
 
 function openMobileUrl(url: string): void {
   globalThis.location.assign(url);
+}
+
+function xverseMobileUrl(pageUrl: string): string {
+  const url = new URL(XVERSE.mobile);
+  url.searchParams.set("url", pageUrl);
+  return url.toString();
 }
 
 function readyCandidate(
@@ -114,6 +126,46 @@ function readyCandidate(
     const identity = `${wallet.id} ${wallet.name}`.toLowerCase();
     return identity.includes("ready") || identity.includes("argent");
   });
+}
+
+function versionParts(version: string): [number, number, number] | null {
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version.trim());
+  if (match === null) return null;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+function versionAtLeast(version: string, minimum: string): boolean {
+  const candidate = versionParts(version);
+  const required = versionParts(minimum);
+  if (candidate === null || required === null) return false;
+  for (let index = 0; index < candidate.length; index += 1) {
+    const left = candidate[index] ?? 0;
+    const right = required[index] ?? 0;
+    if (left > right) return true;
+    if (left < right) return false;
+  }
+  return true;
+}
+
+async function supportsPrivateWalletApi(
+  wallet: DiscoverableWallet,
+): Promise<boolean> {
+  try {
+    const response = await wallet.request({ type: "wallet_supportedWalletApi" });
+    const versions = z.array(z.string()).parse(response);
+    return versions.some((version) =>
+      versionAtLeast(version, PRIVATE_WALLET_API_VERSION),
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function privateWallets(
+  wallets: readonly DiscoverableWallet[],
+): Promise<DiscoverableWallet[]> {
+  const support = await Promise.all(wallets.map(supportsPrivateWalletApi));
+  return wallets.filter((_, index) => support[index] === true);
 }
 
 function standardWallets(): DiscoverableWallet[] {
@@ -154,6 +206,7 @@ function injectedWallets(): DiscoverableWallet[] {
     { key: "starknet", value: globalThis.window.starknet },
     { key: "starknet_argentX", value: globalThis.window.starknet_argentX },
     { key: "starknet_braavos", value: globalThis.window.starknet_braavos },
+    { key: "starknet_xverse", value: globalThis.window.starknet_xverse },
   ];
   for (const key of keys) {
     const descriptor = Object.getOwnPropertyDescriptor(scope, key);
@@ -173,7 +226,11 @@ function injectedWallets(): DiscoverableWallet[] {
       id: parsed.data.id ?? fallbackId,
       name:
         parsed.data.name ??
-        (key === "starknet_argentX" ? "Ready Wallet" : fallbackId),
+        (key === "starknet_argentX"
+          ? "Ready Wallet"
+          : key === "starknet_xverse"
+            ? "Xverse"
+            : fallbackId),
       request<T>(input: { params?: unknown; type: string }): Promise<T> {
         return boundRequest<T>(input);
       },
@@ -242,38 +299,40 @@ function connectedWallet(
 }
 
 /**
- * Discover and connect a Starknet wallet. Private-method support is checked by
- * the operation that follows; discovery never treats a brand as capability.
+ * Discover and connect a privacy-capable Starknet wallet. Capability comes
+ * from the Wallet API version query, never from a wallet name or balance read.
  */
 export async function requestWalletAccount(
   options: RequestWalletAccountOptions = {},
 ): Promise<{ wallet: BrowserWallet; account: string }> {
   const discoverWallets =
     options.discoverWallets ?? (async () => availableWallets());
-  const wallets = uniqueWallets([
+  const discovered = uniqueWallets([
     ...(await discoverWallets()),
     ...injectedWallets(),
   ]);
-  const wallet = readyCandidate(wallets) ?? wallets[0];
-  if (wallet === undefined) {
-    const userAgent = options.userAgent ?? browserUserAgent();
+  const userAgent = options.userAgent ?? browserUserAgent();
+  if (discovered.length === 0) {
     if (mobileBrowser(userAgent)) {
-      const { connectReadyMobileWallet } = await import("./ready-mobile-wallet");
-      const mobileInput: Parameters<typeof connectReadyMobileWallet>[0] = {
-        projectId:
-          options.walletConnectProjectId ??
-          import.meta.env.VITE_WALLETCONNECT_PROJECT_ID ??
-          "",
-        applicationUrl: applicationUrl(),
-        openUrl: options.openMobileUrl ?? openMobileUrl,
-      };
-      if (options.createMobileClient !== undefined) {
-        mobileInput.createClient = options.createMobileClient;
+      if (/xverse/i.test(userAgent)) {
+        throw new Error("Xverse did not expose private Starknet actions");
       }
-      return connectReadyMobileWallet(mobileInput);
+      (options.openMobileUrl ?? openMobileUrl)(
+        xverseMobileUrl(applicationPageUrl()),
+      );
+      throw new Error("Continue in Xverse");
     }
     throw new WalletUnavailableError(
       unavailableResolution(userAgent),
+    );
+  }
+
+  const compatible = await privateWallets(discovered);
+  const wallet = readyCandidate(compatible) ?? compatible[0];
+  if (wallet === undefined) {
+    const names = discovered.map((candidate) => candidate.name).join(", ");
+    throw new Error(
+      `${names || "This wallet"} does not support private Starknet actions`,
     );
   }
 

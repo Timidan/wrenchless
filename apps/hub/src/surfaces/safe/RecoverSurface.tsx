@@ -6,12 +6,12 @@ import {
   formatUnixSeconds,
   shortHex,
 } from "../../adapters/amount";
-import { ReadyWalletMark } from "../../components/ReadyWalletMark";
 import {
   ArrowsClockwiseIcon,
   CheckCircleIcon,
   KeyIcon,
   LockKeyOpenIcon,
+  WalletIcon,
   WarningCircleIcon,
 } from "../../components/icons";
 import { navigate } from "../../routes";
@@ -111,7 +111,7 @@ export function RecoverSurface(): JSX.Element {
           </Facts>
           <Actions>
             <Button
-              icon={<ReadyWalletMark className="wbtn__ready" />}
+              icon={<WalletIcon />}
               label="Continue in wallet"
               onClick={() => void recovery.submit()}
             />
@@ -128,7 +128,7 @@ export function RecoverSurface(): JSX.Element {
           title="The return date has passed"
         >
           <Emblem>
-            <ReadyWalletMark className="emblem__ready" />
+            <WalletIcon />
           </Emblem>
           <Actions>
             <Button label="Open Travel Safe" onClick={() => navigate("/safe")} />

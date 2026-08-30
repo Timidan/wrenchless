@@ -11,7 +11,10 @@ import {
   type RefillFundFinalityEvidence,
   type RefillFundInspectionSummary,
 } from "@wrenchless/relay-canary/refill-relay";
-import { StarknetRegistrationCanaryClient } from "@wrenchless/relay-canary/starknet-client";
+import {
+  broadcastOutcomeIsUncertain,
+  StarknetRegistrationCanaryClient,
+} from "@wrenchless/relay-canary/starknet-client";
 
 import type { SponsorConfig } from "./config.js";
 import {
@@ -43,6 +46,7 @@ export type RefillFundRelayErrorCode =
   | "recovery_not_approved"
   | "fund_cost_changed"
   | "fund_rejected"
+  | "fund_submission_uncertain"
   | "relay_busy";
 
 export class RefillFundRelayError extends Error {
@@ -191,7 +195,9 @@ export class RefillFundRelay {
             artifact.stateId,
             BigInt(cause.actualFeeFri),
           );
+          return;
         }
+        await this.budget.settleMaximum(artifact.stateId);
       })
       .catch(() => undefined)
       .finally(() => {
@@ -308,6 +314,10 @@ export class RefillFundRelay {
       };
     } catch (cause) {
       if (reservationMade && transactionHash === undefined) {
+        if (broadcastOutcomeIsUncertain(cause)) {
+          await this.budget.settleMaximum(artifact.stateId).catch(() => undefined);
+          throw new RefillFundRelayError("fund_submission_uncertain", { cause });
+        }
         await this.budget.settle(artifact.stateId, 0n).catch(() => undefined);
       }
       if (cause instanceof RefillFundRelayError) throw cause;

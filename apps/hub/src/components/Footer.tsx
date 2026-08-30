@@ -38,18 +38,17 @@ export function Footer(): JSX.Element {
       <div className="footer__inner grid">
         <div className="bay footer__bay">
           <h2 className="footer__statement">
-            Carry your wallet. Leave part of the balance behind.
+            Carry your wallet. Leave most of the balance locked.
           </h2>
           <p className="footer__honest">
-            Ready keeps your wallet keys. Your passkey protects the regular
-            controls here. The recovery words you saved at setup return the
-            whole reserve early.
+            Your wallet keeps your keys. Device confirmation protects changes.
+            Recovery words return the remaining balance early.
           </p>
           <div className="footer__meta">
             <nav className="footer__links" aria-label="Footer">
               <a href="/#story">How it works</a>
-              <a href="/#evidence">What it does</a>
-              <a href="/rescue">Rescue a Safe</a>
+              <a href="/#evidence">What protects it</a>
+              <a href="/rescue">Recover locked funds</a>
               <a href="/privacy.html">Privacy</a>
             </nav>
             <span className="footer__credit">

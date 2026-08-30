@@ -9,7 +9,6 @@ import {
   reasonFrom,
   shortHex,
 } from "../../../adapters/amount";
-import { ReadyWalletMark } from "../../../components/ReadyWalletMark";
 import { StrkTokenMark } from "../../../components/StrkTokenMark";
 import { UsdcTokenMark } from "../../../components/UsdcTokenMark";
 import {
@@ -26,6 +25,7 @@ import {
   PlusCircleIcon,
   ShieldCheckIcon,
   SuitcaseRollingIcon,
+  WalletIcon,
   WarningCircleIcon,
 } from "../../../components/icons";
 import {
@@ -48,6 +48,7 @@ import type {
   SafeActionState,
   SafeAssetView,
   SafeReadinessCheck,
+  SafeApprovalStep,
   SafeV3Phase,
   TravelSafeV3Actions,
   TravelSafeV3Model,
@@ -76,13 +77,6 @@ const CREATE_STEPS: readonly SafeV3Phase[] = [
 ];
 
 const LOCK_PRESETS = [25, 50, 75, 100] as const;
-
-/** Trim, lowercase and collapse whitespace, so a pasted or retyped phrase
- * compares the same way the controller's own `setRecoveryWords` normalizes
- * it. */
-function normalizeRecoveryWords(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
-}
 
 /** A failure, in the words the controller already wrote for a person. */
 function Failure(props: { message: string }): JSX.Element {
@@ -256,12 +250,12 @@ function Phase(props: {
           title="Connect wallet"
         >
           <Emblem>
-            <ReadyWalletMark className="emblem__ready" />
+            <WalletIcon />
           </Emblem>
           <Actions>
             <Button
               disabled={safeActionBusy(model.action)}
-              icon={<ReadyWalletMark className="wbtn__ready" />}
+              icon={<WalletIcon />}
               iconMotion={model.action.name === "wallet" ? "spin" : undefined}
               label="Connect wallet"
               onClick={() => {
@@ -465,9 +459,11 @@ function PlanScreen(props: {
       </FieldGroup>
       {asset === null ? null : (
         <Note>
-          {asset.available
-            ? `${asset.shieldedBalance} ${asset.symbol} private now, plus ${asset.returnFeeStrk} STRK reserved for the return.`
-            : `${asset.symbol} is temporarily unavailable from Ready.`}
+          {!asset.available
+            ? `${asset.symbol} is temporarily unavailable from your wallet.`
+            : asset.hasPublicBalance
+              ? `${asset.shieldedBalance} ${asset.symbol} private and ${asset.publicBalance} ${asset.symbol} still in your wallet, plus ${asset.returnFeeStrk} STRK reserved for the return. Anything parked from the wallet moves into your private balance inside the funding transaction, after one approval.`
+              : `${asset.shieldedBalance} ${asset.symbol} private now, plus ${asset.returnFeeStrk} STRK reserved for the return.`}
         </Note>
       )}
       <div className="wform">
@@ -600,6 +596,16 @@ function PlanScreen(props: {
   );
 }
 
+/**
+ * The one moment the twelve words exist on screen.
+ *
+ * They arrive concealed and copyable, and nothing here asks for them back.
+ * The type-back that used to gate this screen proved only that the words were
+ * still on the screen being read from — a person who copied them into a
+ * password manager had to retype all twelve to get past it, and a person who
+ * saved nothing could pass it by looking up. The honest guard is the phrase
+ * itself: it is shown once, said plainly, and Wrenchless cannot show it again.
+ */
 function RecoveryScreen(props: {
   model: TravelSafeV3Model;
   actions: TravelSafeV3Actions;
@@ -607,10 +613,12 @@ function RecoveryScreen(props: {
   const { actions, model } = props;
   const [localError, setLocalError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [confirmInput, setConfirmInput] = useState("");
-  const matches =
-    model.recoveryWords !== null &&
-    normalizeRecoveryWords(confirmInput) === model.recoveryWords;
+  /**
+   * Nobody gets past their only copy of the phrase without having put it in
+   * front of themselves once. Revealing or copying both count; typing is
+   * still not asked for.
+   */
+  const [seen, setSeen] = useState(false);
 
   async function handleConfirm(): Promise<void> {
     setLocalError(null);
@@ -630,24 +638,20 @@ function RecoveryScreen(props: {
       onBack={actions.closeCreate}
       title="Save these words once"
     >
-      <Phrase words={(model.recoveryWords ?? "").split(" ")} />
-      <Note tone="caution">Write them down now. Wrenchless never shows them again.</Note>
-      <WalletField label="Type them back">
-        {({ inputId, describedBy }) => (
-          <textarea
-            aria-describedby={describedBy}
-            className="winput winput--paste"
-            id={inputId}
-            onChange={(event) => setConfirmInput(event.target.value)}
-            rows={3}
-            value={confirmInput}
-          />
-        )}
-      </WalletField>
+      <Phrase
+        conceal
+        onSeen={() => setSeen(true)}
+        words={(model.recoveryWords ?? "").split(" ")}
+      />
+      <Note tone="caution">
+        {seen
+          ? "Save them now. Wrenchless never shows them again, and nobody can reissue them."
+          : "Reveal or copy the words first. Wrenchless never shows them again, and nobody can reissue them."}
+      </Note>
       {localError === null ? null : <Failure message={localError} />}
       <Actions>
         <Button
-          disabled={busy || !matches}
+          disabled={busy || !seen}
           icon={<KeyIcon />}
           iconMotion={busy ? "spin" : undefined}
           label="I saved them"
@@ -657,6 +661,87 @@ function RecoveryScreen(props: {
         />
       </Actions>
     </Screen>
+  );
+}
+
+/**
+ * The one ordinary, public transaction the product asks for.
+ *
+ * Shielding used to be its own transaction, and it could never have worked: a
+ * bundle holding nothing but a deposit carries no nullifier and no random, and
+ * the pool refuses it as NO_REPLAY_PROTECTION. The deposit now rides inside
+ * the funding transaction, where the withdrawal supplies both — which leaves
+ * only the permission to take the money, and only the account can give that.
+ *
+ * The amount is exact. An allowance that outlives the transaction it was for
+ * is a standing permission nobody asked to keep.
+ */
+function ApprovalStep(props: {
+  approval: SafeApprovalStep;
+  model: TravelSafeV3Model;
+  actions: TravelSafeV3Actions;
+}): JSX.Element {
+  const { actions, approval, model } = props;
+  const busy = safeActionBusy(model.action);
+  const sent = approval.sent;
+  return (
+    <>
+      <Facts>
+        <Fact
+          label="Allow the pool to take"
+          strong
+          value={<SafeAmount symbol={approval.symbol} value={approval.amount} />}
+        />
+        {/* A total on its own is unexplainable: somebody holding exactly the
+            ten STRK they mean to park is still asked for six more, and without
+            this the six reads as a deposit the app has lost track of. */}
+        {approval.towardAmount === "0" || approval.towardReserve === "0" ? null : (
+          <Fact
+            label="Of which"
+            value={`${approval.towardAmount} to park, ${approval.towardReserve} action fee`}
+          />
+        )}
+      </Facts>
+      {approval.towardAmount !== "0" ? null : (
+        <Note>
+          You already hold what you are parking. The {approval.amount}{" "}
+          {approval.symbol} is the pool&apos;s action fee, which has to be
+          private and has to still be there afterwards — it is what pays to
+          release the money or bring it home.
+        </Note>
+      )}
+      <Note>
+        {sent
+          ? "The approval is on its way. The exact fee follows once it is onchain."
+          : `This is an ordinary Starknet transaction and the only one you send yourself: it lets the privacy pool take exactly ${approval.amount} ${approval.symbol}, and nothing more. The money moves into your private balance inside the funding transaction itself, so there is no separate shield and nothing to wait for afterwards.`}
+      </Note>
+      <SafeStatus action={model.action} error={model.error} />
+      {approval.transactionHash === null ? null : (
+        <TransactionRef
+          hash={shortHex(approval.transactionHash)}
+          href={`${EXPLORER_BASE}${approval.transactionHash}`}
+          label="Approval"
+        />
+      )}
+      <Actions>
+        <Button
+          disabled={busy}
+          icon={<ShieldCheckIcon />}
+          iconMotion={busy ? "guard" : undefined}
+          label={sent ? "Check the approval" : "Approve in wallet"}
+          onClick={() => {
+            void actions.approveNow();
+          }}
+        />
+        {/* Never disabled. A wallet that goes quiet must not be able to trap
+            somebody on this screen with both controls greyed out. */}
+        <Button
+          label={busy ? "Stop waiting" : "Not now"}
+          onClick={actions.dismissApproval}
+          tone="quiet"
+        />
+      </Actions>
+    </>
   );
 }
 
@@ -686,6 +771,8 @@ function ReviewScreen(props: {
    * place rather than behind a button that could only fail.
    */
   const connected = model.walletAccount !== null;
+  const approval = model.approval?.purpose === "fund" ? model.approval : null;
+  const missingWords = needsRecoveryWords && recoveryInput.trim() === "";
   return (
     <Screen lede="Check the plan before the exact fee." title="Review">
       <Facts>
@@ -730,7 +817,10 @@ function ReviewScreen(props: {
         />
       </Facts>
       {needsRecoveryWords ? (
-        <WalletField label="Recovery words">
+        <WalletField
+          hint="Funding proves this Safe can be brought back early, and only these words can prove that. They were never stored, so they are asked for once per session — not sent anywhere, and used on this device only."
+          label="Recovery words"
+        >
           {({ inputId, describedBy }) => (
             <textarea
               aria-describedby={describedBy}
@@ -749,31 +839,73 @@ function ReviewScreen(props: {
       {connected ? null : (
         <Note>Connect the wallet that funds this allowance to price it.</Note>
       )}
-      <SafeStatus action={model.action} error={model.error} />
+      {approval !== null && connected ? (
+        <ApprovalStep actions={actions} approval={approval} model={model} />
+      ) : (
+        <>
+          <SafeStatus action={model.action} error={model.error} />
+          {busy ? (
+            <Note>
+              Your wallet builds the private proof itself, which can take a
+              minute or two and asks for your approval first. Nothing is sent
+              until you have seen the fee.
+            </Note>
+          ) : null}
+          <Actions>
+            {connected ? (
+              <Button
+                disabled={busy || missingWords}
+                icon={<LockSimpleIcon />}
+                iconMotion={busy ? "latch" : undefined}
+                label="Get exact fee"
+                onClick={() => {
+                  void actions.prepareFund();
+                }}
+              />
+            ) : (
+              <Button
+                disabled={busy}
+                icon={<WalletIcon />}
+                iconMotion={model.action.name === "wallet" ? "spin" : undefined}
+                label="Connect wallet"
+                onClick={() => {
+                  void actions.connect();
+                }}
+              />
+            )}
+            {busy ? (
+              <Button
+                label="Stop waiting"
+                onClick={actions.cancelPreparation}
+                tone="quiet"
+              />
+            ) : null}
+          </Actions>
+          {/* A disabled control that does not say what it wants is the whole
+              reason somebody stares at this screen. */}
+          {missingWords ? (
+            <Note>Type the twelve words above to price this Safe.</Note>
+          ) : null}
+        </>
+      )}
+      <Note>
+        {approval === null
+          ? "Nothing broadcasts until you confirm the fee, unless part of the amount is still in your wallet — then one approval goes first."
+          : "Only the approval broadcasts now, and only after you send it from your wallet."}
+      </Note>
+      {/* This Safe exists on this device and nowhere else until it is funded,
+          so abandoning it costs nothing and strands nothing. Without it a
+          half-finished setup can only be escaped by clearing site data. */}
       <Actions>
-        {connected ? (
-          <Button
-            disabled={busy || (needsRecoveryWords && recoveryInput.trim() === "")}
-            icon={<LockSimpleIcon />}
-            iconMotion={busy ? "spin" : undefined}
-            label="Get exact fee"
-            onClick={() => {
-              void actions.prepareFund();
-            }}
-          />
-        ) : (
-          <Button
-            disabled={busy}
-            icon={<ReadyWalletMark className="wbtn__ready" />}
-            iconMotion={model.action.name === "wallet" ? "spin" : undefined}
-            label="Connect wallet"
-            onClick={() => {
-              void actions.connect();
-            }}
-          />
-        )}
+        <Button
+          disabled={busy}
+          label="Start over"
+          onClick={() => {
+            void actions.discardUnfundedSafe();
+          }}
+          tone="quiet"
+        />
       </Actions>
-      <Note>Nothing broadcasts until you confirm the fee.</Note>
     </Screen>
   );
 }
@@ -838,7 +970,7 @@ function QuoteScreen(props: {
         <Button
           disabled={locked}
           icon={<LockSimpleIcon />}
-          iconMotion={safeActionBusy(model.action) ? "spin" : undefined}
+          iconMotion={safeActionBusy(model.action) ? "latch" : undefined}
           label="Confirm and fund"
           onClick={() => {
             void actions.submitFund();
@@ -1043,10 +1175,13 @@ function TopUpSubview(props: {
   const busy = safeActionBusy(model.action);
   const showQuote = attempted && model.quote !== null;
   const locked = busy || model.action.name === "confirmed";
+  const approval = model.approval?.purpose === "top-up" ? model.approval : null;
 
   return (
     <Screen lede="Add more without changing the schedule." onBack={props.onBack} title="Top up">
-      {!showQuote ? (
+      {approval !== null ? (
+        <ApprovalStep actions={actions} approval={approval} model={model} />
+      ) : !showQuote ? (
         <>
           <div className="wform">
             <WalletField label={`Amount (${ticket.tokenSymbol})`}>
@@ -1068,7 +1203,7 @@ function TopUpSubview(props: {
             <Button
               disabled={busy || amount.trim() === ""}
               icon={<LockSimpleIcon />}
-              iconMotion={busy ? "spin" : undefined}
+              iconMotion={busy ? "latch" : undefined}
               label="Get exact fee"
               onClick={() => {
                 setAttempted(true);
@@ -1092,7 +1227,7 @@ function TopUpSubview(props: {
             <Button
               disabled={locked}
               icon={<LockSimpleIcon />}
-              iconMotion={busy ? "spin" : undefined}
+              iconMotion={busy ? "latch" : undefined}
               label="Confirm top-up"
               onClick={() => {
                 void actions.submitTopUp();
@@ -1294,7 +1429,7 @@ function TerminalScreen(props: {
 
   return (
     <Screen
-      title={claimed ? "Returned early" : "Returned to Ready"}
+      title={claimed ? "Returned early" : "Returned to wallet"}
       tone={claimed ? "alert" : undefined}
     >
       <Emblem>{claimed ? <LockKeyOpenIcon /> : <CheckCircleIcon />}</Emblem>

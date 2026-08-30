@@ -19,7 +19,7 @@ export function PrivacyPage(): JSX.Element {
           <header className="bay bay--left document__head">
             <h1 className="document__title">Privacy</h1>
             <p className="document__lede">
-              What stays on your device, what Ready handles, and what Starknet
+              What stays on your device, what your wallet handles, and what Starknet
               publishes.
             </p>
           </header>
@@ -28,26 +28,25 @@ export function PrivacyPage(): JSX.Element {
             <section className="document__section">
               <h2>On this device</h2>
               <p>
-                Wrenchless stores the passkey reference, the active Safe ID, and
-                one encrypted Travel Safe ticket. The ticket holds the amount,
-                the schedule, known transaction hashes, and the device action
-                key. A key derived from your passkey encrypts it at rest and is
-                kept only for the current unlocked session.
+                Wrenchless stores the active Safe ID and one encrypted Travel
+                Safe ticket. It also stores a passkey reference, or the wallet
+                account used for confirmation when an embedded browser has no
+                passkeys. All of this stays in this browser.
               </p>
               <p>
-                The passkey unlocks the local ticket and protects the release and
-                extend controls. Malware running after you unlock the app can
-                still read what the app can read.
+                A passkey normally unlocks the ticket. An embedded wallet browser
+                without passkeys asks the connected wallet to confirm instead.
+                That wallet confirmation is not a separate security factor.
+                Malware running after unlock can still read what the app can read.
               </p>
             </section>
 
             <section className="document__section">
               <h2>Your recovery words</h2>
               <p>
-                Recovery words are generated when you set a Safe up and shown
-                once. They stay in the page&rsquo;s memory only until the setup
-                funding is sent. They are never written into the ticket and never
-                sent to the sponsor, so only you can save them.
+                Recovery words are generated during setup and shown once. The live
+                v2 Safe keeps them inside its encrypted local ticket so this device
+                can return funds early. They are never sent to the sponsor.
               </p>
               <p>
                 Saved recovery words authorise returning the whole reserve early.
@@ -64,16 +63,16 @@ export function PrivacyPage(): JSX.Element {
                 Wrenchless never stores them.
               </p>
               <p>
-                A rescue sends the remaining reserve to the Ready account you
+                A rescue sends the remaining reserve to the wallet account you
                 connect at that moment, and only before the return date. That
                 account needs enough private STRK for the action fee.
               </p>
             </section>
 
             <section className="document__section">
-              <h2>Ready and the sponsor</h2>
+              <h2>Your wallet and the sponsor</h2>
               <p>
-                Ready holds your account keys. It prepares and signs the STRK20
+                Your wallet holds your account keys. It prepares and signs the STRK20
                 actions a Travel Safe needs and asks for your approval where its
                 Wallet API requires it.
               </p>
@@ -92,7 +91,7 @@ export function PrivacyPage(): JSX.Element {
                 funding can make activity easier to correlate.
               </p>
               <p>
-                The helper does not record which Ready account funded the Safe.
+                The helper does not record which wallet account funded the Safe.
                 That narrows the link to an account; it does not hide the facts
                 above.
               </p>
@@ -110,9 +109,9 @@ export function PrivacyPage(): JSX.Element {
             <section className="document__section">
               <h2>Current limits</h2>
               <p>
-                A Travel Safe holds STRK or USDC for up to 180 days, on a daily
-                or single-date schedule. One Safe is active per browser at a
-                time. You can top up and extend within that lifetime.
+                The live v2 Safe locks private STRK until one return date. The
+                built but undeployed v3 Safe adds STRK or USDC, daily releases,
+                top-ups, and return-date extensions.
               </p>
             </section>
 

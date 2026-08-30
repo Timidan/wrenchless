@@ -64,6 +64,28 @@ describe("FundSpendBudget", () => {
     });
   });
 
+  it("charges an uncertain broadcast to the current day without leaving it pending", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "wrenchless-fund-budget-"));
+    directories.push(directory);
+    const path = join(directory, "ledger.json");
+    let currentTime = new Date("2026-08-24T10:00:00.000Z");
+    const now = () => currentTime;
+
+    const budget = new FundSpendBudget(path, 20n, now);
+    await budget.reserve("safe-a", 16n);
+    await budget.settleMaximum("safe-a");
+
+    expect(await budget.remainingFri()).toBe(4n);
+    expect(JSON.parse(await readFile(path, "utf8"))).toMatchObject({
+      day: "2026-08-24",
+      settledFri: "16",
+      pending: {},
+    });
+
+    currentTime = new Date("2026-08-25T00:01:00.000Z");
+    expect(await budget.remainingFri()).toBe(20n);
+  });
+
   it("migrates the deployed v1 ledger without releasing its current-day spend", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wrenchless-fund-budget-"));
     directories.push(directory);

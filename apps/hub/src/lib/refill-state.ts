@@ -33,7 +33,7 @@ const transactionReceiptSchema = z
     transaction_hash: z.string(),
     execution_status: z.enum(["SUCCEEDED", "REVERTED"]).optional(),
     finality_status: z
-      .enum(["RECEIVED", "ACCEPTED_ON_L2", "ACCEPTED_ON_L1"])
+      .enum(["RECEIVED", "PRE_CONFIRMED", "ACCEPTED_ON_L2", "ACCEPTED_ON_L1"])
       .optional(),
     revert_reason: z.string().optional(),
   })
@@ -116,7 +116,7 @@ async function rpc<Result>(input: {
 
 function positiveInteger(value: RpcInteger, label: string): bigint {
   const parsed = BigInt(value);
-  if (parsed <= 0n) {
+  if (parsed <= 0n || parsed > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new Error(`The latest block returned an invalid ${label}`);
   }
   return parsed;
@@ -216,16 +216,16 @@ export async function readRefillProofExpiryBlock(input: {
   const poolAddress = felt(input.poolAddress, "privacy pool");
   const baseBlockValue = input.proofFacts[4];
   if (baseBlockValue === undefined) {
-    throw new Error("Ready returned incomplete proof facts");
+    throw new Error("The wallet returned incomplete proof facts");
   }
   let baseBlock: bigint;
   try {
     baseBlock = BigInt(baseBlockValue);
   } catch {
-    throw new Error("Ready returned an invalid proof base block");
+    throw new Error("The wallet returned an invalid proof base block");
   }
   if (baseBlock < 0n) {
-    throw new Error("Ready returned an invalid proof base block");
+    throw new Error("The wallet returned an invalid proof base block");
   }
   const rpcUrl = input.rpcUrl ?? MAINNET_RPC;
   const fetcher = input.fetcher ?? fetch;

@@ -356,7 +356,7 @@ function Home(props: {
       return (
         <Screen
           center
-          lede="Verify with your passkey to see it."
+          lede="Confirm on this device to see it."
           title="This device holds a safe"
         >
           <Emblem>
@@ -786,7 +786,7 @@ function CreateFlow(props: {
             />
           </Actions>
           <Live message={model.live} />
-          <Note>Your passkey protects early return.</Note>
+          <Note>Your device confirmation protects early return.</Note>
         </Screen>
       );
 

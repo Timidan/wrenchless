@@ -227,6 +227,11 @@
   /* The one constant-progress motion: a processing icon telling a person
      work is still running, not settling toward a resting state. */
   --dur-spin: 900ms;
+  /* The same message from a mark that has no rotation in it. Slower, because
+     a thing standing watch is not hurrying. */
+  --dur-guard: 1600ms;
+  /* A lock being tried: quicker than standing watch, slower than a spinner. */
+  --dur-latch: 1100ms;
 
   /* ---- spacing --------------------------------------------------------- */
   --space-1: 4px;

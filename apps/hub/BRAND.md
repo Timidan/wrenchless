@@ -1,10 +1,14 @@
 # Wrenchless brand assets
 
-Wrenchless is a one-device Travel Safe for private STRK. Its identity stays quiet, ordinary-looking, and precise: the product should feel like a small place to leave a reserve, not a trading dashboard.
+Wrenchless keeps private travel funds locked until the owner returns. The live
+Travel Safe supports private STRK. The built but undeployed Trip Allowance adds
+private STRK and USDC with daily releases. Its identity stays quiet,
+ordinary-looking, and precise: the product should feel like a small place to
+lock part of a balance, not a trading dashboard.
 
 ## The mark
 
-The W is built from two identical V strokes. The solid front V is what travels with you. The quieter rear V is the reserve parked until your return. The offset makes the W without adding a shield, lock, key, or other overt security symbol.
+The W is built from two identical V strokes. The solid front V is what travels with you. The quieter rear V is the balance locked until your return. The offset makes the W without adding a shield, lock, key, or other overt security symbol.
 
 The construction uses a 32 × 32 viewBox, 2.5-unit strokes, square caps, and miter joins. Keep the geometry and the front/rear order intact.
 
@@ -36,6 +40,8 @@ The exported lockups set lowercase “wrenchless” with the approved fallback m
 - `public/logos/wrenchless-mark-light.svg` — ink mark for light grounds.
 - `public/logos/wrenchless-wordmark-dark.svg` — paper mark and Hanken lockup.
 - `public/logos/wrenchless-wordmark-light.svg` — ink mark and Hanken lockup.
+- `public/logos/wrenchless-wordmark-dark.png` — transparent paper lockup for dark README themes.
+- `public/logos/wrenchless-wordmark.png` — transparent ink lockup for light README themes.
 - `public/favicon.svg` — layered W on the ink tile.
 - `public/og.svg` — 1200 × 630 social source.
 - `public/og.png` — raster social image.

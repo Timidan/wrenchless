@@ -14,6 +14,7 @@ const settingsSchema = z
     sponsorUrl: z.string().url(),
     devicePasskeyId: z.string().nullable(),
     devicePasskeyPublicKey: z.string().nullable(),
+    deviceWalletAccount: feltSchema.nullable().default(null),
     activeSafeStateId: feltSchema.nullable(),
   })
   .strict();
@@ -38,6 +39,7 @@ const EMPTY: HubSettings = {
   sponsorUrl: WRENCHLESS_SERVICES.sponsorUrl,
   devicePasskeyId: null,
   devicePasskeyPublicKey: null,
+  deviceWalletAccount: null,
   activeSafeStateId: null,
 };
 
@@ -50,7 +52,11 @@ function parseStored(value: string | null): {
     const json = JSON.parse(value);
     const parsed = settingsSchema.safeParse(json);
     if (parsed.success) {
-      return { settings: parsed.data, strippedUnusedData: false };
+      const sponsorChanged = parsed.data.sponsorUrl !== EMPTY.sponsorUrl;
+      return {
+        settings: { ...parsed.data, sponsorUrl: EMPTY.sponsorUrl },
+        strippedUnusedData: sponsorChanged,
+      };
     }
     const transitional = transitionalSettingsSchema.safeParse(json);
     if (!transitional.success) return null;
@@ -74,7 +80,6 @@ function migrateLegacy(value: string | null): HubSettings | null {
     if (!parsed.success) return null;
     return settingsSchema.parse({
       ...EMPTY,
-      sponsorUrl: parsed.data.sponsorUrl ?? EMPTY.sponsorUrl,
       devicePasskeyId: parsed.data.devicePasskeyId ?? null,
       devicePasskeyPublicKey: parsed.data.devicePasskeyPublicKey ?? null,
     });

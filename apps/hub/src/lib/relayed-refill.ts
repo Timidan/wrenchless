@@ -130,11 +130,15 @@ export async function submitRelayedRefillFund(input: {
 
   if (!response.ok) {
     const parsed = relayErrorSchema.safeParse(body);
+    const ambiguous =
+      parsed.success && parsed.data.error === "fund_submission_uncertain";
     throw new RelayedRefillFundError(
-      parsed.success
+      ambiguous
+        ? "The safe may still be landing. Checking Starknet before another attempt."
+        : parsed.success
         ? publicMessage(parsed.data.error, parsed.data.reason)
         : "The parking service could not complete this request.",
-      false,
+      ambiguous,
     );
   }
 

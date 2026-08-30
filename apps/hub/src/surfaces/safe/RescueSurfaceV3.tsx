@@ -5,13 +5,13 @@ import {
   formatUnixSeconds,
   shortHex,
 } from "../../adapters/amount";
-import { ReadyWalletMark } from "../../components/ReadyWalletMark";
 import {
   ArrowDownLeftIcon,
   ArrowsClockwiseIcon,
   CheckCircleIcon,
   HourglassIcon,
   KeyIcon,
+  WalletIcon,
   WarningCircleIcon,
 } from "../../components/icons";
 import { navigate } from "../../routes";
@@ -57,7 +57,7 @@ function RescuePhase(props: TravelSafeRescueController): JSX.Element {
     case "entry":
       return (
         <Screen
-          lede="Saved recovery words can return a still-locked reserve to a Ready account on this device."
+          lede="Saved recovery words can return a still-locked reserve to a wallet account on this device."
           onBack={() => navigate("/safe")}
           title="Rescue a Safe"
         >
@@ -106,7 +106,7 @@ function RescuePhase(props: TravelSafeRescueController): JSX.Element {
       return (
         <Screen center title="Connect wallet">
           <Emblem>
-            <ReadyWalletMark className="emblem__ready" />
+            <WalletIcon />
           </Emblem>
           <StatusLine icon={<ArrowsClockwiseIcon />} iconMotion="spin">
             Waiting for your wallet
@@ -225,7 +225,7 @@ function ReviewScreen(props: TravelSafeRescueController): JSX.Element {
       )}
       <Actions>
         <Button
-          icon={<ReadyWalletMark className="wbtn__ready" />}
+          icon={<WalletIcon />}
           label="Connect wallet"
           onClick={() => {
             void actions.connect();

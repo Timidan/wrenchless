@@ -18,6 +18,9 @@ export function refillFundUnavailableReason(
   if (!readiness.helperMatchesConfiguration) {
     return "helper_configuration_mismatch";
   }
+  if (readiness.poolPaused || !readiness.poolFeeWithinLimit) {
+    return "fund_readiness_unavailable";
+  }
   if (!readiness.fundRelayBalanceReady) return "fund_relay_balance_low";
   return undefined;
 }

@@ -7,6 +7,8 @@
  * an 18-decimal value, and no amount of formatting afterwards puts them back.
  */
 
+import { z } from "zod";
+
 const DECIMALS = 18n;
 const ONE = 10n ** DECIMALS;
 /** Six is where a phone screen stops being able to show the digits anyway. */
@@ -128,12 +130,59 @@ export function formatTimestamp(iso: string): string {
 }
 
 /**
+ * The stored and relayed records are validated by schema, and a schema names
+ * its fields the way the code does. Those names are the only part of a
+ * rejection worth showing, said the way the product says them.
+ */
+const FIELD_WORDS = new Map<string, string>([
+  ["tokenAddress", "token"],
+  ["tokenSymbol", "token"],
+  ["tokenDecimals", "token"],
+  ["devicePrivateKey", "device key"],
+  ["stateId", "Safe reference"],
+  ["helperAddress", "Safe contract"],
+  ["recoveryAccount", "recovery account"],
+  ["recoverySalt", "recovery secret"],
+  ["amountBaseUnits", "amount"],
+  ["dailyAmountBaseUnits", "daily allowance"],
+  ["firstReleaseSeconds", "first release date"],
+  ["returnDateSeconds", "return date"],
+  ["fundTransactionHash", "transaction"],
+  ["actionTransactionHash", "transaction"],
+  ["pendingAction", "pending action"],
+]);
+
+/**
+ * A schema rejection, said to a person.
+ *
+ * A `ZodError` carries its issue list as its `message`, so showing it the way
+ * every other error is shown paints a JSON array onto the screen — which is
+ * exactly what happened when two leading-zero felts reached the ticket store.
+ * The important part is not the issue list. It is that the details were
+ * refused before anything was sent, and that nothing has moved.
+ */
+function schemaReason(error: z.ZodError): string {
+  const [issue] = error.issues;
+  for (const step of issue?.path ?? []) {
+    const named = FIELD_WORDS.get(String(step));
+    if (named !== undefined) {
+      return `Wrenchless could not accept the ${named} for this Safe, so nothing was sent.`;
+    }
+  }
+  return "Some of this Safe's details were not in the form Wrenchless accepts, so nothing was sent.";
+}
+
+/**
  * Errors thrown by the operation modules are already written for a person.
  * The frontend shows them verbatim rather than matching on their text: a UI
  * that branches on a backend message string is a UI that breaks silently the
  * day the wording improves.
+ *
+ * A schema rejection is the one exception, because its own message is a
+ * serialized issue list rather than a sentence.
  */
 export function reasonFrom<T>(error: T): string {
+  if (error instanceof z.ZodError) return schemaReason(error);
   if (error instanceof Error && error.message.trim().length > 0) {
     return error.message;
   }

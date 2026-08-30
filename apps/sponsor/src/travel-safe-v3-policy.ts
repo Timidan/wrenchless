@@ -42,6 +42,18 @@ const commonArtifact = {
   stateId: nonZeroFeltSchema,
   tokenAddress: nonZeroFeltSchema,
   amountBaseUnits: decimal(U128_MAX, true),
+  /**
+   * Ordinary funds the same transaction moves into the pool before spending
+   * them. A deposit cannot travel on its own — it compiles to a TransferFrom
+   * and an event, neither carrying a nullifier or a random, and the pool
+   * refuses such a bundle as NO_REPLAY_PROTECTION — so it rides with the
+   * withdrawal that funds the Safe. "0" when none is needed.
+   *
+   * Defaulted rather than required so a browser still running the previous
+   * bundle keeps working across the deploy: an artifact without the field is
+   * an artifact with no deposit, which is exactly the old behaviour.
+   */
+  depositBaseUnits: decimal(U128_MAX).default("0"),
   createdAt: z.iso.datetime(),
   call: callSchema,
   proof: z.string().trim().min(1),
@@ -114,22 +126,69 @@ function assertPreparedActions(artifact: TravelSafeV3RelayArtifact): void {
     artifact.operation === "FUND" ? "FUND" : "TOP_UP",
   );
   const actions = readPreparedServerActions(value, artifact.poolAddress);
-  if (
-    (actions.actionCount !== 2 && actions.actionCount !== 3) ||
-    actions.screening !== "None" ||
-    actions.transfersTo.length !== 1 ||
-    actions.invokes.length !== 1
-  ) {
-    throw new Error("prepared action must contain one withdrawal and one helper invoke");
+  const deposits = BigInt(artifact.depositBaseUnits) > 0n ? 1 : 0;
+  /**
+   * Police what moves value, not what order the wallet emitted it in.
+   *
+   * The previous rule listed the two exact discriminant sequences a funding
+   * bundle had ever been seen to compile to, which made the relay refuse any
+   * arrangement it had not been told about — including the perfectly ordinary
+   * one a bundled deposit produces. The invariants that actually protect
+   * anybody are about value and reach: exactly one withdrawal, to the helper,
+   * for the stated amount; exactly one plain invoke, of the helper, with the
+   * exact calldata; at most one deposit, declared and bounded. Everything
+   * else the pool emits is bookkeeping and events, which move nothing and
+   * call nobody.
+   */
+  const BOOKKEEPING = new Set([0n, 1n, 4n, 5n, 6n, 7n, 8n, 9n]);
+  const POLICED = new Set([2n, 3n, 10n]);
+  /**
+   * One invariant per sentence. These were a single condition behind a single
+   * message, and the first time one of them failed for a new reason the
+   * message named the wrong thing and cost a day.
+   */
+  if (actions.transfersTo.length !== 1) {
+    throw new Error(
+      `prepared action must contain exactly one withdrawal, found ${String(actions.transfersTo.length)}`,
+    );
   }
-  const expectedDiscriminants =
-    actions.actionCount === 2 ? [3n, 10n] : [3n, 5n, 10n];
-  if (
-    actions.discriminants.some(
-      (value, index) => value !== expectedDiscriminants[index],
-    )
-  ) {
-    throw new Error("prepared action contains an unexpected server action");
+  if (actions.invokes.length !== 1) {
+    throw new Error(
+      `prepared action must contain exactly one helper invoke, found ${String(actions.invokes.length)}`,
+    );
+  }
+  if (actions.transfersFrom.length !== deposits) {
+    throw new Error(
+      `prepared action declares ${String(deposits)} deposit(s) but contains ${String(actions.transfersFrom.length)}`,
+    );
+  }
+  /**
+   * Moving ordinary funds into the pool is a regular deposit, and the pool
+   * demands a screening attestation for one — it is the pool's own compliance
+   * check, signed by its screener and verified during execution, and the
+   * relay neither issues nor forges it. A bundle that moves no ordinary funds
+   * still may not carry one, because then there is nothing for it to attest.
+   */
+  if (deposits === 0 && actions.screening !== "None") {
+    throw new Error(
+      "prepared action carries a screening attestation but moves no ordinary funds",
+    );
+  }
+  const unpoliced = actions.discriminants.find(
+    (value) => !POLICED.has(value) && !BOOKKEEPING.has(value),
+  );
+  if (unpoliced !== undefined) {
+    throw new Error(
+      `prepared action contains an unexpected server action (${unpoliced.toString()})`,
+    );
+  }
+  if (deposits === 1) {
+    const deposited = actions.transfersFrom[0]!;
+    same(deposited.token, artifact.tokenAddress, "deposit token");
+    same(deposited.amount, artifact.depositBaseUnits, "deposit amount");
+    if (BigInt(deposited.amount) > BigInt(artifact.amountBaseUnits)) {
+      throw new Error("deposit exceeds the amount being funded");
+    }
   }
   const withdrawal = actions.transfersTo[0]!;
   const invoke = actions.invokes[0]!;

@@ -5,7 +5,10 @@ import type {
   RegistrationCanaryArtifact,
 } from "./artifact.js";
 import { assertRegistrationOnly } from "./pool-call.js";
-import { assertPreparedRefillFund } from "./refill-claim.js";
+import {
+  assertPreparedRefillFund,
+  serializedServerActionSpan,
+} from "./refill-claim.js";
 
 export const STRK20_SUPPORTED_PROOF_VERSIONS = [
   shortString.encodeShortString("PROOF0"),
@@ -117,10 +120,16 @@ function assertStrk20ProofFacts(
   );
   assertFeltEqual(messageCount, 1n, "proof must contain exactly one L2 message");
 
-  if (BigInt(artifact.call.calldata.at(-1) ?? "0x0") !== 1n) {
-    throw new Error("proof-bearing call must use no screening attestation");
-  }
-  const serializedServerActions = artifact.call.calldata.slice(0, -1);
+  /**
+   * The proof commits to the serialized action array, so the array is
+   * measured rather than assumed to be everything but the last felt. It was
+   * the last felt only while every bundle ended in a one-felt "no screening";
+   * a deposit obliges the pool to demand an attestation, and that option is
+   * four felts.
+   */
+  const serializedServerActions = serializedServerActionSpan(
+    artifact.call.calldata,
+  );
   const payload = [poolClassHash, ...serializedServerActions];
   const expectedMessageHash = ec.starkCurve.poseidonHashMany([
     BigInt(artifact.poolAddress),

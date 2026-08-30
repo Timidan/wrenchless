@@ -1261,22 +1261,71 @@ html.reduced-motion .fund-progress__marker {
   transform-origin: center;
 }
 
-/* These come after (and outweigh, via html.reduced-motion) the spin rule
-   above so an opted-in processing icon still stops rotating once reduced
-   motion is requested, mid-animation or not. */
-html.reduced-motion .statusline__icon[data-icon-motion="spin"],
-html.reduced-motion .wbtn__icon[data-icon-motion="spin"],
-html.reduced-motion .wcheck__icon[data-icon-motion="spin"],
-html.reduced-motion .iconbtn > span[data-icon-motion="spin"] {
+/* Work in progress, from a mark with no rotation of its own.
+
+   A spinning shield is a shield that has come loose. The rule the glyph table
+   above states — that a mark moves the way the object it draws would move —
+   does not stop applying because the button is busy, so the shield does the
+   only thing a shield does: it stands there and holds, breathing slightly, and
+   the scale is small enough to read as steady rather than as a pulse alarm. */
+@keyframes processing-guard {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.07);
+  }
+}
+
+/* A lock is not a wheel. It is pressed shut and tried again, so it presses:
+   a short travel down and back, with no rotation anywhere in it. */
+@keyframes processing-latch {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  45% {
+    transform: translateY(1.5px);
+  }
+}
+
+.statusline__icon[data-icon-motion="latch"],
+.wbtn__icon[data-icon-motion="latch"],
+.wcheck__icon[data-icon-motion="latch"],
+.iconbtn > span[data-icon-motion="latch"] {
+  animation: processing-latch var(--dur-latch) ease-in-out infinite;
+  transform-origin: center;
+}
+
+.statusline__icon[data-icon-motion="guard"],
+.wbtn__icon[data-icon-motion="guard"],
+.wcheck__icon[data-icon-motion="guard"],
+.iconbtn > span[data-icon-motion="guard"] {
+  animation: processing-guard var(--dur-guard) ease-in-out infinite;
+  transform-origin: center;
+}
+
+/* These come after (and outweigh, via html.reduced-motion) the rules above so
+   an opted-in processing icon still stops once reduced motion is requested,
+   mid-animation or not. */
+html.reduced-motion .statusline__icon[data-icon-motion],
+html.reduced-motion .wbtn__icon[data-icon-motion],
+html.reduced-motion .wcheck__icon[data-icon-motion],
+html.reduced-motion .iconbtn > span[data-icon-motion] {
   animation: none;
+  opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .statusline__icon[data-icon-motion="spin"],
-  .wbtn__icon[data-icon-motion="spin"],
-  .wcheck__icon[data-icon-motion="spin"],
-  .iconbtn > span[data-icon-motion="spin"] {
+  .statusline__icon[data-icon-motion],
+  .wbtn__icon[data-icon-motion],
+  .wcheck__icon[data-icon-motion],
+  .iconbtn > span[data-icon-motion] {
     animation: none;
+    opacity: 1;
   }
 }
 
@@ -1470,4 +1519,111 @@ html.reduced-motion .waiting__pulse {
 .notfound__title {
   font-size: 1.25rem;
   font-weight: 400;
+}
+
+/* ---------- a recovery phrase, shown once ----------
+
+   The words are concealed on arrival and revealed on purpose. This screen is
+   opened in airports and on trains, and a phrase that paints itself onto the
+   glass the moment a route loads has already been read by whoever is standing
+   behind the person holding the phone.
+
+   The blur is a visual guard and nothing more: the words are in the DOM and in
+   the accessibility tree throughout, because the person who needs them read
+   aloud is the person the phrase belongs to. `user-select` is withdrawn only
+   while they are hidden, so a stray drag cannot lift what the eye cannot see.  */
+
+.phrasebox {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.phrasebox__sheet {
+  position: relative;
+}
+
+.phrasebox__sheet[data-concealed] .phrase__text {
+  user-select: none;
+  filter: blur(7px);
+}
+
+.phrasebox__sheet .phrase__text {
+  transition: filter var(--dur-mid) var(--ease-settle);
+}
+
+.phrasebox__reveal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  color: var(--w-text);
+  font-family: var(--font-sans);
+  font-size: var(--size-ui);
+  letter-spacing: 0.01em;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.phrasebox__reveal svg {
+  width: 18px;
+  height: 18px;
+}
+
+.phrasebox__controls {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.phrasebox__action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding-inline: var(--space-3);
+  border-radius: var(--r-pill);
+  color: var(--w-text-body);
+  font-family: var(--font-sans);
+  font-size: var(--size-ui);
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color var(--dur-fast) var(--ease-settle),
+    background-color var(--dur-fast) var(--ease-settle),
+    transform var(--dur-press) var(--ease-settle);
+}
+
+.phrasebox__action svg {
+  width: 18px;
+  height: 18px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .phrasebox__reveal:hover,
+  .phrasebox__action:hover {
+    background: var(--w-raised);
+    color: var(--w-text);
+  }
+}
+
+.phrasebox__action:active {
+  transform: translateY(1px);
+}
+
+.phrasebox__said:empty {
+  display: none;
+}
+
+.phrasebox__said {
+  margin: 0;
+  color: var(--w-text-secondary);
+  font-size: var(--size-micro);
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phrasebox__sheet .phrase__text {
+    transition: none;
+  }
 }

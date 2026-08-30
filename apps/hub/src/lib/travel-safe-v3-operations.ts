@@ -58,8 +58,11 @@ export async function prepareTravelSafeV3FundRelay(input: {
   deviceCommitment: string;
   recoveryCommitment: string;
   sponsorUrl: string;
+  /** Ordinary funds shielded inside the same transaction. "0" for none. */
+  depositBaseUnits?: string;
   fetcher?: typeof fetch;
 }): Promise<PreparedTravelSafeV3Relay> {
+  const depositBaseUnits = input.depositBaseUnits ?? "0";
   const result = await prepareTravelSafeV3Fund({
     wallet: input.wallet,
     chainId: input.chainId,
@@ -74,6 +77,7 @@ export async function prepareTravelSafeV3FundRelay(input: {
     dailyAmount: input.ticket.dailyAmountBaseUnits,
     firstReleaseAt: input.ticket.firstReleaseSeconds,
     returnAt: input.ticket.returnDateSeconds,
+    depositAmount: depositBaseUnits,
   });
   const artifact: TravelSafeV3RelayArtifact = {
     schemaVersion: "wrenchless.travel-safe-relay.v3",
@@ -90,6 +94,7 @@ export async function prepareTravelSafeV3FundRelay(input: {
     dailyAmountBaseUnits: input.ticket.dailyAmountBaseUnits,
     firstReleaseAt: input.ticket.firstReleaseSeconds,
     returnAt: input.ticket.returnDateSeconds,
+    depositBaseUnits,
     createdAt: new Date().toISOString(),
     ...normalizePrepared(result.prepared),
   };
@@ -114,8 +119,11 @@ export async function prepareTravelSafeV3TopUpRelay(input: {
   amountBaseUnits: string;
   devicePublicKey: string;
   sponsorUrl: string;
+  /** Ordinary funds shielded inside the same transaction. "0" for none. */
+  depositBaseUnits?: string;
   fetcher?: typeof fetch;
 }): Promise<PreparedTravelSafeV3Relay> {
+  const depositBaseUnits = input.depositBaseUnits ?? "0";
   const result = await prepareTravelSafeTopUp({
     wallet: input.wallet,
     poolAddress: input.poolAddress,
@@ -132,6 +140,7 @@ export async function prepareTravelSafeV3TopUpRelay(input: {
     amount: input.amountBaseUnits,
     devicePrivateKey: input.ticket.devicePrivateKey,
     devicePublicKey: input.devicePublicKey,
+    depositAmount: depositBaseUnits,
   });
   const artifact: TravelSafeV3RelayArtifact = {
     schemaVersion: "wrenchless.travel-safe-relay.v3",
@@ -146,6 +155,7 @@ export async function prepareTravelSafeV3TopUpRelay(input: {
     devicePublicKey: felt(result.devicePublicKey),
     signatureR: felt(result.signature.r),
     signatureS: felt(result.signature.s),
+    depositBaseUnits,
     createdAt: new Date().toISOString(),
     ...normalizePrepared(result.prepared),
   };

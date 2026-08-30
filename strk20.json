@@ -1,13 +1,16 @@
 {
   "contracts": [
     "0x026ce951b858934b1ad832be2f93a102b9bf42deb5b824204278ed72b45fa828",
-    "0x018f6925422c85da8c9e0c1572adf4316a9821ffabc4b29db37d11c6a0c2844a"
+    "0x018f6925422c85da8c9e0c1572adf4316a9821ffabc4b29db37d11c6a0c2844a",
+    "0x043d60a5bf9cd864d9d5bb1d86d48a3268d32c3a004db64962b03215d3fdb2ed"
   ],
   "transactions": [
     "0x0c4fbacb5ee5fd3a65f09d7a724ad585387ba642e570a11ed79f9be8ac013a6",
     "0x02e969f712d5ff8f3091bd42b06978c285c8ad221081da5f575afbc72f87888e",
-    "0x05a9458404b7c44510f712de9f59140e10106801eb0d79e49603451de706e01d"
+    "0x05a9458404b7c44510f712de9f59140e10106801eb0d79e49603451de706e01d",
+    "0x07fc844dcbdb0b520c0efdc71f92ea1cd6fe2b13e4cfa7b1d2c3e461126447f3",
+    "0x07c9db1b6dded305dcd55a4701a985a75e88eacfa5f6dd0df9014c2e660a311e"
   ],
-  "demo_video": "",
+  "demo_video": "https://youtu.be/Z7fvOuTN2Hs",
   "demo_url": "https://wrenchless.timidan.xyz"
 }

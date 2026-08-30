@@ -2,12 +2,12 @@ import type { ComponentType, JSX } from "react";
 import { useRef } from "react";
 import { gsap, useGSAP } from "../lib/gsap";
 import { motionProfile } from "../lib/motion";
-import { ReadyWalletMark } from "./ReadyWalletMark";
 import { StrkTokenMark } from "./StrkTokenMark";
 import {
   FingerprintIcon,
   KeyIcon,
   LockSimpleIcon,
+  WalletIcon,
   WarningCircleIcon,
 } from "./icons";
 
@@ -15,7 +15,7 @@ interface Station {
   name: string;
   line: string;
   note: string;
-  icon: "ready" | "lock" | "passkey" | "phrase" | "public";
+  icon: "wallet" | "lock" | "passkey" | "phrase" | "public";
 }
 
 /**
@@ -24,33 +24,33 @@ interface Station {
  */
 const STATIONS: readonly Station[] = [
   {
-    name: "Ready stays your wallet",
-    line: "It holds your account keys and signs every STRK20 action.",
-    note: "No new wallet",
-    icon: "ready",
+    name: "Your wallet keeps your keys",
+    line: "You approve each private action in your wallet. Wrenchless never receives your account keys.",
+    note: "Same wallet",
+    icon: "wallet",
   },
   {
-    name: "Only the allowance is spendable",
-    line: "Release what's available today; the rest stays parked until it is.",
-    note: "Time locked",
+    name: "The schedule limits access",
+    line: "Only the available amount can return. Skipped daily amounts carry over.",
+    note: "Scheduled access",
     icon: "lock",
   },
   {
-    name: "Your passkey guards the controls",
-    line: "Verify on this device to release today's amount or extend the date.",
-    note: "Device check",
+    name: "Your device protects changes",
+    line: "Confirm with a passkey or your connected wallet.",
+    note: "Device confirmed",
     icon: "passkey",
   },
   {
-    name: "Recovery words bring it home early",
-    line: "Save them at setup. On a replacement phone, Rescue Mode returns the whole reserve to a wallet you connect.",
-    note: "Save once",
+    name: "Recovery words return everything early",
+    line: "Save the 12 words during setup. On another compatible device, use them to return the remaining balance to your wallet.",
+    note: "Emergency return",
     icon: "phrase",
   },
   {
-    name: "Public limits stay visible",
-    line: "The helper reveals the token, amount, schedule and transaction timing.",
-    note: "No anonymity claim",
+    name: "Know what Starknet shows",
+    line: "Your wallet balance and private note ownership stay hidden. Starknet still shows the token, locked amount, schedule, and transaction times.",
+    note: "Public details",
     icon: "public",
   },
 ];
@@ -60,15 +60,10 @@ const PHOSPHOR_STATION_ICONS = {
   passkey: FingerprintIcon,
   phrase: KeyIcon,
   public: WarningCircleIcon,
-} satisfies Record<
-  Exclude<Station["icon"], "ready">,
-  ComponentType<{ "aria-hidden": true }>
->;
+  wallet: WalletIcon,
+} satisfies Record<Station["icon"], ComponentType<{ "aria-hidden": true }>>;
 
 function StationIcon({ icon }: { icon: Station["icon"] }): JSX.Element {
-  if (icon === "ready") {
-    return <ReadyWalletMark className="station__brand-mark" />;
-  }
   const Icon = PHOSPHOR_STATION_ICONS[icon];
   return <Icon aria-hidden={true} />;
 }
@@ -194,10 +189,11 @@ export function Evidence(): JSX.Element {
               <span className="evidence__token" aria-hidden="true">
                 <StrkTokenMark className="evidence__token-mark" />
               </span>
-              <h2>A daily allowance, not another wallet.</h2>
+              <h2>Wrenchless works with privacy-ready wallets.</h2>
               <p className="evidence__intro">
-                Wrenchless adds a private trip allowance to the Ready Wallet
-                you already use. No second account or device is required.
+                Your wallet signs each action. Wrenchless controls when the
+                locked balance can return. You do not create another wallet or
+                account.
               </p>
             </div>
           </div>

@@ -1,7 +1,10 @@
 use snforge_std::signature::stark_curve::{
     StarkCurveKeyPair, StarkCurveKeyPairImpl, StarkCurveSignerImpl,
 };
-use snforge_std::{ContractClassTrait, DeclareResultTrait, declare, start_cheat_block_timestamp};
+use snforge_std::{
+    ContractClassTrait, DeclareResultTrait, declare, start_cheat_block_timestamp,
+    start_cheat_caller_address,
+};
 use starknet::ContractAddress;
 use crate::mock_privacy_pool::{IMockPrivacyPoolDispatcher, IMockPrivacyPoolDispatcherTrait};
 use crate::test_token::{ITestTokenDispatcher, ITestTokenDispatcherTrait};
@@ -227,6 +230,17 @@ fn rejects_unconfigured_token() {
     mint(other, setup.pool, AMOUNT);
     IMockPrivacyPoolDispatcher { contract_address: setup.pool }
         .fund_v3_helper(setup.helper, fund_request(setup, 1, other, AMOUNT));
+}
+
+#[test]
+#[should_panic(expected: 'ONLY_PRIVACY_POOL')]
+fn rejects_direct_non_pool_call() {
+    let setup = setup();
+    mint(setup.token_a, setup.helper, AMOUNT);
+    start_cheat_caller_address(setup.helper, setup.recovery_account);
+
+    ITravelSafeHelperV3Dispatcher { contract_address: setup.helper }
+        .privacy_invoke(SafeOperationV3::Fund(fund_request(setup, 1, setup.token_a, AMOUNT)));
 }
 
 #[test]

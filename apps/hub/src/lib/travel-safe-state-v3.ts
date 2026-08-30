@@ -26,6 +26,14 @@ const rpcErrorSchema = z.object({
   jsonrpc: z.literal("2.0"),
 });
 
+function safeRpcInteger(value: z.infer<typeof rpcIntegerSchema>, label: string): bigint {
+  const parsed = BigInt(value);
+  if (parsed > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error(`The latest block returned an invalid ${label}`);
+  }
+  return parsed;
+}
+
 export type TravelSafeV3ChainState = {
   stateId: string;
   claimCommitment: string;
@@ -83,7 +91,13 @@ async function rpc<Result>(input: {
   fetcher: typeof fetch;
   resultSchema: z.ZodType<Result>;
 }): Promise<Result> {
-  const response = await input.fetcher(input.rpcUrl, {
+  // Through a local binding, never as `input.fetcher(...)`. Calling it as a
+  // method hands `fetch` this input object as its `this`, and the browser
+  // refuses outright with "Illegal invocation" — so every chain read for a
+  // Safe failed before it left the page. The same trap is commented at the
+  // other RPC reader in `ready-private-setup.ts`.
+  const { fetcher } = input;
+  const response = await fetcher(input.rpcUrl, {
     method: "POST",
     headers: { "content-type": "application/json" },
     signal: AbortSignal.timeout(RPC_TIMEOUT_MILLISECONDS),
@@ -154,8 +168,8 @@ export async function readTravelSafeV3Snapshot(input: {
     params: { block_id: "latest" },
     resultSchema: latestBlockSchema,
   });
-  const blockNumber = BigInt(block.block_number);
-  const chainTime = BigInt(block.timestamp);
+  const blockNumber = safeRpcInteger(block.block_number, "block number");
+  const chainTime = safeRpcInteger(block.timestamp, "timestamp");
 
   const exists = await call({
     contractAddress: helperAddress,

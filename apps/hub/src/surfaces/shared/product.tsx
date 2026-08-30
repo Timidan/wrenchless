@@ -11,7 +11,7 @@ import {
 
 import { StrkTokenMark } from "../../components/StrkTokenMark";
 import { WrenchlessMark } from "../../components/WrenchlessMark";
-import { CaretLeftIcon } from "../../components/icons";
+import { CaretLeftIcon, CheckIcon, CopyIcon, EyeIcon, EyeSlashIcon } from "../../components/icons";
 import { motionProfile } from "../../lib/motion";
 
 /**
@@ -147,14 +147,21 @@ export function Button(props: {
   disabled?: boolean | undefined;
   tone?: "outline" | "quiet" | undefined;
   type?: "button" | "submit" | undefined;
-  /** Set only while the state machine backing this button is actively
-   * working; the icon rotates and the button reports `aria-busy`. */
-  iconMotion?: "spin" | undefined;
+  /**
+   * Set only while the state machine backing this button is actively working.
+   * The button reports `aria-busy` either way; what the glyph does is the
+   * glyph's business. `spin` is for the marks that turn — an arrow circling a
+   * clock face. `guard` is for the ones that do not: a shield does not
+   * rotate, it stands watch, so it breathes instead. `latch` is for a lock,
+   * which neither turns nor breathes — it is pressed shut, over and over,
+   * until it closes.
+   */
+  iconMotion?: "spin" | "guard" | "latch" | undefined;
 }): JSX.Element {
-  const spinning = props.iconMotion === "spin";
+  const working = props.iconMotion !== undefined;
   return (
     <button
-      aria-busy={spinning ? "true" : undefined}
+      aria-busy={working ? "true" : undefined}
       className={props.tone === "quiet" ? "wbtn wbtn--quiet" : "wbtn"}
       disabled={props.disabled === true}
       {...(props.onClick === undefined ? {} : { onClick: props.onClick })}
@@ -164,7 +171,7 @@ export function Button(props: {
         <span
           aria-hidden="true"
           className="wbtn__icon"
-          data-icon-motion={spinning ? "spin" : undefined}
+          data-icon-motion={props.iconMotion}
         >
           {props.icon}
         </span>
@@ -535,14 +542,7 @@ export function Emblem(props: { children: ReactNode }): JSX.Element {
   );
 }
 
-/**
- * The twelve words, numbered, read-only, and never a control.
- *
- * They are set in the mono face at a size somebody can copy onto paper from
- * arm's length, in a grid rather than a paragraph, because a phrase written as
- * prose is a phrase people transcribe in the wrong order.
- */
-export function Phrase(props: { words: readonly string[] }): JSX.Element {
+function PhraseGrid(props: { words: readonly string[] }): JSX.Element {
   return (
     <ol className="phrase">
       {props.words.map((word, index) => (
@@ -554,6 +554,117 @@ export function Phrase(props: { words: readonly string[] }): JSX.Element {
         </li>
       ))}
     </ol>
+  );
+}
+
+type CopyState = "idle" | "copied" | "failed";
+
+/**
+ * The twelve words, numbered, read-only, and never a control.
+ *
+ * They are set in the mono face at a size somebody can copy onto paper from
+ * arm's length, in a grid rather than a paragraph, because a phrase written as
+ * prose is a phrase people transcribe in the wrong order.
+ *
+ * Pass `conceal` where the words are being shown for the first time. They then
+ * arrive blurred behind a deliberate Reveal, because this screen is opened in
+ * public places and a recovery phrase that paints itself onto a phone the
+ * moment a screen loads has already been handed to whoever is behind you. The
+ * blur is a visual guard only: the words stay in the accessibility tree, where
+ * the person holding the phone is the one reading them.
+ *
+ * Copy sits beside it because the realistic alternative is retyping twelve
+ * words into a notes app, and a phrase transcribed by hand is a phrase with a
+ * typo in it. The button reports what actually happened — a clipboard the
+ * browser refuses is said out loud rather than shown as a silent success.
+ */
+export function Phrase(props: {
+  words: readonly string[];
+  conceal?: boolean;
+  /** Called the first time the words are revealed or copied. */
+  onSeen?: () => void;
+}): JSX.Element {
+  const guarded = props.conceal === true;
+  const [revealed, setRevealed] = useState(false);
+  const [copied, setCopied] = useState<CopyState>("idle");
+  const shown = revealed || !guarded;
+
+  useEffect(() => {
+    if (copied === "idle") return;
+    const timer = window.setTimeout(() => setCopied("idle"), 2_400);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+
+  const { onSeen } = props;
+  const seen = useCallback((): void => {
+    onSeen?.();
+  }, [onSeen]);
+
+  const copy = useCallback(async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(props.words.join(" "));
+      setCopied("copied");
+      seen();
+    } catch {
+      setCopied("failed");
+    }
+  }, [props.words, seen]);
+
+  if (!guarded) return <PhraseGrid words={props.words} />;
+
+  return (
+    <div className="phrasebox">
+      <div className="phrasebox__sheet" data-concealed={shown ? undefined : "true"}>
+        <PhraseGrid words={props.words} />
+        {shown ? null : (
+          <button
+            className="phrasebox__reveal"
+            onClick={() => {
+              setRevealed(true);
+              seen();
+            }}
+            type="button"
+          >
+            <span aria-hidden="true">
+              <EyeIcon />
+            </span>
+            Reveal the words
+          </button>
+        )}
+      </div>
+      <div className="phrasebox__controls">
+        <button
+          className="phrasebox__action"
+          onClick={() => {
+            setRevealed(!revealed);
+            if (!revealed) seen();
+          }}
+          type="button"
+        >
+          <span aria-hidden="true">{shown ? <EyeSlashIcon /> : <EyeIcon />}</span>
+          {shown ? "Hide" : "Reveal"}
+        </button>
+        <button
+          className="phrasebox__action"
+          onClick={() => {
+            void copy();
+          }}
+          type="button"
+        >
+          <span aria-hidden="true">
+            {copied === "copied" ? <CheckIcon /> : <CopyIcon />}
+          </span>
+          {copied === "copied" ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <p aria-live="polite" className="phrasebox__said" role="status">
+        {copied === "copied"
+          ? "The twelve words are on your clipboard. Paste them somewhere you keep, then clear it."
+          : copied === "failed"
+            ? "This browser would not give up the clipboard. Reveal the words and write them down."
+            : ""}
+      </p>
+    </div>
   );
 }
 

@@ -11,6 +11,8 @@ import { CheckCircleIcon as BaseCheckCircle } from "@phosphor-icons/react/dist/c
 import { ClockClockwiseIcon as BaseClockClockwise } from "@phosphor-icons/react/dist/csr/ClockClockwise";
 import { ClockCounterClockwiseIcon as BaseClockCounterClockwise } from "@phosphor-icons/react/dist/csr/ClockCounterClockwise";
 import { CopyIcon as BaseCopy } from "@phosphor-icons/react/dist/csr/Copy";
+import { EyeIcon as BaseEye } from "@phosphor-icons/react/dist/csr/Eye";
+import { EyeSlashIcon as BaseEyeSlash } from "@phosphor-icons/react/dist/csr/EyeSlash";
 import { FingerprintIcon as BaseFingerprint } from "@phosphor-icons/react/dist/csr/Fingerprint";
 import { GearSixIcon as BaseGearSix } from "@phosphor-icons/react/dist/csr/GearSix";
 import { HourglassIcon as BaseHourglass } from "@phosphor-icons/react/dist/csr/Hourglass";
@@ -83,6 +85,8 @@ export const ClockCounterClockwiseIcon = named(
   "clock-counter-clockwise",
 );
 export const CopyIcon = named(BaseCopy, "copy");
+export const EyeIcon = named(BaseEye, "eye");
+export const EyeSlashIcon = named(BaseEyeSlash, "eye-slash");
 export const FingerprintIcon = named(BaseFingerprint, "fingerprint");
 export const GearSixIcon = named(BaseGearSix, "gear-six");
 export const HourglassIcon = named(BaseHourglass, "hourglass");
