@@ -52,6 +52,30 @@ function canonicalFelt(value: string, label: string): string {
   return `0x${parsed.toString(16)}`;
 }
 
+/**
+ * Whether this account is registered with the privacy pool.
+ *
+ * Read straight from the pool rather than inferred from a failed balance call,
+ * so "you have not turned private balances on yet" can be told apart from "the
+ * wallet could not answer just now". The two need different words and only one
+ * of them is the person's to fix.
+ */
+export async function readReadyPoolRegistration(input: {
+  account: string;
+  poolAddress: string;
+  rpcUrl?: string;
+  fetcher?: typeof fetch;
+}): Promise<{ registered: boolean }> {
+  return {
+    registered: await readRegistration({
+      account: input.account,
+      poolAddress: input.poolAddress,
+      rpcUrl: input.rpcUrl ?? MAINNET_RPC,
+      fetcher: input.fetcher ?? fetch,
+    }),
+  };
+}
+
 async function readRegistration(input: {
   account: string;
   poolAddress: string;

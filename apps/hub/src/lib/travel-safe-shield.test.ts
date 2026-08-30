@@ -99,6 +99,30 @@ describe("Shield planning", () => {
     ).toThrow("STRK balance is too low");
   });
 
+  /**
+   * A release, extension or return parks nothing — it only has to pay the pool
+   * fee out of the private balance — so the plan for those asks for the
+   * reserve alone.
+   */
+  it("plans the reserve alone when no amount is being parked", () => {
+    expect(
+      planShieldDeposits({
+        tokenAddress: USDC.address,
+        amountBaseUnits: "0",
+        poolFeeFri: "10",
+        balances: balances({ strkShielded: "4", strkPublic: "50", usdcShielded: "999" }),
+      }),
+    ).toEqual([{ token: STRK, amountBaseUnits: "6" }]);
+    expect(
+      planShieldDeposits({
+        tokenAddress: USDC.address,
+        amountBaseUnits: "0",
+        poolFeeFri: "10",
+        balances: balances({ strkShielded: "10", usdcShielded: "999" }),
+      }),
+    ).toEqual([]);
+  });
+
   it("refuses an unknown token before planning anything", () => {
     expect(() =>
       planShieldDeposits({

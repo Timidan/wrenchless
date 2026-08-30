@@ -35,7 +35,7 @@ export type SafeShieldDeposit = {
  * it, so a retry waits on that transaction instead of asking for a second.
  */
 export type SafeShieldStep = {
-  purpose: "fund" | "top-up";
+  purpose: "fund" | "top-up" | "action";
   tokenAddress: string;
   amountBaseUnits: string;
   topUpAmount: string | null;
@@ -63,7 +63,7 @@ export type SafeActionState =
   | { name: "failed"; message: string; retryable: boolean };
 
 export type SafeReadinessCheck = {
-  id: "wallet" | "passkey" | "relay" | "fee" | "balance";
+  id: "wallet" | "passkey" | "setup" | "relay" | "fee" | "balance";
   label: string;
   status: "checking" | "ready" | "blocked";
   detail: string;

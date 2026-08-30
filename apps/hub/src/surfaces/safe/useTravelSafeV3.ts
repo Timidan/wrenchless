@@ -69,6 +69,7 @@ import {
   submitPreparedTravelSafeV3Relay,
   type PreparedTravelSafeV3Relay,
 } from "../../lib/travel-safe-v3-operations";
+import { readReadyPoolRegistration } from "../../lib/ready-private-setup";
 import { inspectTravelSafeV3Sponsor } from "../../lib/travel-safe-v3-readiness";
 import {
   readTravelSafeV3Snapshot,
@@ -375,6 +376,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
     const checking: SafeReadinessCheck[] = [
       { id: "wallet", label: "Private wallet", status: "ready", detail: "Mainnet account connected" },
       { id: "passkey", label: "Passkey", status: "checking", detail: "Checking this device" },
+      { id: "setup", label: "Private setup", status: "checking", detail: "Reading your pool account" },
       { id: "relay", label: "Private relay", status: "checking", detail: "Checking availability" },
       { id: "fee", label: "Action reserve", status: "checking", detail: "Reading the live fee" },
       { id: "balance", label: "Balance", status: "checking", detail: "Reading STRK and USDC" },
@@ -410,7 +412,12 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       passkeyError = reasonFrom(cause);
     }
 
-    const [relayResult, balanceResult] = await Promise.allSettled([
+    const [setupResult, relayResult, balanceResult] = await Promise.allSettled([
+      readReadyPoolRegistration({
+        account: expectedAccount,
+        poolAddress: WRENCHLESS_MAINNET.poolAddress,
+        rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
+      }),
       WRENCHLESS_MAINNET.tripAllowanceHelperAddress === null
         ? Promise.reject(new Error("Trip Allowance is not available yet"))
         : inspectTravelSafeV3Sponsor({
@@ -418,11 +425,37 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
           }),
       refreshBalances(currentWallet),
     ]);
+    /**
+     * An account that has never registered with the pool cannot hold, read or
+     * receive a private balance, so it fails every later step — but only at
+     * the wallet prompt, which is after the twelve recovery words have been
+     * written down. It is asked here instead, where the answer still saves
+     * somebody the whole setup.
+     */
+    const registered =
+      setupResult.status === "fulfilled" ? setupResult.value.registered : null;
+    const setupError =
+      setupResult.status === "rejected" ? reasonFrom(setupResult.reason) : null;
     const checks: SafeReadinessCheck[] = [
       checking[0]!,
       passkeyError === null
         ? { id: "passkey", label: "Passkey", status: "ready", detail: "Protected on this device" }
         : { id: "passkey", label: "Passkey", status: "blocked", detail: passkeyError },
+      registered === true
+        ? { id: "setup", label: "Private setup", status: "ready", detail: "Private balances are on for this account" }
+        : registered === false
+          ? {
+              id: "setup",
+              label: "Private setup",
+              status: "blocked",
+              detail: "Turn on private balances in your wallet, then check again",
+            }
+          : {
+              id: "setup",
+              label: "Private setup",
+              status: "blocked",
+              detail: setupError ?? "Could not read your pool account",
+            },
       relayResult.status === "fulfilled"
         ? { id: "relay", label: "Private relay", status: "ready", detail: "Available" }
         : { id: "relay", label: "Private relay", status: "blocked", detail: reasonFrom(relayResult.reason) },
@@ -487,7 +520,10 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
                 id: "balance",
                 label: "Balance",
                 status: "ready",
-                detail: `${fundedText} in your wallet. Private balance unread: ${shieldedError}`,
+                detail:
+                  registered === false
+                    ? `${fundedText} in your wallet, none of it private yet`
+                    : `${fundedText} in your wallet. Private balance unread: ${shieldedError}`,
               }
             : {
                 id: "balance",
@@ -505,22 +541,6 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
     setError(blocked?.detail ?? null);
     setAction({ name: "idle" });
   }, [refreshBalances]);
-
-  const assertFreshReserve = useCallback(async (additionalStrk = "0") => {
-    if (wallet.current === null) throw new Error("Connect your wallet");
-    if (account === null) throw new Error("Connect your wallet");
-    assertSelectedWalletAccount(wallet.current, account);
-    const fresh = await refreshBalances(wallet.current);
-    const strk = fresh.balances.find((item) => item.token.symbol === "STRK");
-    if (strk === undefined) throw new Error("Private STRK balance is unavailable");
-    assertPrivateReturnFeeReserve({
-      strkAvailable: strk.shieldedAvailable,
-      shieldedStrkBaseUnits: strk.shieldedBalanceBaseUnits,
-      requiredBaseUnits: fresh.poolFeeFri,
-      additionalStrkSpendBaseUnits: additionalStrk,
-    });
-    return fresh;
-  }, [account, refreshBalances]);
 
   /**
    * Fresh balances for parking or adding `amountBaseUnits` of one token.
@@ -1026,21 +1046,60 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
     return { ticket, state: snapshot.state };
   }, [snapshot, ticket]);
 
+  /**
+   * The common opening of every action this device sends itself.
+   *
+   * These pay the pool fee out of the private balance — unlike FUND and
+   * TOP_UP, which the relay sponsors — so the fee has to already be private.
+   * When it is not but the wallet can cover it, this offers the same shield
+   * step the funding flow uses and returns `null`, and the caller stops
+   * without reporting a failure: nothing has gone wrong, there is just a
+   * deposit to approve first.
+   */
   const beginDirectAction = useCallback(async (): Promise<{
     wallet: BrowserWallet;
     account: string;
     ticket: TravelSafeTicketV3;
     state: TravelSafeV3ChainState;
-  }> => {
+  } | null> => {
     const active = activeState();
     if (wallet.current === null || account === null) throw new Error("Connect your wallet");
     assertSelectedWalletAccount(wallet.current, account);
     setError(null);
     setAction({ name: "preparing", label: "Checking fee reserve" });
-    await assertFreshReserve();
+    const fresh = await refreshBalances(wallet.current);
+    let deposits: readonly ShieldDeposit[];
+    try {
+      deposits = planShieldDeposits({
+        tokenAddress: active.ticket.tokenAddress,
+        amountBaseUnits: "0",
+        poolFeeFri: fresh.poolFeeFri,
+        balances: fresh.balances,
+      });
+    } catch {
+      // The wallet cannot cover the fee either, so name the figure rather
+      // than repeating that a balance is too low.
+      throw new Error(
+        `Add at least ${formatTokenAmount(BigInt(fresh.poolFeeFri), 18)} STRK to your wallet for this action's fee`,
+      );
+    }
+    if (deposits.length > 0) {
+      setShield(
+        shieldStep({
+          purpose: "action",
+          tokenAddress: active.ticket.tokenAddress,
+          amountBaseUnits: "0",
+          topUpAmount: null,
+          deposits,
+        }),
+      );
+      setAction({ name: "idle" });
+      return null;
+    }
+    setShield(null);
     setAction({ name: "wallet", label: "Approve private action" });
     return { wallet: wallet.current, account, ...active };
-  }, [account, activeState, assertFreshReserve]);
+  }, [account, activeState, refreshBalances]);
 
   const recordDirectAction = useCallback(async (
     input: { transactionHash: string; target: TravelSafeActionTarget },
@@ -1087,6 +1146,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
         throw new Error("No allowance is ready yet");
       }
       const active = await beginDirectAction();
+      if (active === null) return;
       const target: TravelSafeActionTarget = {
         operation: "RELEASE",
         previousNonce: active.state.nonce,
@@ -1234,9 +1294,19 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       setShield(null);
       if (step.purpose === "fund") {
         await prepareFund();
-      } else {
-        await prepareTopUp(step.topUpAmount ?? "");
+        return;
       }
+      if (step.purpose === "top-up") {
+        await prepareTopUp(step.topUpAmount ?? "");
+        return;
+      }
+      // A direct action carries no prepared work to resume — the fee is
+      // simply private now, and the button that asked for it will go through.
+      setAction({
+        name: "confirmed",
+        transactionHash,
+        label: "The action fee is private now",
+      });
     } catch (cause) {
       setError(reasonFrom(cause));
       setAction({ name: "failed", message: reasonFrom(cause), retryable: true });
@@ -1304,6 +1374,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
         throw new Error("Choose a later date within this Safe's limit");
       }
       const active = await beginDirectAction();
+      if (active === null) return;
       const target: TravelSafeActionTarget = {
         operation: "EXTEND",
         previousNonce: active.state.nonce,
@@ -1339,6 +1410,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
         throw new Error("Those recovery words do not match this Safe");
       }
       const active = await beginDirectAction();
+      if (active === null) return;
       const target: TravelSafeActionTarget = {
         operation: "TERMINAL",
         previousNonce: active.state.nonce,
@@ -1402,6 +1474,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
         throw new Error("Use the recovery account chosen for this Safe");
       }
       const active = await beginDirectAction();
+      if (active === null) return;
       const target: TravelSafeActionTarget = {
         operation: "TERMINAL",
         previousNonce: active.state.nonce,

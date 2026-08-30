@@ -574,6 +574,8 @@ type CopyState = "idle" | "copied" | "failed";
 export function Phrase(props: {
   words: readonly string[];
   conceal?: boolean;
+  /** Called the first time the words are revealed or copied. */
+  onSeen?: () => void;
 }): JSX.Element {
   const guarded = props.conceal === true;
   const [revealed, setRevealed] = useState(false);
@@ -586,14 +588,20 @@ export function Phrase(props: {
     return () => window.clearTimeout(timer);
   }, [copied]);
 
+  const { onSeen } = props;
+  const seen = useCallback((): void => {
+    onSeen?.();
+  }, [onSeen]);
+
   const copy = useCallback(async (): Promise<void> => {
     try {
       await navigator.clipboard.writeText(props.words.join(" "));
       setCopied("copied");
+      seen();
     } catch {
       setCopied("failed");
     }
-  }, [props.words]);
+  }, [props.words, seen]);
 
   if (!guarded) return <PhraseGrid words={props.words} />;
 
@@ -604,7 +612,10 @@ export function Phrase(props: {
         {shown ? null : (
           <button
             className="phrasebox__reveal"
-            onClick={() => setRevealed(true)}
+            onClick={() => {
+              setRevealed(true);
+              seen();
+            }}
             type="button"
           >
             <span aria-hidden="true">
@@ -617,7 +628,10 @@ export function Phrase(props: {
       <div className="phrasebox__controls">
         <button
           className="phrasebox__action"
-          onClick={() => setRevealed(!revealed)}
+          onClick={() => {
+            setRevealed(!revealed);
+            if (!revealed) seen();
+          }}
           type="button"
         >
           <span aria-hidden="true">{shown ? <EyeSlashIcon /> : <EyeIcon />}</span>

@@ -613,6 +613,12 @@ function RecoveryScreen(props: {
   const { actions, model } = props;
   const [localError, setLocalError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /**
+   * Nobody gets past their only copy of the phrase without having put it in
+   * front of themselves once. Revealing or copying both count; typing is
+   * still not asked for.
+   */
+  const [seen, setSeen] = useState(false);
 
   async function handleConfirm(): Promise<void> {
     setLocalError(null);
@@ -632,14 +638,20 @@ function RecoveryScreen(props: {
       onBack={actions.closeCreate}
       title="Save these words once"
     >
-      <Phrase conceal words={(model.recoveryWords ?? "").split(" ")} />
+      <Phrase
+        conceal
+        onSeen={() => setSeen(true)}
+        words={(model.recoveryWords ?? "").split(" ")}
+      />
       <Note tone="caution">
-        Save them now. Wrenchless never shows them again, and nobody can reissue them.
+        {seen
+          ? "Save them now. Wrenchless never shows them again, and nobody can reissue them."
+          : "Reveal or copy the words first. Wrenchless never shows them again, and nobody can reissue them."}
       </Note>
       {localError === null ? null : <Failure message={localError} />}
       <Actions>
         <Button
-          disabled={busy}
+          disabled={busy || !seen}
           icon={<KeyIcon />}
           iconMotion={busy ? "spin" : undefined}
           label="I saved them"
@@ -681,8 +693,12 @@ function ShieldStep(props: {
       </Facts>
       <Note>
         {sent
-          ? "The shield is on its way. The exact fee follows once your wallet holds the private note."
-          : "This moves the amount above from your wallet into your private balance. Your wallet asks you to approve it and pays its own network fee; the exact Safe fee follows after."}
+          ? shield.purpose === "action"
+            ? "The shield is on its way. This action goes through once your wallet holds the private note."
+            : "The shield is on its way. The exact fee follows once your wallet holds the private note."
+          : shield.purpose === "action"
+            ? "This action's fee is paid from your private balance, and there is not enough there yet. This moves the amount above across; your wallet asks you to approve it and pays its own network fee."
+            : "This moves the amount above from your wallet into your private balance. Your wallet asks you to approve it and pays its own network fee; the exact Safe fee follows after."}
       </Note>
       <SafeStatus action={model.action} error={model.error} />
       {shield.transactionHash === null ? null : (
@@ -978,6 +994,7 @@ function ActiveHome(props: {
     );
   }
 
+  const shield = model.shield?.purpose === "action" ? model.shield : null;
   const busy = safeActionBusy(model.action);
   const canReturnNow =
     model.snapshot !== null &&
@@ -1027,20 +1044,26 @@ function ActiveHome(props: {
           returnDateSeconds={state.returnAt}
         />
       )}
-      <SafeStatus action={model.action} error={model.error} />
-      <Actions>
-        <Button
-          disabled={busy || BigInt(state.claimableAmount) <= 0n}
-          icon={<ArrowDownLeftIcon />}
-          iconMotion={busy ? "spin" : undefined}
-          label="Release available"
-          onClick={() => {
-            void actions.releaseAvailable();
-          }}
-        />
-      </Actions>
+      {shield === null ? (
+        <>
+          <SafeStatus action={model.action} error={model.error} />
+          <Actions>
+            <Button
+              disabled={busy || BigInt(state.claimableAmount) <= 0n}
+              icon={<ArrowDownLeftIcon />}
+              iconMotion={busy ? "spin" : undefined}
+              label="Release available"
+              onClick={() => {
+                void actions.releaseAvailable();
+              }}
+            />
+          </Actions>
+        </>
+      ) : (
+        <ShieldStep actions={actions} model={model} shield={shield} />
+      )}
 
-      <div className="wshelf">
+      <div className="wshelf" hidden={shield !== null}>
         <Actions>
           <Button
             disabled={busy}
