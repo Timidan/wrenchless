@@ -861,6 +861,19 @@ function ReviewScreen(props: {
           ? "Nothing broadcasts until you confirm the fee, unless part of the amount is still in your wallet — then the shield goes first, with your approval."
           : "Only the shield broadcasts now, and only after you approve it in your wallet."}
       </Note>
+      {/* This Safe exists on this device and nowhere else until it is funded,
+          so abandoning it costs nothing and strands nothing. Without it a
+          half-finished setup can only be escaped by clearing site data. */}
+      <Actions>
+        <Button
+          disabled={busy}
+          label="Start over"
+          onClick={() => {
+            void actions.discardUnfundedSafe();
+          }}
+          tone="quiet"
+        />
+      </Actions>
     </Screen>
   );
 }

@@ -75,6 +75,7 @@ import { inspectTravelSafeV3Sponsor } from "../../lib/travel-safe-v3-readiness";
 import {
   readTravelSafeV3Snapshot,
   type TravelSafeV3ChainState,
+  type TravelSafeV3Snapshot,
 } from "../../lib/travel-safe-state-v3";
 import { TRAVEL_SAFE_TOKENS } from "../../lib/travel-safe-tokens";
 import {
@@ -605,11 +606,34 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
         setPhase("unavailable");
         return;
       }
-      const current = await readTravelSafeV3Snapshot({
-        helperAddress: active.helperAddress,
-        stateId: active.stateId,
-        rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
-      });
+      /**
+       * A failed chain read is not the absence of a Safe. Letting it fall to
+       * the outer catch left the ticket unset while the device settings still
+       * pointed at it, so the surface offered to create a Safe and the store
+       * then refused — "this device already owns a Safe" with nothing on
+       * screen that owned anything. The Safe is shown from what this device
+       * already knows, and the read failure is reported as itself.
+       */
+      let current: TravelSafeV3Snapshot;
+      try {
+        current = await readTravelSafeV3Snapshot({
+          helperAddress: active.helperAddress,
+          stateId: active.stateId,
+          rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
+        });
+      } catch (cause) {
+        setTicket(active);
+        setSnapshot(null);
+        setPhase(
+          active.status === "READY"
+            ? "review"
+            : active.status === "TERMINAL"
+              ? "terminal"
+              : "active",
+        );
+        setError(reasonFrom(cause));
+        return;
+      }
       if (current.state !== null) assertTicketMatchesState(active, current.state);
       const inMemoryPending = pending.current;
       const target =
@@ -1013,6 +1037,63 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       await refresh();
     }
   }, [account, refresh, ticket]);
+
+  /**
+   * Everything this device holds about a Safe, forgotten.
+   *
+   * `stateId` is read from the ticket when there is one and from the device
+   * settings when there is not, because the state worth escaping is exactly
+   * the one where the settings still name a Safe the app can no longer show.
+   */
+  const forgetSafe = useCallback(async (stateId: string): Promise<void> => {
+    await clearTravelSafeTicket(stateId);
+    shieldRun.current += 1;
+    wallet.current = null;
+    setup.current = null;
+    prepared.current = null;
+    pending.current = null;
+    passkeyVerified.current = false;
+    setAccount(null);
+    setAssets([]);
+    setPlan(EMPTY_PLAN);
+    setTicket(null);
+    setSnapshot(null);
+    setShield(null);
+    setQuote(null);
+    setLive(null);
+    setReadiness(null);
+    setRecoveryDrill({ status: "idle" });
+    updateRecoveryWords(null);
+    setAction({ name: "idle" });
+    setPhase("empty");
+  }, []);
+
+  /**
+   * Abandon a Safe that was planned but never funded.
+   *
+   * Nothing about it exists anywhere but this device: no FUND was broadcast,
+   * so there is no onchain state to orphan and no money to strand. Without
+   * this the only way out of a half-finished setup was to clear the browser's
+   * storage by hand.
+   */
+  const discardUnfundedSafe = useCallback(async (): Promise<void> => {
+    setError(null);
+    try {
+      const stateId = ticket?.stateId ?? readSettings().activeSafeStateId;
+      if (stateId === null || stateId === undefined) {
+        setPhase("empty");
+        return;
+      }
+      if (ticket !== null && (ticket.status !== "READY" || ticket.fundTransactionHash !== null)) {
+        throw new Error("This Safe has already been funded");
+      }
+      await forgetSafe(stateId);
+    } catch (cause) {
+      const reason = reasonFrom(cause);
+      setError(reason);
+      setAction({ name: "failed", message: reason, retryable: true });
+    }
+  }, [forgetSafe, ticket]);
 
   const clearTerminal = useCallback(async (): Promise<void> => {
     if (ticket === null || ticket.status !== "TERMINAL") return;
@@ -1695,6 +1776,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       prepareFund,
       shieldNow,
       dismissShield,
+      discardUnfundedSafe,
       submitFund,
       releaseAvailable,
       prepareTopUp,

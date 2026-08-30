@@ -91,7 +91,13 @@ async function rpc<Result>(input: {
   fetcher: typeof fetch;
   resultSchema: z.ZodType<Result>;
 }): Promise<Result> {
-  const response = await input.fetcher(input.rpcUrl, {
+  // Through a local binding, never as `input.fetcher(...)`. Calling it as a
+  // method hands `fetch` this input object as its `this`, and the browser
+  // refuses outright with "Illegal invocation" — so every chain read for a
+  // Safe failed before it left the page. The same trap is commented at the
+  // other RPC reader in `ready-private-setup.ts`.
+  const { fetcher } = input;
+  const response = await fetcher(input.rpcUrl, {
     method: "POST",
     headers: { "content-type": "application/json" },
     signal: AbortSignal.timeout(RPC_TIMEOUT_MILLISECONDS),
