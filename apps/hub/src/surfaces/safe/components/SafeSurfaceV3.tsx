@@ -763,6 +763,7 @@ function ReviewScreen(props: {
    */
   const connected = model.walletAccount !== null;
   const shield = model.shield?.purpose === "fund" ? model.shield : null;
+  const missingWords = needsRecoveryWords && recoveryInput.trim() === "";
   return (
     <Screen lede="Check the plan before the exact fee." title="Review">
       <Facts>
@@ -807,7 +808,10 @@ function ReviewScreen(props: {
         />
       </Facts>
       {needsRecoveryWords ? (
-        <WalletField label="Recovery words">
+        <WalletField
+          hint="Funding proves this Safe can be brought back early, and only these words can prove that. They were never stored, so they are asked for once per session — not sent anywhere, and used on this device only."
+          label="Recovery words"
+        >
           {({ inputId, describedBy }) => (
             <textarea
               aria-describedby={describedBy}
@@ -831,10 +835,17 @@ function ReviewScreen(props: {
       ) : (
         <>
           <SafeStatus action={model.action} error={model.error} />
+          {busy ? (
+            <Note>
+              Your wallet builds the private proof itself, which can take a
+              minute or two and asks for your approval first. Nothing is sent
+              until you have seen the fee.
+            </Note>
+          ) : null}
           <Actions>
             {connected ? (
               <Button
-                disabled={busy || (needsRecoveryWords && recoveryInput.trim() === "")}
+                disabled={busy || missingWords}
                 icon={<LockSimpleIcon />}
                 iconMotion={busy ? "spin" : undefined}
                 label="Get exact fee"
@@ -853,7 +864,19 @@ function ReviewScreen(props: {
                 }}
               />
             )}
+            {busy ? (
+              <Button
+                label="Stop waiting"
+                onClick={actions.cancelPreparation}
+                tone="quiet"
+              />
+            ) : null}
           </Actions>
+          {/* A disabled control that does not say what it wants is the whole
+              reason somebody stares at this screen. */}
+          {missingWords ? (
+            <Note>Type the twelve words above to price this Safe.</Note>
+          ) : null}
         </>
       )}
       <Note>

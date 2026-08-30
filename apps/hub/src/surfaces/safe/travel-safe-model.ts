@@ -142,6 +142,8 @@ export type TravelSafeV3Actions = {
   prepareFund(): Promise<void>;
   shieldNow(): Promise<void>;
   dismissShield(): void;
+  /** Stop waiting on a proof that has not come back. Nothing was sent. */
+  cancelPreparation(): void;
   /** Abandon a planned but never funded Safe. Local state only. */
   discardUnfundedSafe(): Promise<void>;
   submitFund(): Promise<void>;

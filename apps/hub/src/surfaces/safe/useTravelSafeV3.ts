@@ -300,6 +300,8 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
   const passkeyVerified = useRef(false);
   /** Bumped per shield attempt; a stale attempt stops writing state. */
   const shieldRun = useRef(0);
+  /** The same, for proof preparation, which can outlive a person's patience. */
+  const prepareRun = useRef(0);
 
   const selectedToken = useMemo(() => tokenFor(plan.tokenAddress), [plan.tokenAddress]);
   const nextReleaseAt = useMemo(() => nextReleaseTime(snapshot), [snapshot]);
@@ -909,11 +911,22 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
     setPhase("review");
   }, [account, plan, recoveryWords, selectedToken]);
 
+  /**
+   * Turn a planned Safe into a priced, submittable FUND.
+   *
+   * Every step reports itself, because the expensive one is not ours: the
+   * wallet generates a SNIP-36 proof, which the API documents as long-running
+   * and which shows its own approval first. A single unchanging "preparing"
+   * line through a minute of that reads as a page that has died.
+   */
   const prepareFund = useCallback(async (): Promise<void> => {
+    const run = prepareRun.current + 1;
+    prepareRun.current = run;
+    const current = () => prepareRun.current === run;
     setError(null);
     prepared.current = null;
     setQuote(null);
-    setAction({ name: "preparing", label: "Preparing private proof" });
+    setAction({ name: "preparing", label: "Checking the recovery words" });
     try {
       if (wallet.current === null || account === null || ticket === null) {
         throw new Error("Connect your wallet");
@@ -945,7 +958,10 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
           ),
         };
       }
+      if (!current()) return;
+      setAction({ name: "preparing", label: "Reading your balances" });
       const funding = await readFundingBalances(ticket.tokenAddress, ticket.amountBaseUnits);
+      if (!current()) return;
       if (funding.deposits.length > 0) {
         setShield(
           shieldStep({
@@ -960,6 +976,10 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
         return;
       }
       setShield(null);
+      setAction({
+        name: "wallet",
+        label: "Your wallet is building the private proof",
+      });
       const next = await prepareTravelSafeV3FundRelay({
         wallet: readyWallet(wallet.current),
         account,
@@ -971,15 +991,33 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
         recoveryCommitment: setup.current.recoveryCommitment,
         sponsorUrl: WRENCHLESS_SERVICES.sponsorUrl,
       });
+      if (!current()) return;
       prepared.current = next;
       setQuote(next.estimate.summary);
       setAction({ name: "idle" });
       setPhase("quote");
     } catch (cause) {
+      if (!current()) return;
       setAction({ name: "failed", message: reasonFrom(cause), retryable: true });
       setError(reasonFrom(cause));
     }
   }, [account, readFundingBalances, recoveryWords, ticket]);
+
+  /**
+   * Give up on a preparation that is taking too long.
+   *
+   * Nothing has been broadcast at this point — a proof is built and priced
+   * before anything is sent — so stopping costs only the work in flight. The
+   * run token means a wallet that answers afterwards is ignored rather than
+   * dropping a quote onto a screen the person has already left.
+   */
+  const cancelPreparation = useCallback((): void => {
+    prepareRun.current += 1;
+    prepared.current = null;
+    setQuote(null);
+    setError(null);
+    setAction({ name: "idle" });
+  }, []);
 
   const submitFund = useCallback(async (): Promise<void> => {
     let staged = false;
@@ -1776,6 +1814,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       prepareFund,
       shieldNow,
       dismissShield,
+      cancelPreparation,
       discardUnfundedSafe,
       submitFund,
       releaseAvailable,
