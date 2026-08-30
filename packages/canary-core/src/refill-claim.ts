@@ -225,6 +225,13 @@ export type ParsedServerActions = {
   actionCount: number;
   discriminants: bigint[];
   invokes: InvokeServerAction[];
+  /**
+   * How many leading felts the serialized action array occupies — everything
+   * before the trailing screening option. The SNIP-36 proof commits to
+   * exactly this span, so it has to be measured rather than guessed at from
+   * the end of the calldata.
+   */
+  actionsFeltLength: number;
   transfersFrom: TransferFromServerAction[];
   transfersTo: TransferToServerAction[];
   screening: "None" | "Some";
@@ -234,6 +241,11 @@ class FeltReader {
   private index = 0;
 
   constructor(private readonly values: readonly string[]) {}
+
+  /** How many felts have been consumed so far. */
+  position(): number {
+    return this.index;
+  }
 
   read(label: string): bigint {
     const value = this.values[this.index];
@@ -385,9 +397,11 @@ function readServerActions(
     }
   }
 
+  const actionsFeltLength = reader.position();
   if (!reader.hasRemaining() && allowMissingScreening) {
     return {
       actionCount,
+      actionsFeltLength,
       discriminants,
       invokes,
       screening: "None",
@@ -407,7 +421,15 @@ function readServerActions(
     throw new Error("invalid screening option");
   }
   reader.assertFinished();
-  return { actionCount, discriminants, invokes, screening, transfersFrom, transfersTo };
+  return {
+    actionCount,
+    actionsFeltLength,
+    discriminants,
+    invokes,
+    screening,
+    transfersFrom,
+    transfersTo,
+  };
 }
 
 function buildFundActions(
@@ -626,6 +648,22 @@ function assertPreparedFund(
   expected.forEach((value, index) => {
     assertSameFelt(fund[index]!, value, `FUND calldata ${index}`);
   });
+}
+
+/**
+ * The part of an `apply_actions` calldata the SNIP-36 proof commits to.
+ *
+ * That is the serialized action array and nothing after it. The trailing
+ * screening option is an argument the pool checks for itself, and it is one
+ * felt when absent and four when present — so slicing a fixed number off the
+ * end silently mangles the payload the moment a bundle carries an
+ * attestation, which is what a deposit obliges it to do.
+ */
+export function serializedServerActionSpan(
+  calldata: readonly string[],
+): readonly string[] {
+  const { actionsFeltLength } = readServerActions(calldata, true);
+  return calldata.slice(0, actionsFeltLength);
 }
 
 export function assertSubmittableProof(
