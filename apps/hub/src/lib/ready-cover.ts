@@ -218,3 +218,113 @@ export async function readReadyPoolFee(input: {
   );
   return { poolFeeFri: poolFee.toString() };
 }
+
+const BALANCE_OF_SELECTOR =
+  "0x35a73cd311a05d46deda634c5ee045db92f811b4e74bca4437fcb5302b7af33";
+const BALANCE_OF_CAMEL_SELECTOR =
+  "0x2e4263afad30923c891518314c3c95dbe830a16874e8abc5777a9a20b54c76e";
+
+async function readErc20Balance(input: {
+  account: string;
+  tokenAddress: string;
+  rpcUrl: string;
+  fetcher: typeof fetch;
+}): Promise<bigint> {
+  const { fetcher } = input;
+  const call = async (selector: string) => {
+    const response = await fetcher(input.rpcUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      signal: AbortSignal.timeout(RPC_TIMEOUT_MILLISECONDS),
+      body: JSON.stringify({
+        id: 1,
+        jsonrpc: "2.0",
+        method: "starknet_call",
+        params: {
+          block_id: "latest",
+          request: {
+            calldata: [input.account],
+            contract_address: input.tokenAddress,
+            entry_point_selector: selector,
+          },
+        },
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`Mainnet balance read returned HTTP ${response.status}`);
+    }
+    return rpcResponseSchema.parse(await response.json());
+  };
+  // Older bridged tokens only expose the camelCase entry point; the
+  // snake_case one is tried first because every current token has it.
+  let body = await call(BALANCE_OF_SELECTOR);
+  if ("error" in body) body = await call(BALANCE_OF_CAMEL_SELECTOR);
+  if ("error" in body) {
+    throw new Error(`Could not read the wallet balance: ${body.error.message}`);
+  }
+  const [low, high] = body.result;
+  if (body.result.length !== 2 || low === undefined || high === undefined) {
+    throw new Error("The wallet balance read returned an unexpected shape");
+  }
+  const lowValue = BigInt(low);
+  const highValue = BigInt(high);
+  if (lowValue < 0n || lowValue > U128_MAX || highValue < 0n || highValue > U128_MAX) {
+    throw new Error("The wallet balance read returned an invalid amount");
+  }
+  return (highValue << 128n) + lowValue;
+}
+
+/**
+ * The ordinary, still-public balance of each token in the connected account,
+ * read from mainnet rather than from the wallet. A token whose read fails is
+ * reported as unavailable, never as empty, so a plan cannot mistake an RPC
+ * fault for a zero.
+ */
+export async function readPublicBalances(input: {
+  account: string;
+  tokens: readonly TravelSafeToken[];
+  rpcUrl?: string;
+  fetcher?: typeof fetch;
+}): Promise<
+  readonly {
+    token: TravelSafeToken;
+    publicBalanceBaseUnits: string;
+    available: boolean;
+    reason: string | null;
+  }[]
+> {
+  if (input.tokens.length === 0) {
+    throw new Error("Choose at least one token");
+  }
+  const account = canonicalFelt(input.account, "wallet account");
+  const rpcUrl = input.rpcUrl ?? MAINNET_RPC;
+  const fetcher = input.fetcher ?? fetch;
+  const reads = await Promise.allSettled(
+    input.tokens.map((token) =>
+      readErc20Balance({
+        account,
+        tokenAddress: canonicalFelt(token.address, `${token.symbol} token address`),
+        rpcUrl,
+        fetcher,
+      }),
+    ),
+  );
+  return input.tokens.map((token, index) => {
+    const read = reads[index];
+    if (read === undefined || read.status === "rejected") {
+      const reason = read?.reason;
+      return {
+        token,
+        publicBalanceBaseUnits: "0",
+        available: false,
+        reason: reason instanceof Error ? reason.message : "Could not read the wallet balance",
+      };
+    }
+    return {
+      token,
+      publicBalanceBaseUnits: read.value.toString(),
+      available: true,
+      reason: null,
+    };
+  });
+}

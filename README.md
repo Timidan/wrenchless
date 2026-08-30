@@ -17,7 +17,7 @@ Create a private Travel Safe with STRK or USDC. Park everything until a return
 date, or make a fixed amount available each day. Missed daily amounts carry
 forward.
 
-- Private STRK or USDC
+- STRK or USDC, private or still in your wallet (wallet funds are shielded first, with your approval)
 - One return date or a daily allowance
 - Top-ups and return-date extensions
 - Early return with recovery words

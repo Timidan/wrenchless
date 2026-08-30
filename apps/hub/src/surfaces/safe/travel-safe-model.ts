@@ -6,9 +6,41 @@ export type SafeAssetView = {
   symbol: "STRK" | "USDC";
   tokenAddress: string;
   decimals: 18 | 6;
+  /** The private note the wallet reports, or "—" when it could not be read. */
   shieldedBalance: string;
+  /** The ordinary balance still in the account, or "—" when unreadable. */
+  publicBalance: string;
+  /** Everything a plan can draw on: private plus ordinary, unreadable as 0. */
+  totalBalance: string;
+  hasPublicBalance: boolean;
   returnFeeStrk: string;
+  /** Selectable: at least one of the two balances was read. */
   available: boolean;
+  shieldedAvailable: boolean;
+  publicAvailable: boolean;
+};
+
+export type SafeShieldDeposit = {
+  symbol: "STRK" | "USDC";
+  tokenAddress: string;
+  decimals: 18 | 6;
+  amount: string;
+  amountBaseUnits: string;
+};
+
+/**
+ * The wallet-signed shield that must land before a FUND or TOP_UP can be
+ * proven: ordinary balances moving into the private pool, one deposit per
+ * token that falls short. `transactionHash` is set once the wallet has sent
+ * it, so a retry waits on that transaction instead of asking for a second.
+ */
+export type SafeShieldStep = {
+  purpose: "fund" | "top-up";
+  tokenAddress: string;
+  amountBaseUnits: string;
+  topUpAmount: string | null;
+  deposits: readonly SafeShieldDeposit[];
+  transactionHash: string | null;
 };
 
 export type SafePlanDraft = {
@@ -72,6 +104,7 @@ export type TravelSafeV3Model = {
   snapshot: TravelSafeV3Snapshot | null;
   nextReleaseAt: string | null;
   readiness: SafeReadiness | null;
+  shield: SafeShieldStep | null;
   recoveryDrill: SafeRecoveryDrill;
   action: SafeActionState;
   recoveryWords: string | null;
@@ -100,6 +133,8 @@ export type TravelSafeV3Actions = {
   setRecoveryWords(words: string): void;
   confirmRecoveryWords(): Promise<void>;
   prepareFund(): Promise<void>;
+  shieldNow(): Promise<void>;
+  dismissShield(): void;
   submitFund(): Promise<void>;
   releaseAvailable(): Promise<void>;
   prepareTopUp(amount: string): Promise<void>;

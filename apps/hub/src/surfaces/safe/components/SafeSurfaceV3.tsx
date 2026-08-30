@@ -48,6 +48,7 @@ import type {
   SafeActionState,
   SafeAssetView,
   SafeReadinessCheck,
+  SafeShieldStep,
   SafeV3Phase,
   TravelSafeV3Actions,
   TravelSafeV3Model,
@@ -465,9 +466,11 @@ function PlanScreen(props: {
       </FieldGroup>
       {asset === null ? null : (
         <Note>
-          {asset.available
-            ? `${asset.shieldedBalance} ${asset.symbol} private now, plus ${asset.returnFeeStrk} STRK reserved for the return.`
-            : `${asset.symbol} is temporarily unavailable from your wallet.`}
+          {!asset.available
+            ? `${asset.symbol} is temporarily unavailable from your wallet.`
+            : asset.hasPublicBalance
+              ? `${asset.shieldedBalance} ${asset.symbol} private and ${asset.publicBalance} ${asset.symbol} still in your wallet, plus ${asset.returnFeeStrk} STRK reserved for the return. Anything parked from the wallet is shielded first, with your approval.`
+              : `${asset.shieldedBalance} ${asset.symbol} private now, plus ${asset.returnFeeStrk} STRK reserved for the return.`}
         </Note>
       )}
       <div className="wform">
@@ -660,6 +663,67 @@ function RecoveryScreen(props: {
   );
 }
 
+/**
+ * The one step that asks the account itself to send something: ordinary
+ * balances moving into the private pool before a FUND or TOP_UP can be
+ * proven. It shows exactly what will move, lets the wallet do the asking,
+ * and keeps the hash in view once there is one so a retry waits on that
+ * transaction rather than sending another.
+ */
+function ShieldStep(props: {
+  shield: SafeShieldStep;
+  model: TravelSafeV3Model;
+  actions: TravelSafeV3Actions;
+}): JSX.Element {
+  const { actions, model, shield } = props;
+  const busy = safeActionBusy(model.action);
+  const sent = shield.transactionHash !== null;
+  return (
+    <>
+      <Facts>
+        {shield.deposits.map((deposit) => (
+          <Fact
+            key={deposit.tokenAddress}
+            label="Shield first"
+            strong
+            value={<SafeAmount symbol={deposit.symbol} value={deposit.amount} />}
+          />
+        ))}
+      </Facts>
+      <Note>
+        {sent
+          ? "The shield is on its way. The exact fee follows once your wallet holds the private note."
+          : "This moves the amount above from your wallet into your private balance. Your wallet asks you to approve it and pays its own network fee; the exact Safe fee follows after."}
+      </Note>
+      <SafeStatus action={model.action} error={model.error} />
+      {shield.transactionHash === null ? null : (
+        <TransactionRef
+          hash={shortHex(shield.transactionHash)}
+          href={`${EXPLORER_BASE}${shield.transactionHash}`}
+          label="Shield"
+        />
+      )}
+      <Actions>
+        <Button
+          disabled={busy}
+          icon={<ShieldCheckIcon />}
+          iconMotion={busy ? "spin" : undefined}
+          label={sent ? "Check the shield" : "Shield in wallet"}
+          onClick={() => {
+            void actions.shieldNow();
+          }}
+        />
+        <Button
+          disabled={busy}
+          label="Not now"
+          onClick={actions.dismissShield}
+          tone="quiet"
+        />
+      </Actions>
+    </>
+  );
+}
+
 function ReviewScreen(props: {
   model: TravelSafeV3Model;
   actions: TravelSafeV3Actions;
@@ -686,6 +750,7 @@ function ReviewScreen(props: {
    * place rather than behind a button that could only fail.
    */
   const connected = model.walletAccount !== null;
+  const shield = model.shield?.purpose === "fund" ? model.shield : null;
   return (
     <Screen lede="Check the plan before the exact fee." title="Review">
       <Facts>
@@ -749,31 +814,41 @@ function ReviewScreen(props: {
       {connected ? null : (
         <Note>Connect the wallet that funds this allowance to price it.</Note>
       )}
-      <SafeStatus action={model.action} error={model.error} />
-      <Actions>
-        {connected ? (
-          <Button
-            disabled={busy || (needsRecoveryWords && recoveryInput.trim() === "")}
-            icon={<LockSimpleIcon />}
-            iconMotion={busy ? "spin" : undefined}
-            label="Get exact fee"
-            onClick={() => {
-              void actions.prepareFund();
-            }}
-          />
-        ) : (
-          <Button
-            disabled={busy}
-            icon={<WalletIcon />}
-            iconMotion={model.action.name === "wallet" ? "spin" : undefined}
-            label="Connect wallet"
-            onClick={() => {
-              void actions.connect();
-            }}
-          />
-        )}
-      </Actions>
-      <Note>Nothing broadcasts until you confirm the fee.</Note>
+      {shield !== null && connected ? (
+        <ShieldStep actions={actions} model={model} shield={shield} />
+      ) : (
+        <>
+          <SafeStatus action={model.action} error={model.error} />
+          <Actions>
+            {connected ? (
+              <Button
+                disabled={busy || (needsRecoveryWords && recoveryInput.trim() === "")}
+                icon={<LockSimpleIcon />}
+                iconMotion={busy ? "spin" : undefined}
+                label="Get exact fee"
+                onClick={() => {
+                  void actions.prepareFund();
+                }}
+              />
+            ) : (
+              <Button
+                disabled={busy}
+                icon={<WalletIcon />}
+                iconMotion={model.action.name === "wallet" ? "spin" : undefined}
+                label="Connect wallet"
+                onClick={() => {
+                  void actions.connect();
+                }}
+              />
+            )}
+          </Actions>
+        </>
+      )}
+      <Note>
+        {shield === null
+          ? "Nothing broadcasts until you confirm the fee, unless part of the amount is still in your wallet — then the shield goes first, with your approval."
+          : "Only the shield broadcasts now, and only after you approve it in your wallet."}
+      </Note>
     </Screen>
   );
 }
@@ -1043,10 +1118,13 @@ function TopUpSubview(props: {
   const busy = safeActionBusy(model.action);
   const showQuote = attempted && model.quote !== null;
   const locked = busy || model.action.name === "confirmed";
+  const shield = model.shield?.purpose === "top-up" ? model.shield : null;
 
   return (
     <Screen lede="Add more without changing the schedule." onBack={props.onBack} title="Top up">
-      {!showQuote ? (
+      {shield !== null ? (
+        <ShieldStep actions={actions} model={model} shield={shield} />
+      ) : !showQuote ? (
         <>
           <div className="wform">
             <WalletField label={`Amount (${ticket.tokenSymbol})`}>

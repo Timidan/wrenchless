@@ -25,11 +25,13 @@ import { readSettings } from "../../adapters/settings";
 import { WRENCHLESS_MAINNET, WRENCHLESS_SERVICES } from "../../lib/product-config";
 import {
   assertReadyPrivateContext,
+  readPublicBalances,
   readReadyPoolFee,
   readReadyShieldedBalances,
 } from "../../lib/ready-cover";
 import {
   submitAllowanceRelease,
+  submitShieldDeposits,
   submitTravelSafeClaimEarly,
   submitTravelSafeExtend,
   submitTravelSafeV3Refund,
@@ -56,6 +58,12 @@ import {
   type TravelSafeActionTarget,
 } from "../../lib/travel-safe-action-state";
 import {
+  planShieldDeposits,
+  shieldShortfalls,
+  type ShieldableBalance,
+  type ShieldDeposit,
+} from "../../lib/travel-safe-shield";
+import {
   prepareTravelSafeV3FundRelay,
   prepareTravelSafeV3TopUpRelay,
   submitPreparedTravelSafeV3Relay,
@@ -76,12 +84,16 @@ import type {
   SafeAssetView,
   SafePlanDraft,
   SafeReadinessCheck,
+  SafeShieldStep,
   TravelSafeV3Controller,
 } from "./travel-safe-model";
 
 const MAINNET_CHAIN_ID = "0x534e5f4d41494e";
 const AMBIGUOUS_ACTION_WINDOW_MILLISECONDS = 5 * 60 * 1_000;
 const MAXIMUM_SAFE_DURATION_SECONDS = 180n * 86_400n;
+const SHIELD_POLL_MILLISECONDS = 4_000;
+const SHIELD_RECEIPT_TIMEOUT_MILLISECONDS = 10 * 60_000;
+const SHIELD_NOTE_TIMEOUT_MILLISECONDS = 5 * 60_000;
 const EMPTY_PLAN: SafePlanDraft = {
   tokenAddress: TRAVEL_SAFE_TOKENS[0].address,
   parkAmount: "",
@@ -107,6 +119,46 @@ type ActiveTravelSafeV3State = {
   ticket: TravelSafeTicketV3;
   state: TravelSafeV3ChainState;
 };
+
+type FreshBalances = {
+  balances: readonly ShieldableBalance[];
+  poolFeeFri: string;
+  /** Why the wallet's private balances could not be read, when they could not. */
+  shieldedError: string | null;
+};
+
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
+
+function readable(available: boolean, baseUnits: string): bigint {
+  return available ? BigInt(baseUnits) : 0n;
+}
+
+function shieldStep(input: {
+  purpose: SafeShieldStep["purpose"];
+  tokenAddress: string;
+  amountBaseUnits: string;
+  topUpAmount: string | null;
+  deposits: readonly ShieldDeposit[];
+}): SafeShieldStep {
+  return {
+    purpose: input.purpose,
+    tokenAddress: input.tokenAddress,
+    amountBaseUnits: input.amountBaseUnits,
+    topUpAmount: input.topUpAmount,
+    transactionHash: null,
+    deposits: input.deposits.map((deposit) => ({
+      symbol: deposit.token.symbol,
+      tokenAddress: deposit.token.address,
+      decimals: deposit.token.decimals,
+      amount: formatTokenAmount(BigInt(deposit.amountBaseUnits), deposit.token.decimals),
+      amountBaseUnits: deposit.amountBaseUnits,
+    })),
+  };
+}
 
 function canonicalFelt(value: string): string {
   return `0x${BigInt(value).toString(16)}`;
@@ -228,6 +280,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
   const [ticket, setTicket] = useState<TravelSafeTicketV3 | null>(null);
   const [snapshot, setSnapshot] = useState<TravelSafeV3Controller["model"]["snapshot"]>(null);
   const [readiness, setReadiness] = useState<TravelSafeV3Controller["model"]["readiness"]>(null);
+  const [shield, setShield] = useState<SafeShieldStep | null>(null);
   const [recoveryDrill, setRecoveryDrill] = useState<TravelSafeV3Controller["model"]["recoveryDrill"]>({ status: "idle" });
   const [action, setAction] = useState<TravelSafeV3Controller["model"]["action"]>({ name: "idle" });
   const [recoveryWords, updateRecoveryWords] = useState<string | null>(null);
@@ -243,36 +296,76 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
   const selectedToken = useMemo(() => tokenFor(plan.tokenAddress), [plan.tokenAddress]);
   const nextReleaseAt = useMemo(() => nextReleaseTime(snapshot), [snapshot]);
 
-  const refreshBalances = useCallback(async (currentWallet: BrowserWallet) => {
-    const [balances, fee] = await Promise.all([
+  /**
+   * Both sides of what a plan can draw on. The private read comes from the
+   * wallet and the ordinary read from mainnet; either may fail on its own. A
+   * failed private read is carried as a reason rather than thrown, because an
+   * account that has never shielded still has ordinary STRK to start from.
+   */
+  const refreshBalances = useCallback(async (currentWallet: BrowserWallet): Promise<FreshBalances> => {
+    const [shieldedResult, publicBalances, fee] = await Promise.all([
       readReadyShieldedBalances({
         wallet: currentWallet,
         tokens: TRAVEL_SAFE_TOKENS,
         checkContext: false,
+      }).then(
+        (value) => ({ value, reason: null }),
+        (cause: unknown) => ({ value: null, reason: reasonFrom(cause) }),
+      ),
+      readPublicBalances({
+        account: currentWallet.selectedAddress,
+        tokens: TRAVEL_SAFE_TOKENS,
+        rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
       }),
       readReadyPoolFee({
         poolAddress: WRENCHLESS_MAINNET.poolAddress,
         rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
       }),
     ]);
-    const views = balances.map((balance): SafeAssetView => ({
-      symbol: balance.token.symbol,
-      tokenAddress: balance.token.address,
-      decimals: balance.token.decimals,
-      shieldedBalance: balance.available
-        ? formatTokenAmount(
-            BigInt(balance.shieldedBalanceBaseUnits),
-            balance.token.decimals,
-          )
-        : "—",
-      returnFeeStrk: formatTokenAmount(
-        BigInt(fee.poolFeeFri),
-        TRAVEL_SAFE_TOKENS[0].decimals,
-      ),
-      available: balance.available,
-    }));
+    if (shieldedResult.value === null && publicBalances.every((entry) => !entry.available)) {
+      throw new Error(shieldedResult.reason ?? "Could not read any balance");
+    }
+    const balances = TRAVEL_SAFE_TOKENS.map((token): ShieldableBalance => {
+      const shielded = shieldedResult.value?.find(
+        (entry) => BigInt(entry.token.address) === BigInt(token.address),
+      );
+      const ordinary = publicBalances.find(
+        (entry) => BigInt(entry.token.address) === BigInt(token.address),
+      );
+      return {
+        token,
+        shieldedBalanceBaseUnits: shielded?.shieldedBalanceBaseUnits ?? "0",
+        shieldedAvailable: shielded?.available ?? false,
+        publicBalanceBaseUnits: ordinary?.publicBalanceBaseUnits ?? "0",
+        publicAvailable: ordinary?.available ?? false,
+      };
+    });
+    const views = balances.map((balance): SafeAssetView => {
+      const shielded = readable(balance.shieldedAvailable, balance.shieldedBalanceBaseUnits);
+      const ordinary = readable(balance.publicAvailable, balance.publicBalanceBaseUnits);
+      return {
+        symbol: balance.token.symbol,
+        tokenAddress: balance.token.address,
+        decimals: balance.token.decimals,
+        shieldedBalance: balance.shieldedAvailable
+          ? formatTokenAmount(shielded, balance.token.decimals)
+          : "—",
+        publicBalance: balance.publicAvailable
+          ? formatTokenAmount(ordinary, balance.token.decimals)
+          : "—",
+        totalBalance: formatTokenAmount(shielded + ordinary, balance.token.decimals),
+        hasPublicBalance: ordinary > 0n,
+        returnFeeStrk: formatTokenAmount(
+          BigInt(fee.poolFeeFri),
+          TRAVEL_SAFE_TOKENS[0].decimals,
+        ),
+        available: balance.shieldedAvailable || balance.publicAvailable,
+        shieldedAvailable: balance.shieldedAvailable,
+        publicAvailable: balance.publicAvailable,
+      };
+    });
     setAssets(views);
-    return { balances, poolFeeFri: fee.poolFeeFri };
+    return { balances, poolFeeFri: fee.poolFeeFri, shieldedError: shieldedResult.reason };
   }, []);
 
   const runReadiness = useCallback(async (
@@ -284,7 +377,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       { id: "passkey", label: "Passkey", status: "checking", detail: "Checking this device" },
       { id: "relay", label: "Private relay", status: "checking", detail: "Checking availability" },
       { id: "fee", label: "Action reserve", status: "checking", detail: "Reading the live fee" },
-      { id: "balance", label: "Private balance", status: "checking", detail: "Reading STRK and USDC" },
+      { id: "balance", label: "Balance", status: "checking", detail: "Reading STRK and USDC" },
     ];
     setPhase("readiness");
     setError(null);
@@ -338,53 +431,72 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       const detail = reasonFrom(balanceResult.reason);
       checks.push(
         { id: "fee", label: "Action reserve", status: "blocked", detail },
-        { id: "balance", label: "Private balance", status: "blocked", detail },
+        { id: "balance", label: "Balance", status: "blocked", detail },
       );
     } else {
-      const strk = balanceResult.value.balances.find(
-        (balance) => balance.token.symbol === "STRK",
-      );
-      const hasFeeReserve =
-        strk !== undefined &&
-        strk.available &&
-        BigInt(strk.shieldedBalanceBaseUnits) >=
-          BigInt(balanceResult.value.poolFeeFri);
+      const { balances, poolFeeFri, shieldedError } = balanceResult.value;
+      const reserve = BigInt(poolFeeFri);
+      const reserveText = `${formatTokenAmount(reserve, 18)} STRK`;
+      const strk = balances.find((balance) => balance.token.symbol === "STRK");
+      const shieldedStrk =
+        strk === undefined ? 0n : readable(strk.shieldedAvailable, strk.shieldedBalanceBaseUnits);
+      const ordinaryStrk =
+        strk === undefined ? 0n : readable(strk.publicAvailable, strk.publicBalanceBaseUnits);
       checks.push(
-        hasFeeReserve
+        shieldedStrk >= reserve
           ? {
               id: "fee",
               label: "Action reserve",
               status: "ready",
-              detail: `${formatTokenAmount(BigInt(balanceResult.value.poolFeeFri), 18)} STRK kept for actions`,
+              detail: `${reserveText} kept private for actions`,
             }
-          : {
-              id: "fee",
-              label: "Action reserve",
-              status: "blocked",
-              detail: "Add enough private STRK for one action fee",
-            },
+          : shieldedStrk + ordinaryStrk >= reserve
+            ? {
+                id: "fee",
+                label: "Action reserve",
+                status: "ready",
+                detail: `${reserveText} moves from your wallet into the private balance first`,
+              }
+            : {
+                id: "fee",
+                label: "Action reserve",
+                status: "blocked",
+                detail: `Add at least ${reserveText} to your wallet for one action fee`,
+              },
       );
-      const funded = balanceResult.value.balances.filter((balance) => {
-        if (!balance.available) return false;
-        const amount = BigInt(balance.shieldedBalanceBaseUnits);
-        return balance.token.symbol === "STRK"
-          ? amount > BigInt(balanceResult.value.poolFeeFri)
-          : amount > 0n;
+      const funded = balances.filter((balance) => {
+        const total =
+          readable(balance.shieldedAvailable, balance.shieldedBalanceBaseUnits) +
+          readable(balance.publicAvailable, balance.publicBalanceBaseUnits);
+        return balance.token.symbol === "STRK" ? total > reserve : total > 0n;
       });
+      const shieldsFirst = funded.some(
+        (balance) => readable(balance.publicAvailable, balance.publicBalanceBaseUnits) > 0n,
+      );
+      const fundedText = funded.map((balance) => balance.token.symbol).join(" and ");
       checks.push(
-        funded.length > 0
+        funded.length === 0
           ? {
               id: "balance",
-              label: "Private balance",
-              status: "ready",
-              detail: `${funded.map((balance) => balance.token.symbol).join(" and ")} available`,
-            }
-          : {
-              id: "balance",
-              label: "Private balance",
+              label: "Balance",
               status: "blocked",
-              detail: "Add private STRK or USDC to park",
-            },
+              detail: shieldedError ?? "Add STRK or USDC to your wallet to park",
+            }
+          : shieldedError !== null
+            ? {
+                id: "balance",
+                label: "Balance",
+                status: "ready",
+                detail: `${fundedText} in your wallet. Private balance unread: ${shieldedError}`,
+              }
+            : {
+                id: "balance",
+                label: "Balance",
+                status: "ready",
+                detail: shieldsFirst
+                  ? `${fundedText} available; wallet funds are shielded first`
+                  : `${fundedText} available privately`,
+              },
       );
     }
     const ready = checks.every((check) => check.status === "ready");
@@ -402,12 +514,55 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
     const strk = fresh.balances.find((item) => item.token.symbol === "STRK");
     if (strk === undefined) throw new Error("Private STRK balance is unavailable");
     assertPrivateReturnFeeReserve({
-      strkAvailable: strk.available,
+      strkAvailable: strk.shieldedAvailable,
       shieldedStrkBaseUnits: strk.shieldedBalanceBaseUnits,
       requiredBaseUnits: fresh.poolFeeFri,
       additionalStrkSpendBaseUnits: additionalStrk,
     });
     return fresh;
+  }, [account, refreshBalances]);
+
+  /**
+   * Fresh balances for parking or adding `amountBaseUnits` of one token.
+   * Returns the deposits the wallet must shield first when the private
+   * balance falls short and the ordinary balance can cover it; otherwise
+   * holds the existing private-only guarantees — the return-fee reserve and
+   * the parked amount both sit in the private balance — before any proof.
+   */
+  const readFundingBalances = useCallback(async (
+    tokenAddress: string,
+    amountBaseUnits: string,
+  ): Promise<{ fresh: FreshBalances; deposits: readonly ShieldDeposit[] }> => {
+    if (wallet.current === null || account === null) throw new Error("Connect your wallet");
+    assertSelectedWalletAccount(wallet.current, account);
+    const fresh = await refreshBalances(wallet.current);
+    const deposits = planShieldDeposits({
+      tokenAddress,
+      amountBaseUnits,
+      poolFeeFri: fresh.poolFeeFri,
+      balances: fresh.balances,
+    });
+    if (deposits.length > 0) return { fresh, deposits };
+    const token = tokenFor(tokenAddress);
+    const strk = fresh.balances.find((item) => item.token.symbol === "STRK");
+    if (strk === undefined) throw new Error("Private STRK balance is unavailable");
+    assertPrivateReturnFeeReserve({
+      strkAvailable: strk.shieldedAvailable,
+      shieldedStrkBaseUnits: strk.shieldedBalanceBaseUnits,
+      requiredBaseUnits: fresh.poolFeeFri,
+      additionalStrkSpendBaseUnits: token.symbol === "STRK" ? amountBaseUnits : "0",
+    });
+    const selected = fresh.balances.find(
+      (item) => BigInt(item.token.address) === BigInt(tokenAddress),
+    );
+    if (
+      selected === undefined ||
+      !selected.shieldedAvailable ||
+      BigInt(selected.shieldedBalanceBaseUnits) < BigInt(amountBaseUnits)
+    ) {
+      throw new Error(`${token.symbol} private balance is too low`);
+    }
+    return { fresh, deposits };
   }, [account, refreshBalances]);
 
   const refresh = useCallback(async (): Promise<void> => {
@@ -740,18 +895,21 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
           ),
         };
       }
-      const additionalStrk = ticket.tokenSymbol === "STRK" ? ticket.amountBaseUnits : "0";
-      const fresh = await assertFreshReserve(additionalStrk);
-      const selected = fresh.balances.find(
-        (item) => BigInt(item.token.address) === BigInt(ticket.tokenAddress),
-      );
-      if (
-        selected === undefined ||
-        !selected.available ||
-        BigInt(selected.shieldedBalanceBaseUnits) < BigInt(ticket.amountBaseUnits)
-      ) {
-        throw new Error(`${ticket.tokenSymbol} private balance is too low`);
+      const funding = await readFundingBalances(ticket.tokenAddress, ticket.amountBaseUnits);
+      if (funding.deposits.length > 0) {
+        setShield(
+          shieldStep({
+            purpose: "fund",
+            tokenAddress: ticket.tokenAddress,
+            amountBaseUnits: ticket.amountBaseUnits,
+            topUpAmount: null,
+            deposits: funding.deposits,
+          }),
+        );
+        setAction({ name: "idle" });
+        return;
       }
+      setShield(null);
       const next = await prepareTravelSafeV3FundRelay({
         wallet: readyWallet(wallet.current),
         account,
@@ -771,7 +929,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       setAction({ name: "failed", message: reasonFrom(cause), retryable: true });
       setError(reasonFrom(cause));
     }
-  }, [account, assertFreshReserve, recoveryWords, ticket]);
+  }, [account, readFundingBalances, recoveryWords, ticket]);
 
   const submitFund = useCallback(async (): Promise<void> => {
     let staged = false;
@@ -849,6 +1007,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       setQuote(null);
       setLive(null);
       setReadiness(null);
+      setShield(null);
       setRecoveryDrill({ status: "idle" });
       passkeyVerified.current = false;
       setPhase("empty");
@@ -973,14 +1132,21 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       prepared.current = null;
       setQuote(null);
       setAction({ name: "preparing", label: "Checking top-up" });
-      const additionalStrk = active.ticket.tokenSymbol === "STRK" ? amountBaseUnits : "0";
-      const fresh = await assertFreshReserve(additionalStrk);
-      const selected = fresh.balances.find(
-        (item) => BigInt(item.token.address) === BigInt(active.ticket.tokenAddress),
-      );
-      if (selected === undefined || !selected.available || BigInt(selected.shieldedBalanceBaseUnits) < BigInt(amountBaseUnits)) {
-        throw new Error(`${active.ticket.tokenSymbol} private balance is too low`);
+      const funding = await readFundingBalances(active.ticket.tokenAddress, amountBaseUnits);
+      if (funding.deposits.length > 0) {
+        setShield(
+          shieldStep({
+            purpose: "top-up",
+            tokenAddress: active.ticket.tokenAddress,
+            amountBaseUnits,
+            topUpAmount: amount,
+            deposits: funding.deposits,
+          }),
+        );
+        setAction({ name: "idle" });
+        return;
       }
+      setShield(null);
       setAction({ name: "preparing", label: "Preparing private proof" });
       const next = await prepareTravelSafeV3TopUpRelay({
         wallet: readyWallet(wallet.current),
@@ -999,7 +1165,89 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       setError(reasonFrom(cause));
       setAction({ name: "failed", message: reasonFrom(cause), retryable: true });
     }
-  }, [account, activeState, assertFreshReserve]);
+  }, [account, activeState, readFundingBalances]);
+
+  /**
+   * Send the pending shield, then wait for two things in order: the deposit
+   * accepted on Starknet, and the wallet reporting a private balance that
+   * covers the action. Only then does the original preparation resume, so a
+   * proof is never built against a note that does not exist yet. A step that
+   * already holds a hash resumes the wait instead of sending a second deposit.
+   */
+  const shieldNow = useCallback(async (): Promise<void> => {
+    const step = shield;
+    if (step === null) return;
+    setError(null);
+    try {
+      if (wallet.current === null || account === null) throw new Error("Connect your wallet");
+      assertSelectedWalletAccount(wallet.current, account);
+      let transactionHash = step.transactionHash;
+      if (transactionHash === null) {
+        setAction({ name: "wallet", label: "Approve the shield in your wallet" });
+        const sent = await submitShieldDeposits({
+          wallet: readyWallet(wallet.current),
+          chainId: MAINNET_CHAIN_ID,
+          deposits: step.deposits.map((deposit) => ({
+            token: tokenFor(deposit.tokenAddress),
+            amountBaseUnits: deposit.amountBaseUnits,
+          })),
+        });
+        transactionHash = sent.transactionHash;
+        setShield({ ...step, transactionHash });
+      }
+      setAction({ name: "preparing", label: "Confirming the shield on Starknet" });
+      const submittedAt = Date.now();
+      for (;;) {
+        const receipt = await readTransactionReceiptStatus({
+          transactionHash,
+          rpcUrl: WRENCHLESS_MAINNET.rpcUrl,
+        });
+        if (receipt.name === "accepted") break;
+        if (receipt.name === "reverted") {
+          setShield({ ...step, transactionHash: null });
+          throw new Error(`The shield was rejected on Starknet: ${receipt.reason}`);
+        }
+        if (Date.now() - submittedAt > SHIELD_RECEIPT_TIMEOUT_MILLISECONDS) {
+          throw new Error("The shield is still confirming. Check it again in a moment.");
+        }
+        await sleep(SHIELD_POLL_MILLISECONDS);
+      }
+      setAction({ name: "preparing", label: "Waiting for the private note" });
+      const acceptedAt = Date.now();
+      for (;;) {
+        const fresh = await refreshBalances(wallet.current);
+        const remaining = shieldShortfalls({
+          tokenAddress: step.tokenAddress,
+          amountBaseUnits: step.amountBaseUnits,
+          poolFeeFri: fresh.poolFeeFri,
+          balances: fresh.balances,
+        });
+        if (remaining.length === 0) break;
+        if (Date.now() - acceptedAt > SHIELD_NOTE_TIMEOUT_MILLISECONDS) {
+          throw new Error(
+            fresh.shieldedError ??
+              "The private note has not appeared in your wallet yet. Check it again in a moment.",
+          );
+        }
+        await sleep(SHIELD_POLL_MILLISECONDS);
+      }
+      setShield(null);
+      if (step.purpose === "fund") {
+        await prepareFund();
+      } else {
+        await prepareTopUp(step.topUpAmount ?? "");
+      }
+    } catch (cause) {
+      setError(reasonFrom(cause));
+      setAction({ name: "failed", message: reasonFrom(cause), retryable: true });
+    }
+  }, [account, prepareFund, prepareTopUp, refreshBalances, shield]);
+
+  const dismissShield = useCallback((): void => {
+    setShield(null);
+    setError(null);
+    setAction({ name: "idle" });
+  }, []);
 
   const submitTopUp = useCallback(async (): Promise<void> => {
     let staged = false;
@@ -1192,6 +1440,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       snapshot,
       nextReleaseAt,
       readiness,
+      shield,
       recoveryDrill,
       action,
       recoveryWords,
@@ -1247,7 +1496,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
         );
         if (asset === undefined || !asset.available) return;
         const token = tokenFor(asset.tokenAddress);
-        const balance = parseTokenAmount(asset.shieldedBalance, token.decimals);
+        const balance = parseTokenAmount(asset.totalBalance, token.decimals);
         const reserve =
           token.symbol === "STRK"
             ? parseTokenAmount(
@@ -1276,7 +1525,7 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
           }
           const token = tokenFor(asset.tokenAddress);
           try {
-            const balance = parseTokenAmount(asset.shieldedBalance, token.decimals);
+            const balance = parseTokenAmount(asset.totalBalance, token.decimals);
             const entered = parseTokenAmount(value, token.decimals);
             if (entered > balance) return { ...current, [field]: value };
             return field === "parkAmount"
@@ -1301,6 +1550,8 @@ export function useTravelSafeV3(): TravelSafeV3Controller {
       },
       confirmRecoveryWords,
       prepareFund,
+      shieldNow,
+      dismissShield,
       submitFund,
       releaseAvailable,
       prepareTopUp,

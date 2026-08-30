@@ -19,6 +19,8 @@ import {
 } from "@wrenchless/canary-core";
 import { z } from "zod";
 
+import { buildShieldActions, type ShieldDeposit } from "./travel-safe-shield";
+
 const READY_WALLET_API_VERSION = "0.10.3";
 const MAINNET_CHAIN_ID = "0x534e5f4d41494e";
 
@@ -393,4 +395,29 @@ export async function submitTravelSafeV3Refund(input: {
       signature,
     }),
   );
+}
+
+/**
+ * Move ordinary balances into the private pool, in one wallet-signed STRK20
+ * transaction. This is the only step Wrenchless asks the account itself to
+ * send: the wallet shows its own approval, pays its own fee, and returns a
+ * hash the caller must confirm before any private proof is prepared.
+ */
+export async function submitShieldDeposits(input: {
+  wallet: ReadyTravelSafeV3Wallet;
+  chainId: string;
+  deposits: readonly ShieldDeposit[];
+}): Promise<{ transactionHash: string }> {
+  assertMainnet(input.chainId);
+  const actions = buildShieldActions(input.deposits);
+  const result = transactionSchema.parse(
+    await input.wallet.request({
+      type: "wallet_strk20InvokeTransaction",
+      params: { actions, api_version: READY_WALLET_API_VERSION },
+    }),
+  );
+  if (BigInt(result.transaction_hash) === 0n) {
+    throw new Error("The wallet returned an invalid transaction");
+  }
+  return { transactionHash: result.transaction_hash };
 }
